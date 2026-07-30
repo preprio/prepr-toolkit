@@ -1,0 +1,16 @@
+fragment Hero on Hero {
+    _id
+    sub_heading
+    image {
+        url(preset: "Hero", width: 2000)
+        height
+        width
+    }
+    _context {
+        variant_key
+    }
+    heading
+    buttons {
+        ...Button
+    }
+}

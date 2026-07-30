@@ -42,6 +42,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "example-sveltekit", "dev"],
       "port": 5173
+    },
+    {
+      "name": "example-nuxt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-nuxt", "dev", "--port", "3004"],
+      "port": 3004
     }
   ]
 }

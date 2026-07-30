@@ -195,6 +195,22 @@ describe('createPreprToolbar', () => {
     controller.destroy();
   });
 
+  it('preview-mode toggle strips stale preview params instead of reloading', () => {
+    // A stale ?prepr_preview_segment outranks the preview cookie in the
+    // middleware, so a plain reload would keep serving preview content.
+    const nav = fakeNavigation();
+    nav.currentPath = () =>
+      '/blog?prepr_preview_segment=seg-1&prepr_preview_ab=B&foo=bar';
+    document.cookie = 'Prepr-Preview-Mode=true;path=/';
+    const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+
+    storeOf(controller).set({ previewMode: false });
+
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(nav.navigated[nav.navigated.length - 1]).toBe('/blog?foo=bar');
+    controller.destroy();
+  });
+
   it('uses navigation.reload instead of window.location.reload when provided', () => {
     const softReload = vi.fn();
     const nav = { ...fakeNavigation(), reload: softReload };

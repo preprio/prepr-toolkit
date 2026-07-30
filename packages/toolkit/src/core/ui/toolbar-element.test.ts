@@ -234,6 +234,47 @@ describe('definePreprToolbar', () => {
     expect(pill.textContent).toContain('B');
   });
 
+  it('hides the status-pill x when preview mode is off', () => {
+    const store = createToolbarStore({
+      previewMode: false,
+      segments: SEGMENTS,
+      selectedSegment: 'seg-1',
+    });
+    const el = mount(store);
+
+    const x = el.shadowRoot!.querySelector<HTMLElement>(
+      '[data-prepr="status-x"]'
+    )!;
+    expect(x.hasAttribute('hidden')).toBe(true);
+
+    store.set({ previewMode: true });
+    expect(x.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('filters listbox options by typing in the segment search input', () => {
+    const store = createToolbarStore({
+      segments: SEGMENTS,
+      previewMode: true,
+      toolbarOpen: true,
+    });
+    const el = mount(store);
+
+    el.shadowRoot!.querySelector<HTMLButtonElement>(
+      '[data-prepr="segment-button"]'
+    )!.click();
+
+    const search = el.shadowRoot!.querySelector<HTMLInputElement>(
+      '[data-prepr="segment-search"]'
+    )!;
+    search.value = 'dog';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const labels = Array.from(
+      el.shadowRoot!.querySelectorAll('[role="option"]')
+    ).map(o => o.textContent?.trim());
+    expect(labels).toEqual(['Dog lovers']);
+  });
+
   it('injects a <style> tag that themes via var(--prepr-primary', () => {
     const store = createToolbarStore({});
     const el = mount(store);

@@ -1,0 +1,15 @@
+fragment Feature on Feature {
+    _id
+    heading
+    sub_heading
+    button {
+        ...Button
+    }
+    _context {
+        variant_key
+    }
+    image_position
+    image {
+        url(width: 870, height: 570)
+    }
+}
