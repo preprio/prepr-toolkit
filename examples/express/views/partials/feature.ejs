@@ -1,0 +1,10 @@
+<section class="section<%= item.image_position === 'RIGHT' ? ' section--reverse' : '' %>" data-prepr-variant-key="<%= item._context && item._context.variant_key %>">
+  <div class="container">
+    <div class="section__media"><img src="<%= item.image && item.image.url %>" alt="Feature image" /></div>
+    <div class="section__body">
+      <h2><%= item.heading %></h2>
+      <p><%= item.sub_heading %></p>
+      <a href="#" class="btn"><%= item.button && item.button.text %></a>
+    </div>
+  </div>
+</section>

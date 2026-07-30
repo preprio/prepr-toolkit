@@ -1,0 +1,47 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "astro",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-astro", "dev"],
+      "port": 4321
+    },
+    {
+      "name": "nextjs",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-nextjs", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "nextjs-dev-3001",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-nextjs", "dev", "--port", "3001"],
+      "port": 3001
+    },
+    {
+      "name": "editor-demo",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "--no-clipboard", "-l", "4400", "examples/editor-demo"],
+      "port": 4400
+    },
+    {
+      "name": "acme-lease",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "examples/acme-lease", "dev", "--port", "3002"],
+      "port": 3002
+    },
+    {
+      "name": "express",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-express", "start"],
+      "port": 8787
+    },
+    {
+      "name": "example-sveltekit",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-sveltekit", "dev"],
+      "port": 5173
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+query GetPageBySlug($slug: String) {
+    Page(slug: $slug) {
+        title
+        _id
+        content {
+            __typename
+            ... on Hero {
+                ...Hero
+            }
+            ... on Feature {
+                ...Feature
+            }
+        }
+    }
+}

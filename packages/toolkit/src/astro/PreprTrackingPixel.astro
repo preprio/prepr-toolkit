@@ -1,0 +1,48 @@
+---
+/**
+ * Loads Prepr's CDN tracking pixel client-side via `loadTrackingPixel`
+ * (core). Renders nothing visible.
+ *
+ * Ships as SOURCE — see `PreprToolbar.astro` for the rationale (compiled by
+ * the consumer's own Astro pipeline, not this package's `tsup` build).
+ *
+ * Server → client props transfer: props are emitted into a
+ * `<script type="application/json">` tag and read back by a SEPARATE,
+ * NON-inline `<script>` that Astro/Vite bundles. We deliberately avoid
+ * `define:vars` (which forces `is:inline`) because inline scripts do not get
+ * their bare `import` specifiers processed — `import { loadTrackingPixel }
+ * from '@preprio/toolkit'` would fail to resolve in the browser. See
+ * `PreprToolbar.astro` for the full explanation.
+ */
+interface Props {
+  id: string;
+  config?: {
+    destinations?: { googleTagManager?: boolean };
+    variantImpressionThreshold?: number;
+  };
+}
+
+const { id, config } = Astro.props as Props;
+// JSON-serialize into a plain data payload. An omitted `config` becomes
+// `undefined`, which `JSON.stringify` drops from the object entirely — the
+// mount script normalizes a missing `config` back to `undefined` so
+// `loadTrackingPixel`'s `config !== undefined` check (core/pixel.ts) behaves
+// the same as calling it directly with no config argument.
+const payload = { id, config };
+---
+
+<script
+  type="application/json"
+  data-prepr-pixel-props
+  set:html={JSON.stringify(payload)}
+/>
+
+<script>
+  import { loadTrackingPixel } from '@preprio/toolkit';
+
+  const el = document.querySelector('script[data-prepr-pixel-props]');
+  if (el?.textContent) {
+    const { id, config } = JSON.parse(el.textContent);
+    loadTrackingPixel(id, config ?? undefined);
+  }
+</script>

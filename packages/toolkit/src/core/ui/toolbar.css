@@ -1,0 +1,530 @@
+/* Shadow-DOM styles for `<prepr-toolbar>`. Consumers theme it from the light
+   DOM via --prepr-primary, --prepr-bg, --prepr-text, --prepr-radius,
+   --prepr-shadow and --prepr-z-index. */
+
+:host {
+  /* Setting the same custom property on the `prepr-toolbar` element overrides
+     any of these through the normal cascade. Do NOT use `all: initial` here —
+     it resets custom properties too, wiping both these defaults and any
+     consumer override. Shadow DOM already isolates descendant styles; the
+     inheritable props that matter (font, color, line-height) are set
+     explicitly below and re-set on the container. */
+  --prepr-primary: #4338ca;
+  --prepr-bg: #eef2ff;
+  --prepr-text: #1f2937;
+  --prepr-radius: 8px;
+  --prepr-shadow: 0px 0px 40px 0px rgba(31, 41, 55, 0.24);
+  --prepr-z-index: 10000;
+
+  --prepr-primary-50: #eef2ff;
+  --prepr-primary-100: #e0e7ff;
+  --prepr-primary-800: #3730a3;
+  --prepr-indigo-600: #4f46e5;
+  --prepr-indigo-50: #eef2ff;
+  --prepr-indigo-700: #4338ca;
+  --prepr-secondary-400: #fb923c;
+  --prepr-secondary-500: #f97316;
+  --prepr-gray-100: #f3f4f6;
+  --prepr-gray-200: #e5e7eb;
+  --prepr-gray-300: #d1d5db;
+  --prepr-gray-400: #9ca3af;
+  --prepr-gray-500: #6b7280;
+  --prepr-gray-700: #374151;
+  --prepr-gray-800: #1f2937;
+  --prepr-gray-900: #111827;
+  --prepr-shadow-sm: 0px 0px 12px 0px rgba(195, 195, 195, 0.8);
+
+  /* Shadow DOM isolates rules but not inherited values, so pin the
+     inheritable props or page styles leak in. */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--prepr-text);
+  box-sizing: border-box;
+}
+
+:host *,
+:host *::before,
+:host *::after {
+  box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  margin: 0;
+}
+
+.prepr-regular-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------- backdrop */
+.prepr-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--prepr-z-index) - 1);
+  background: rgba(0, 0, 0, 0.1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+}
+.prepr-backdrop[data-open='true'] {
+  opacity: 1;
+  pointer-events: auto;
+  animation: prepr-fade-in 0.2s ease-in-out;
+}
+
+/* ---------------------------------------------------- toggle button (side) */
+.prepr-container {
+  position: fixed;
+  right: 0;
+  top: calc(50% - 64px);
+  z-index: var(--prepr-z-index);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.prepr-toggle-holder {
+  padding: 0.5rem;
+}
+
+.prepr-toggle {
+  cursor: pointer;
+  display: flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 9999px;
+  background: var(--prepr-primary);
+  color: #ffffff;
+}
+.prepr-toggle svg {
+  color: #ffffff;
+}
+
+/* ---------------------------------------------------------------- panel */
+.prepr-panel {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: var(--prepr-z-index);
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.75rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+}
+.prepr-panel[data-open='true'] {
+  opacity: 1;
+  pointer-events: auto;
+  animation: prepr-fade-in 0.2s ease-in-out;
+}
+
+.prepr-content {
+  box-shadow: var(--prepr-shadow);
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2.5rem;
+  border-radius: var(--prepr-radius);
+  background: var(--prepr-bg);
+  padding: 1.5rem;
+}
+@media (min-width: 640px) {
+  .prepr-panel {
+    margin-right: 4rem;
+    padding: 0;
+  }
+  .prepr-content {
+    width: 502px;
+    padding: 2.5rem;
+  }
+}
+
+/* --------------------------------------------------------------- header */
+.prepr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.prepr-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.prepr-badge {
+  display: flex;
+  height: 1.5rem;
+  align-items: center;
+  border-radius: 4px;
+  background: var(--prepr-primary-100);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--prepr-primary);
+}
+.prepr-header-close {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: var(--prepr-primary-100);
+  color: var(--prepr-gray-700);
+}
+
+/* --------------------------------------------------------------- sections */
+.prepr-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.prepr-section-label {
+  font-size: 0.875rem;
+  color: var(--prepr-gray-400);
+}
+.prepr-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+}
+.prepr-row-title {
+  color: var(--prepr-gray-800);
+  font-weight: 600;
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* --------------------------------------------------------- radio selector */
+.prepr-radiogroup {
+  display: flex;
+  height: 2.5rem;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--prepr-radius);
+  border: 1px solid var(--prepr-gray-300);
+  background: #ffffff;
+  padding: 0.25rem;
+}
+.prepr-radiogroup[data-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.prepr-radiogroup[data-disabled='true'] .prepr-radio {
+  pointer-events: none;
+}
+.prepr-radio {
+  display: flex;
+  height: 2rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0.5rem 1.125rem;
+  text-align: center;
+  color: var(--prepr-gray-900);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease-in-out;
+}
+.prepr-radio[data-checked='true'] {
+  background: var(--prepr-indigo-600);
+  color: #ffffff;
+  box-shadow: var(--prepr-shadow-sm);
+}
+/* the "off" side gets the darker gray when checked */
+.prepr-radio[data-checked='true'][data-off='true'] {
+  background: var(--prepr-gray-800);
+  color: #ffffff;
+}
+.prepr-radio-variant {
+  width: 82px;
+}
+
+/* --------------------------------------------------------- segment listbox */
+.prepr-listbox {
+  position: relative;
+}
+.prepr-segment-button {
+  display: flex;
+  height: 2.5rem;
+  width: 240px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--prepr-radius);
+  border: 1px solid var(--prepr-gray-300);
+  background: #ffffff;
+  padding: 0 0.5rem;
+  color: var(--prepr-gray-500);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+@media (min-width: 768px) {
+  .prepr-segment-button {
+    padding: 0 1rem;
+  }
+}
+.prepr-segment-button:disabled {
+  cursor: not-allowed;
+  background: var(--prepr-gray-200);
+  color: var(--prepr-gray-400);
+}
+.prepr-segment-button[aria-expanded='true'] {
+  border-bottom-color: #ffffff;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.prepr-segment-label {
+  margin-right: auto;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.prepr-segment-caret {
+  color: var(--prepr-gray-800);
+  display: flex;
+}
+.prepr-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: calc(var(--prepr-z-index) + 1);
+  max-height: 300px;
+  width: 240px;
+  overflow-y: auto;
+  border-radius: 0 0 6px 6px;
+  border-left: 1px solid var(--prepr-gray-300);
+  border-right: 1px solid var(--prepr-gray-300);
+  border-bottom: 1px solid var(--prepr-gray-300);
+  background: #ffffff;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.prepr-options::-webkit-scrollbar {
+  display: none;
+}
+.prepr-options[hidden] {
+  display: none;
+}
+.prepr-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background: #ffffff;
+  color: var(--prepr-gray-900);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.prepr-option:hover {
+  background: var(--prepr-gray-100);
+}
+.prepr-option[aria-selected='true'] {
+  background: var(--prepr-indigo-50);
+  color: var(--prepr-indigo-700);
+}
+.prepr-option-label {
+  margin-right: auto;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+/* --------------------------------------------------------- reset button */
+.prepr-reset {
+  display: flex;
+  height: 2.5rem;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: var(--prepr-secondary-400);
+  color: #ffffff;
+  cursor: pointer;
+}
+.prepr-reset:hover:not(:disabled) {
+  background: var(--prepr-secondary-500);
+}
+.prepr-reset:disabled {
+  background: var(--prepr-gray-400);
+  color: var(--prepr-gray-500);
+  cursor: not-allowed;
+}
+@media (min-width: 768px) {
+  .prepr-reset {
+    width: 108px;
+  }
+}
+
+/* ------------------------------------------------------------- pills */
+.prepr-indicators {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: var(--prepr-z-index);
+  display: flex;
+  gap: 0.75rem;
+}
+.prepr-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  border-radius: 9999px;
+  background: var(--prepr-primary);
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #ffffff;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.prepr-status-pill:hover {
+  background: var(--prepr-primary-800);
+}
+.prepr-status-pill[hidden] {
+  display: none;
+}
+.prepr-status-viewing {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.prepr-status-segment {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prepr-status-variant {
+  display: inline-block;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0 0.5rem;
+}
+.prepr-status-x {
+  height: 0.75rem;
+  width: 0.75rem;
+  color: #ffffff;
+}
+
+.prepr-close-edit-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  border-radius: 9999px;
+  background: var(--prepr-primary-50);
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--prepr-gray-800);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.prepr-close-edit-pill:hover {
+  background: var(--prepr-primary-100);
+}
+.prepr-close-edit-pill[hidden] {
+  display: none;
+}
+.prepr-close-edit-x {
+  height: 1rem;
+  width: 1rem;
+  color: var(--prepr-gray-500);
+  transition: color 0.15s ease;
+}
+.prepr-close-edit-pill:hover .prepr-close-edit-x {
+  color: var(--prepr-gray-700);
+}
+
+/* ------------------------------------------------------------- tooltip */
+/* fixed gray-900 bubble, text-xs, arrow below */
+.prepr-tip {
+  position: fixed;
+  z-index: calc(var(--prepr-z-index) + 2);
+  width: auto;
+  max-width: min(420px, calc(100vw - 16px));
+  overflow-wrap: break-word;
+  border-radius: 6px;
+  background: var(--prepr-gray-900);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #ffffff;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+}
+.prepr-tip-arrow {
+  position: absolute;
+  top: 100%;
+  height: 0;
+  width: 0;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid var(--prepr-gray-900);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@keyframes prepr-fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}

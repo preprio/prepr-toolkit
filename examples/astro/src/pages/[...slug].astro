@@ -1,0 +1,30 @@
+---
+import { print } from 'graphql';
+import Layout from '../layouts/Layout.astro';
+import { Prepr } from '../lib/prepr';
+import { GetPageBySlugDocument } from '../gql/graphql';
+import type { GetPageBySlugQuery } from '../gql/graphql';
+import Hero from '../components/sections/Hero.astro';
+import Feature from '../components/sections/Feature.astro';
+
+// GetPageBySlugDocument is a TypedDocumentNode; print() it to the raw query
+// string the fetch helper needs.
+const slug = Astro.params.slug ?? '/';
+
+const response = await Prepr(print(GetPageBySlugDocument), { slug }, Astro.request.headers);
+const { data } = (await response.json()) as { data: GetPageBySlugQuery };
+
+if (!data?.Page) {
+  return new Response('Not found', { status: 404 });
+}
+
+const page = data.Page;
+---
+<Layout title={page.title ?? 'Prepr Astro complete starter'}>
+  <meta property="prepr:id" content={page._id} />
+  {page.content.map(element => {
+    if (element.__typename === 'Hero') return <Hero item={element} />;
+    if (element.__typename === 'Feature') return <Feature item={element} />;
+    return null;
+  })}
+</Layout>

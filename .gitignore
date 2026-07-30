@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.turbo/
+.next/
+.astro/
+.idea/
+*.log
+.DS_Store
+.superpowers/
+docs/superpowers/
+
+# CSS compiled from .css by scripts/compile-css.mjs
+packages/toolkit/src/**/*.generated.ts
+
+# TypeScript incremental build cache
+*.tsbuildinfo

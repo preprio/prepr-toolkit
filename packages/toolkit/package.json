@@ -1,0 +1,84 @@
+{
+  "name": "@preprio/toolkit",
+  "version": "0.1.0-beta.1",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./nextjs": {
+      "types": "./dist/nextjs/index.d.ts",
+      "import": "./dist/nextjs/index.js",
+      "require": "./dist/nextjs/index.cjs"
+    },
+    "./nextjs/image-loader": {
+      "types": "./dist/nextjs/image-loader.d.ts",
+      "import": "./dist/nextjs/image-loader.js",
+      "require": "./dist/nextjs/image-loader.cjs"
+    },
+    "./astro": {
+      "types": "./dist/astro/index.d.ts",
+      "import": "./dist/astro/index.js",
+      "require": "./dist/astro/index.cjs"
+    },
+    "./astro/components/*": "./src/astro/*.astro",
+    "./sveltekit": {
+      "types": "./dist/sveltekit/index.d.ts",
+      "import": "./dist/sveltekit/index.js",
+      "require": "./dist/sveltekit/index.cjs"
+    },
+    "./sveltekit/components/*": "./src/sveltekit/*.svelte"
+  },
+  "files": [
+    "dist",
+    "src/astro/*.astro",
+    "src/sveltekit/*.svelte"
+  ],
+  "scripts": {
+    "gen:css": "node scripts/compile-css.mjs",
+    "prebuild": "rm -rf dist && pnpm gen:css && node scripts/check-version.mjs",
+    "pretest": "pnpm gen:css",
+    "pretypecheck": "pnpm gen:css",
+    "build": "tsup",
+    "postbuild": "node scripts/check-exports.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vercel/stega": "^1.1.0",
+    "preact": "^10.24.3"
+  },
+  "peerDependencies": {
+    "next": ">=13",
+    "react": ">=17",
+    "react-dom": ">=17"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "browserslist": "^4.28.5",
+    "happy-dom": "^20.10.6",
+    "lightningcss": "^1.32.0",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

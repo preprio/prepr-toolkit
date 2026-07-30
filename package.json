@@ -1,0 +1,22 @@
+{
+  "name": "prepr-toolkit",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "turbo build",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.10.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": ">=0.28.1",
+      "postcss": ">=8.5.10",
+      "js-yaml": ">=4.2.0",
+      "@babel/core": ">=7.29.6",
+      "astro": "7.1.0"
+    }
+  }
+}

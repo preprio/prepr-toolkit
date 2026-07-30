@@ -1,0 +1,73 @@
+/**
+ * Source for stega.generated.ts — run `pnpm gen:css` after editing.
+ * Injected into the host page, not the toolbar shadow DOM (see styles.ts).
+ * Class names and the 10000/10001 z-indexes are asserted in stega.test.ts.
+ */
+
+[data-prepr-encoded] {
+  position: relative;
+}
+
+/* positioned by overlay.ts */
+.prepr-overlay {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid #4f46e5;
+  border-radius: 4px 0px 4px 4px;
+  transition: all 0.2s ease-in-out;
+  z-index: 10000;
+}
+
+/* positioned by overlay.ts */
+.prepr-tooltip {
+  position: absolute;
+  background-color: #4f46e5;
+  color: white;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px 4px 0 0;
+  white-space: nowrap;
+  z-index: 10001;
+  min-width: 80px;
+  text-align: center;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.prepr-tooltip:hover {
+  background-color: #4338ca;
+}
+
+/* the ::before gradient bleeds outside the box, so stacking + overflow have to
+   be forced open or ancestor containers clip it */
+.prepr-proximity-highlight {
+  position: relative;
+  z-index: 1;
+}
+
+.prepr-proximity-highlight,
+.prepr-proximity-highlight * {
+  overflow: visible !important;
+}
+
+.prepr-proximity-highlight::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -4px;
+  right: -4px;
+  bottom: -2px;
+  pointer-events: none;
+  overflow: visible;
+  background: radial-gradient(
+    circle var(--gradient-size) at var(--cursor-x) var(--cursor-y),
+    rgba(79, 70, 229, 0.15) 0%,
+    rgba(37, 99, 235, 0) 70%
+  );
+  border: 2px solid rgba(79, 70, 229, 0.15);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  z-index: 9999;
+}

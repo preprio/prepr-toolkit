@@ -1,0 +1,15 @@
+---
+interface Props {
+  buttonStyle?: 'primary' | 'secondary';
+  class?: string;
+}
+const { buttonStyle = 'primary', class: className = '' } = Astro.props;
+const base = 'flex rounded-full text-sm px-6 py-2.5 font-medium';
+const variant =
+  buttonStyle === 'primary'
+    ? 'bg-primary-600 hover:bg-primary-700 text-white'
+    : 'bg-white hover:bg-gray-50 text-secondary-700';
+---
+<button class={`${base} ${variant} ${className}`}>
+  <slot />
+</button>

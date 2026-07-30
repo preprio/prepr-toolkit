@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= (page && page.title) || 'Prepr Express complete starter' %></title>
+  <link rel="stylesheet" href="/styles.css" />
+  <%- include('partials/prepr-head', { token: token, toolbarProps: toolbarProps }) %>
+</head>
+<body>
+  <%- include('partials/navbar') %>
+  <meta property="prepr:id" content="<%= page && page._id %>" />
+  <% (page && page.content || []).forEach(function (item) { %>
+    <% if (item.__typename === 'Hero') { %><%- include('partials/hero', { item: item }) %><% } %>
+    <% if (item.__typename === 'Feature') { %><%- include('partials/feature', { item: item }) %><% } %>
+  <% }); %>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>

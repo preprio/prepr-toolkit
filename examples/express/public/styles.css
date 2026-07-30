@@ -1,0 +1,19 @@
+* { box-sizing: border-box; margin: 0; }
+body { font-family: 'Ubuntu', system-ui, sans-serif; color: #334155; }
+.container { max-width: 90rem; margin: 0 auto; padding: 1.5rem; }
+.navbar { background: #DBEAFE; padding: 1rem 0; }
+.navbar .container { display: flex; align-items: center; justify-content: space-between; }
+.navbar ul { display: flex; gap: 2rem; align-items: center; list-style: none; }
+.navbar a { text-decoration: none; color: #334155; }
+.brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.25rem; }
+.section { background: #EFF6FF; }
+.section .container { display: flex; flex-direction: column; gap: 2rem; padding-top: 2.5rem; padding-bottom: 2.5rem; }
+@media (min-width: 768px) { .section .container { flex-direction: row; align-items: center; } .section--reverse .container { flex-direction: row-reverse; } }
+.section__body { flex: 1; }
+.section__media { flex: 1; }
+.section__media img { width: 100%; border-radius: 1rem; object-fit: cover; aspect-ratio: 29/19; }
+h1 { font-size: 2.675rem; font-weight: 500; }
+h2 { font-size: 2rem; font-weight: 500; }
+.section p { color: #4748b; font-size: 1.125rem; margin-top: 1rem; }
+.btn { display: inline-flex; border: none; border-radius: 9999px; font-size: 0.875rem; padding: 0.625rem 1.5rem; font-weight: 500; cursor: pointer; margin-top: 2rem; background: #2563EB; color: #fff; text-decoration: none; }
+.btn--secondary { background: #fff; color: #334155; margin-top: 0; }

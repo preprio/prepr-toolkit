@@ -1,0 +1,11 @@
+<%
+const LOGO = '<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="6" fill="#2563EB"/><text x="50%" y="55%" text-anchor="middle" dominant-baseline="middle" font-size="22" font-weight="700" fill="#fff">A</text></svg>';
+const navItems = ['Find a car', 'About Acme', 'Blog', 'Contacts'];
+%>
+<header class="navbar"><div class="container">
+  <a href="/" class="brand"><%- LOGO %><span>Acme Lease</span></a>
+  <ul>
+    <% navItems.forEach(function (t) { %><li><a href="#"><%= t %></a></li><% }); %>
+    <li><a href="#" class="btn btn--secondary">CALCULATOR</a></li>
+  </ul>
+</div></header>

@@ -1,0 +1,16 @@
+fragment Button on Button {
+    button_type
+    text
+    external_url
+    link {
+        ... on Category {
+            _slug
+        }
+        ... on Page {
+            _slug
+        }
+        ... on Post {
+            _slug
+        }
+    }
+}

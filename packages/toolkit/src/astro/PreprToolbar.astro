@@ -1,0 +1,53 @@
+---
+/**
+ * Server-renders nothing visible — mounts the framework-free Prepr toolbar
+ * custom element client-side via `createPreprToolbar` (core).
+ *
+ * Ships as SOURCE: this file is compiled by the *consumer's* Astro/Vite
+ * pipeline (not by this package's own `tsup` build), matching how Astro
+ * component libraries distribute `.astro` files. See package.json's
+ * `./astro/components/*` export map entry and `files` field.
+ *
+ * Astro is multi-page (MPA) by default, so the default navigation adapter
+ * (core's `window.location.assign`, used when no `navigation` override is
+ * passed to `createPreprToolbar`) is the correct choice here — a full page
+ * navigation re-runs Astro's server-rendered output (and this component's
+ * frontmatter) with the new query params, which is what drives segment /
+ * A/B query-param personalization. No client-router
+ * integration is wired up; consumers using Astro's View Transitions/client
+ * router can pass their own adapter if they fork this component.
+ *
+ * Server → client props transfer: the props are emitted into a
+ * `<script type="application/json">` tag and read back by a SEPARATE,
+ * NON-inline `<script>` that Astro/Vite bundles. We deliberately do NOT use
+ * `define:vars`, which would force the mount script to be `is:inline` —
+ * Astro/Vite do not process bare `import` specifiers in inline scripts, so
+ * `import { createPreprToolbar } from '@preprio/toolkit'` would fail to
+ * resolve in the browser. A processed (bundled) module script gets its
+ * imports rewritten to real, hashed module URLs, so the import resolves.
+ * (JSON-serializable values only — matches `PreprToolbarProps`, a plain
+ * data shape of primitives/arrays.)
+ */
+import type { PreprToolbarProps } from '@preprio/toolkit';
+
+type Props = PreprToolbarProps;
+
+const { activeSegment, activeVariant, segments, data } = Astro.props as Props;
+// `data` is the deprecated alias for `segments`; accept either.
+const props = { activeSegment, activeVariant, segments: segments ?? data ?? [] };
+---
+
+<script
+  type="application/json"
+  data-prepr-toolbar-props
+  set:html={JSON.stringify(props)}
+/>
+
+<script>
+  import { createPreprToolbar } from '@preprio/toolkit';
+
+  const el = document.querySelector('script[data-prepr-toolbar-props]');
+  if (el?.textContent) {
+    createPreprToolbar({ props: JSON.parse(el.textContent) });
+  }
+</script>
