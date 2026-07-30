@@ -33,6 +33,7 @@ export class PreprToolbarElement extends HTMLElementBase {
   private t: Translate = key => key;
   private unsubscribe: (() => void) | null = null;
   private listboxOpen = false;
+  private segmentFilter = '';
 
   private readonly handlers: PanelHandlers = {
     onToggle: () => this.set({ toolbarOpen: !this.state.toolbarOpen }),
@@ -66,6 +67,10 @@ export class PreprToolbarElement extends HTMLElementBase {
     onSegmentButtonKeydown: e => this.onListboxKeydown(e),
     onOptionsKeydown: e => this.onListboxKeydown(e),
     onChooseSegment: id => this.chooseSegment(id),
+    onSegmentFilterInput: value => {
+      this.segmentFilter = value;
+      this.renderPanel(this.state);
+    },
     onPreviewTooltipEnter: el => this.showTooltip(el),
     onPreviewTooltipLeave: () => this.hideTooltip(),
   };
@@ -114,6 +119,7 @@ export class PreprToolbarElement extends HTMLElementBase {
         state,
         t: this.t,
         listboxOpen: this.listboxOpen,
+        segmentFilter: this.segmentFilter,
         handlers: this.handlers,
       }),
       root
@@ -204,6 +210,11 @@ export class PreprToolbarElement extends HTMLElementBase {
   private onListboxKeydown(event: Event): void {
     const e = event as KeyboardEvent;
     const options = this.optionEls();
+    const inSearch =
+      (e.target as HTMLElement | null)?.getAttribute?.('data-prepr') ===
+      'segment-search';
+    // Space must type into the search input, not select an option.
+    if (inSearch && e.key === ' ') return;
     if (options.length === 0 && e.key !== 'Escape') return;
 
     switch (e.key) {
@@ -270,6 +281,7 @@ export class PreprToolbarElement extends HTMLElementBase {
     const button = this.segmentButton();
     if (button?.disabled) return;
     this.listboxOpen = open;
+    this.segmentFilter = '';
     this.renderPanel(this.state);
     if (open) {
       const options = this.optionEls();
@@ -280,12 +292,23 @@ export class PreprToolbarElement extends HTMLElementBase {
       options.forEach((el, i) =>
         el.setAttribute('data-active', String(i === activeIndex))
       );
-      options[activeIndex]?.focus();
+      // Focus the search input so users can type to filter right away;
+      // ArrowDown/ArrowUp still moves through the options.
+      this.searchInput()?.focus();
     }
+  }
+
+  private searchInput(): HTMLInputElement | null {
+    return (
+      this.shadowRoot?.querySelector<HTMLInputElement>(
+        '[data-prepr="segment-search"]'
+      ) ?? null
+    );
   }
 
   private chooseSegment(id: string): void {
     this.listboxOpen = false;
+    this.segmentFilter = '';
     // store.set re-renders via the subscriber; the explicit renderPanel below
     // covers the no-change case, where the store skips notifying.
     this.set({ selectedSegment: id });

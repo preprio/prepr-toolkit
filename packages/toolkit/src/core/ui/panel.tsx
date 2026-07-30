@@ -32,6 +32,7 @@ export interface PanelHandlers {
   onSegmentButtonKeydown(event: KeyboardEvent): void;
   onOptionsKeydown(event: KeyboardEvent): void;
   onChooseSegment(id: string): void;
+  onSegmentFilterInput(value: string): void;
   onPreviewTooltipEnter(el: HTMLElement): void;
   onPreviewTooltipLeave(): void;
 }
@@ -40,6 +41,7 @@ export interface PanelProps {
   state: ToolbarState;
   t: Translate;
   listboxOpen: boolean;
+  segmentFilter: string;
   handlers: PanelHandlers;
 }
 
@@ -143,15 +145,21 @@ function SegmentListbox({
   state,
   t,
   listboxOpen,
+  segmentFilter,
   handlers,
 }: {
   state: ToolbarState;
   t: Translate;
   listboxOpen: boolean;
+  segmentFilter: string;
   handlers: PanelHandlers;
 }): VNode {
   const segments = state.segments;
   const hasSegments = segments.length > 0;
+  const filter = segmentFilter.trim().toLowerCase();
+  const visibleSegments = filter
+    ? segments.filter(s => s.name.toLowerCase().includes(filter))
+    : segments;
 
   let label: string;
   if (!hasSegments) {
@@ -191,7 +199,21 @@ function SegmentListbox({
         hidden={!listboxOpen}
         onKeyDown={e => handlers.onOptionsKeydown(e as KeyboardEvent)}
       >
-        {segments.map(seg => (
+        <li class="prepr-option-search" role="none">
+          <input
+            type="text"
+            class="prepr-segment-search"
+            data-prepr="segment-search"
+            placeholder={t('adaptiveContent.searchSegments')}
+            value={segmentFilter}
+            onInput={e =>
+              handlers.onSegmentFilterInput(
+                (e.currentTarget as HTMLInputElement).value
+              )
+            }
+          />
+        </li>
+        {visibleSegments.map(seg => (
           <SegmentOption
             key={seg._id}
             seg={seg}
@@ -349,7 +371,7 @@ function StatusPill({
       <span
         class="prepr-status-x"
         data-prepr="status-x"
-        hidden={state.selectedSegment === null}
+        hidden={!state.previewMode || state.selectedSegment === null}
       >
         <RawSvg svg={XMARK_ICON_SVG} />
       </span>
@@ -383,7 +405,13 @@ function CloseEditPill({
   );
 }
 
-export function Panel({ state, t, listboxOpen, handlers }: PanelProps): VNode {
+export function Panel({
+  state,
+  t,
+  listboxOpen,
+  segmentFilter,
+  handlers,
+}: PanelProps): VNode {
   const hasPersonalization =
     state.selectedSegment !== null || state.selectedVariant !== null;
 
@@ -447,6 +475,7 @@ export function Panel({ state, t, listboxOpen, handlers }: PanelProps): VNode {
                 state={state}
                 t={t}
                 listboxOpen={listboxOpen}
+                segmentFilter={segmentFilter}
                 handlers={handlers}
               />
             </div>

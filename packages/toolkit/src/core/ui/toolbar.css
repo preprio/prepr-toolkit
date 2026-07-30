@@ -339,6 +339,31 @@ button {
 .prepr-options[hidden] {
   display: none;
 }
+.prepr-option-search {
+  position: sticky;
+  top: 0;
+  padding: 0.5rem;
+  background: #ffffff;
+}
+.prepr-segment-search {
+  width: 100%;
+  height: 2rem;
+  border: 1px solid var(--prepr-gray-300);
+  border-radius: var(--prepr-radius);
+  padding: 0 0.5rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--prepr-gray-900);
+  background: #ffffff;
+  box-sizing: border-box;
+}
+.prepr-segment-search::placeholder {
+  color: var(--prepr-gray-400);
+}
+.prepr-segment-search:focus {
+  outline: none;
+  border-color: var(--prepr-gray-400);
+}
 .prepr-option {
   display: flex;
   width: 100%;

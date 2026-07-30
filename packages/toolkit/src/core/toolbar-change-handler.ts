@@ -106,8 +106,21 @@ export function createChangeHandler(
       sendPreprEvent('preview_mode_toggled', { previewMode: after.previewMode });
       // Auto-clean runs only in preview mode.
       syncAutoClean(after.previewMode);
-      // Re-render with the new preview state.
-      deps.reload();
+      // Stale ?segment/?ab_testing params outrank the preview cookie in the
+      // middleware, so a plain reload would keep serving preview content.
+      // Strip them (navigate is a full page load) and only fall back to
+      // reload() when there is nothing to strip.
+      const [path, existing] = splitPath(deps.currentPath());
+      const params = new URLSearchParams(existing);
+      if (params.has(PARAM_SEGMENT) || params.has(PARAM_VARIANT)) {
+        params.delete(PARAM_SEGMENT);
+        params.delete(PARAM_VARIANT);
+        const query = params.toString();
+        deps.navigate(query ? `${path}?${query}` : path);
+      } else {
+        // Re-render with the new preview state.
+        deps.reload();
+      }
     }
 
     if (before.toolbarOpen !== after.toolbarOpen) {

@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  /* Tailwind v4 font-size utilities read the --text-* namespace (NOT
+     --font-size-*). Named --text-mb-* so `text-mb-4xl` / `text-mb-5xl`
+     actually generate — otherwise the mobile heading sizes silently fall
+     back to the 16px body default. */
+  --text-mb-4xl: 2rem;
+  --text-mb-5xl: 2.675rem;
+
+  /* `p-spacing` (used on section containers) resolves to var(--spacing-spacing);
+     the upstream starter references this token without defining it, so the page
+     gutter collapses. Define it here = horizontal page padding. */
+  --spacing-spacing: 1.5rem;
+
+  --spacing-8xl: 90rem;
+  --container-8xl: 90rem;
+  --container-prose: 50rem;
+
+  --color-gray-50: #EEEEEE;
+
+  --color-primary-50: #EFF6FF;
+  --color-primary-100: #DBEAFE;
+  --color-primary-600: #2563EB;
+  --color-primary-700: #1D4ED8;
+
+  --color-secondary-500: #4748B;
+  --color-secondary-700: #334155;
+}

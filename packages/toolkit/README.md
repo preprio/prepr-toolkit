@@ -1,6 +1,6 @@
 # @preprio/toolkit
 
-A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
+A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Nuxt, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
 
 ## Quick Start
 
@@ -83,6 +83,7 @@ Per-framework requirements:
 | `@preprio/toolkit/nextjs` | `next` >= 13, `react` >= 17, `react-dom` >= 17 |
 | `@preprio/toolkit/astro` | none (`.astro` components compile in your own pipeline) |
 | `@preprio/toolkit/sveltekit` | `svelte` (only for the `.svelte` components) |
+| `@preprio/toolkit/nuxt` | `vue` (only for the `.vue` components) |
 
 All peer dependencies are optional — installing without React or Next.js is fine as long as you only import the entry points you have dependencies for.
 
@@ -471,6 +472,57 @@ const preprHeaders = getPreprHeadersFromLocals(event.locals);
 
 See the runnable example at `examples/sveltekit` for the full source of truth.
 
+## Nuxt
+
+`vue` is an optional peer dependency, needed only if you import the `.vue` components. Requires Nitro's Node.js preset (the Nuxt default).
+
+**`server/middleware/prepr.ts`**
+
+```typescript
+import { handlePreprRequest } from '@preprio/toolkit/nuxt';
+
+export default defineEventHandler(event => {
+  handlePreprRequest(event, { preview: import.meta.dev });
+});
+```
+
+**`app/app.vue`** — resolve the toolbar props on the server, gated on the same flag:
+
+```vue
+<script setup lang="ts">
+import { getToolbarProps } from '@preprio/toolkit/nuxt';
+import PreprToolbar from '@preprio/toolkit/nuxt/components/PreprToolbar';
+import PreprTrackingPixel from '@preprio/toolkit/nuxt/components/PreprTrackingPixel';
+
+const requestHeaders = useRequestHeaders();
+const { data: toolbarProps } = await useAsyncData('prepr-toolbar', async () => {
+  if (!import.meta.dev) return null;
+  return getToolbarProps(
+    new Headers(requestHeaders as Record<string, string>),
+    useRuntimeConfig().public.preprGraphqlUrl
+  );
+});
+</script>
+
+<template>
+  <NuxtPage />
+  <PreprTrackingPixel id="YOUR_ACCESS_TOKEN" />
+  <PreprToolbar v-if="toolbarProps" v-bind="toolbarProps" />
+</template>
+```
+
+The `.vue` components ship as source (compiled by your own Vite/Vue pipeline) and mount client-side via `onMounted`, so they never run during SSR.
+
+The middleware folds the computed Prepr headers back onto the incoming request — read them via `useRequestHeaders()` in composables, or straight off the h3 event in server routes:
+
+```typescript
+import { getPreprHeadersFromEvent } from '@preprio/toolkit/nuxt';
+
+const preprHeaders = getPreprHeadersFromEvent(event);
+```
+
+See the runnable example at `examples/nuxt` for the full source of truth.
+
 ## Any other framework
 
 The core is runtime-neutral: it works off a WHATWG `Request` and hands back the headers to forward to Prepr plus the cookies to persist. Adapting it to Express, Hono, Fastify, or a plain server is roughly twenty lines.
@@ -522,7 +574,7 @@ Serialize the server-computed props into the page — a `<script type="applicati
 
 Each wrapper exposes the same five helpers, differing only in how they reach the request headers.
 
-| Helper | Next.js | Astro / SvelteKit |
+| Helper | Next.js | Astro / SvelteKit / Nuxt |
 | --- | --- | --- |
 | `getPreprUUID` | `await getPreprUUID()` | `getPreprUUID(headers)` |
 | `getActiveSegment` | `await getActiveSegment()` | `getActiveSegment(headers)` |
@@ -530,7 +582,7 @@ Each wrapper exposes the same five helpers, differing only in how they reach the
 | `getPreprHeaders` | `await getPreprHeaders()` | `getPreprHeaders(headers)` |
 | `getToolbarProps` | `await getToolbarProps(token)` | `await getToolbarProps(headers, token)` |
 
-The Next.js versions read via `next/headers` and are async. The Astro and SvelteKit versions take a standard `Headers` (`Astro.request.headers` or `event.request.headers`) and are sync, except `getToolbarProps`.
+The Next.js versions read via `next/headers` and are async. The Astro, SvelteKit and Nuxt versions take a standard `Headers` (`Astro.request.headers`, `event.request.headers`, or one built from `useRequestHeaders()`) and are sync, except `getToolbarProps`.
 
 #### `getPreprUUID()`
 
@@ -895,6 +947,7 @@ Runnable examples live in the repository root:
 | `examples/nextjs` | App Router, middleware, Apollo, custom image loader |
 | `examples/astro` | Astro middleware and `.astro` components |
 | `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components |
+| `examples/nuxt` | `server/middleware`, `useAsyncData`, `.vue` components |
 | `examples/express` | Vanilla core — a hand-written adapter for an unsupported framework |
 
 ## Support
