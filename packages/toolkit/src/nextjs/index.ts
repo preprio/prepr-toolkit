@@ -23,3 +23,13 @@ export {
   PreprTrackingPixel,
   type PreprTrackingPixelProps,
 } from './components';
+
+// 'use client' live preview
+export {
+  initLivePreview,
+  PreprRefresh,
+  useLive,
+  type LivePreviewConfig,
+  type UseLiveOptions,
+} from './live';
+export type { LiveFetcher } from '../core/live-preview';
