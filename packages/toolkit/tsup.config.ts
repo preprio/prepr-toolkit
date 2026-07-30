@@ -77,4 +77,17 @@ export default defineConfig([
     // to externalize.
     external: [],
   },
+  {
+    ...sharedOptions,
+    // Only the TS module is built here — the `.vue` components ship as source
+    // and are compiled by the *consumer's* Vite/Vue pipeline (tsup has no
+    // `.vue` loader). Published verbatim via package.json's `files` field,
+    // resolved via the `./nuxt/components/*` export map entry.
+    entry: { index: 'src/nuxt/index.ts' },
+    outDir: 'dist/nuxt',
+    clean: false,
+    // Typed structurally against a minimal `H3EventLike` — nothing to
+    // externalize.
+    external: [],
+  },
 ]);

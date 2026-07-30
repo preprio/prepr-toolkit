@@ -1,7 +1,7 @@
 {
   "name": "@preprio/toolkit",
   "version": "0.1.0-beta.2",
-  "description": "Prepr personalization, A/B testing and preview toolkit for Next.js, Astro, SvelteKit and Express",
+  "description": "Prepr personalization, A/B testing and preview toolkit for Next.js, Nuxt, Astro, SvelteKit and Express",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -39,12 +39,19 @@
       "import": "./dist/sveltekit/index.js",
       "require": "./dist/sveltekit/index.cjs"
     },
-    "./sveltekit/components/*": "./src/sveltekit/*.svelte"
+    "./sveltekit/components/*": "./src/sveltekit/*.svelte",
+    "./nuxt": {
+      "types": "./dist/nuxt/index.d.ts",
+      "import": "./dist/nuxt/index.js",
+      "require": "./dist/nuxt/index.cjs"
+    },
+    "./nuxt/components/*": "./src/nuxt/*.vue"
   },
   "files": [
     "dist",
     "src/astro/*.astro",
-    "src/sveltekit/*.svelte"
+    "src/sveltekit/*.svelte",
+    "src/nuxt/*.vue"
   ],
   "scripts": {
     "gen:css": "node scripts/compile-css.mjs",

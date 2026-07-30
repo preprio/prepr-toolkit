@@ -1,6 +1,6 @@
 # Prepr Toolkit
 
-A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). One vanilla core, with thin wrappers for Next.js, Astro, and SvelteKit.
+A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). One vanilla core, with thin wrappers for Next.js, Nuxt, Astro, and SvelteKit.
 
 This is the monorepo. The published package lives in [`packages/toolkit`](./packages/toolkit) and has its own [README](./packages/toolkit/README.md) with the complete API reference.
 
@@ -64,7 +64,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
 No CSS import is needed — the toolbar renders into a shadow-DOM custom element with its styles inlined.
 
-For Astro, SvelteKit, or any other framework, see the [package README](./packages/toolkit/README.md).
+For Nuxt, Astro, SvelteKit, or any other framework, see the [package README](./packages/toolkit/README.md).
 
 ## Prerequisites
 
