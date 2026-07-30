@@ -69,6 +69,11 @@
       "import": "./dist/nextjs/image-loader.js",
       "require": "./dist/nextjs/image-loader.cjs"
     },
+    "./nextjs/live": {
+      "types": "./dist/nextjs/live.d.ts",
+      "import": "./dist/nextjs/live.js",
+      "require": "./dist/nextjs/live.cjs"
+    },
     "./astro": {
       "types": "./dist/astro/index.d.ts",
       "import": "./dist/astro/index.js",

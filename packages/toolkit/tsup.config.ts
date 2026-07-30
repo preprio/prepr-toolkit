@@ -25,8 +25,8 @@ const externalSiblingComponents: Plugin = {
   name: 'external-sibling-components',
   setup(build) {
     const ext = build.initialOptions.format === 'cjs' ? '.cjs' : '.js';
-    build.onResolve({ filter: /^\.\/components(\.js)?$/ }, () => ({
-      path: `./components${ext}`,
+    build.onResolve({ filter: /^\.\/(components|live)(\.js)?$/ }, (args) => ({
+      path: `${args.path.replace(/\.js$/, '')}${ext}`,
       external: true,
     }));
   },
@@ -42,6 +42,7 @@ export default defineConfig([
       // a matching `./json-script` export, not just inlining into the barrel.
       'json-script': 'src/core/json-script.ts',
       'nextjs/components': 'src/nextjs/components.ts',
+      'nextjs/live': 'src/nextjs/live.ts',
     },
     // No `clean` on any config here: tsup runs this array concurrently, so a
     // clean in one races the output of the others — it silently ate
@@ -79,7 +80,7 @@ export default defineConfig([
     },
     outDir: 'dist/nextjs',
     clean: false,
-    // `./components` must stay a real import into the sibling file built above
+    // `./components` and `./live` must stay real imports into the sibling files built above
     // — NOT get inlined — otherwise esbuild dead-code-eliminates the
     // `'use client'` directive (esbuild only preserves a source directive on
     // its own entry file, not on files it inlines into another bundle), and

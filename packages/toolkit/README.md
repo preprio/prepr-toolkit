@@ -250,6 +250,67 @@ The loader rewrites `w_` to the width Next asks for and scales `h_` alongside it
 
 See the runnable example at `examples/nextjs` for the full source of truth.
 
+### Live preview (beta, Next.js only)
+
+True live preview inside the Prepr editor iframe: keystrokes patch your query
+results instantly by item `_id`; saves refetch the affected queries.
+
+**Requirement:** select `_id` (and ideally `__typename`) on every model and
+component level that should live-update — items without `_id` silently stay
+static.
+
+Configure once in a small client component mounted in your root layout:
+
+```tsx
+'use client'
+import { useEffect } from 'react'
+import { initLivePreview } from '@preprio/toolkit/nextjs/live'
+
+export default function LivePreviewInit() {
+  useEffect(() => {
+    initLivePreview({
+      // Runs a registered query against Prepr GraphQL. `query` is whatever
+      // you registered (string or DocumentNode) — you own the transport.
+      fetcher: async (query, variables) => {
+        /* POST to your Prepr GraphQL endpoint, return json.data */
+      },
+    })
+  }, [])
+  return null
+}
+```
+
+Register query results in client components with `useLive`:
+
+```tsx
+'use client'
+import { useLive } from '@preprio/toolkit/nextjs/live'
+
+export default function PageContent({ data, slug }) {
+  const liveData = useLive(data, {
+    query: GetPageBySlugDocument,
+    variables: { slug },
+  })
+  // render from liveData — it re-renders on editor keystrokes and saves
+}
+```
+
+In `'use client'` files always import from `@preprio/toolkit/nextjs/live` —
+the `/nextjs` barrel also exports server-only helpers (`next/headers`), which
+a client module graph must not include.
+
+Omitting `query`/`variables` degrades that registration to keystroke pushes
+only. For server-component pages, mount `<PreprRefresh />` instead — it calls
+`router.refresh()` on every save. Use `useLive` **or** `PreprRefresh` per
+page, not both.
+
+Outside the Prepr editor iframe all of this is a passthrough with zero
+overhead. The CMS editor must emit `prepr:fieldChange` (per keystroke) and
+`prepr:itemChanged` (on save, with the root content item id) into the preview
+iframe — `examples/editor-emulator` emulates this for local development.
+Unsaved structural changes (adding/reordering components) appear after save;
+typed text is live immediately.
+
 ## Astro
 
 **`src/middleware.ts`**
