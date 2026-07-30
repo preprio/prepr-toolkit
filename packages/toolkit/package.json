@@ -1,6 +1,6 @@
 {
   "name": "@preprio/toolkit",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "Prepr personalization, A/B testing and preview toolkit for Next.js, Nuxt, Astro, SvelteKit and Express",
   "license": "MIT",
   "repository": {
