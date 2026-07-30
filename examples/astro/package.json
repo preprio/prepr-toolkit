@@ -11,16 +11,16 @@
     "codegen": "graphql-codegen --config codegen.ts"
   },
   "dependencies": {
-    "@astrojs/node": "^11.0.2",
+    "@astrojs/node": "^11.0.3",
     "@graphql-typed-document-node/core": "^3.2.0",
     "@preprio/toolkit": "workspace:*",
-    "@tailwindcss/vite": "^4.2.4",
-    "astro": "^7.0.7",
-    "graphql": "^16.13.2",
-    "tailwindcss": "^4.2.4"
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.1.6",
+    "graphql": "^16.14.2",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.9",
+    "@astrojs/check": "^0.9.10",
     "@graphql-codegen/cli": "6.3.1",
     "@graphql-codegen/client-preset": "^5.3.0",
     "@graphql-codegen/introspection": "5.0.2",
