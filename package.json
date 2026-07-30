@@ -8,15 +8,15 @@
     "typecheck": "turbo typecheck"
   },
   "devDependencies": {
-    "turbo": "^2.10.4"
+    "turbo": "^2.10.7"
   },
   "pnpm": {
     "overrides": {
       "esbuild": ">=0.28.1",
       "postcss": ">=8.5.10",
-      "js-yaml": ">=4.2.0",
+      "js-yaml": ">=4.2.0 <5",
       "@babel/core": ">=7.29.6",
-      "astro": "7.1.0"
+      "astro": ">=7.1.6"
     }
   }
 }
