@@ -140,7 +140,7 @@ Resolve that boolean however your deployment already distinguishes environments 
 const toolbarProps = preview ? await getToolbarProps(token) : null;
 ```
 
-> **Upgrading from an earlier beta?** `PREPR_ENV` is gone. Previously preview required both `{ preview: true }` *and* `PREPR_ENV=preview`; now the option alone decides. If you were relying on `PREPR_ENV` to keep the toolbar off in production, replace `{ preview: true }` with a real environment check as shown above — a hardcoded `true` will now enable preview everywhere.
+> **Note:** a hardcoded `{ preview: true }` enables preview everywhere, production included. Always resolve it from an environment signal.
 
 ## Next.js
 
