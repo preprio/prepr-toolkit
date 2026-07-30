@@ -1,6 +1,15 @@
 {
   "name": "@preprio/toolkit",
   "version": "0.1.0-beta.1",
+  "description": "Prepr personalization, A/B testing and preview toolkit for Next.js, Astro, SvelteKit and Express",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/preprio/prepr-toolkit.git",
+    "directory": "packages/toolkit"
+  },
+  "homepage": "https://github.com/preprio/prepr-toolkit#readme",
+  "bugs": "https://github.com/preprio/prepr-toolkit/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
