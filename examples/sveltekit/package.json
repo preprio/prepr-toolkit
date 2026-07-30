@@ -13,21 +13,21 @@
   "dependencies": {
     "@graphql-typed-document-node/core": "^3.2.0",
     "@preprio/toolkit": "workspace:*",
-    "graphql": "^16.13.2"
+    "graphql": "^16.14.2"
   },
   "devDependencies": {
     "@graphql-codegen/cli": "6.3.1",
     "@graphql-codegen/client-preset": "^5.3.0",
     "@graphql-codegen/introspection": "5.0.2",
     "@graphql-codegen/typescript": "^5.0.10",
-    "@sveltejs/adapter-auto": "^6.1.0",
-    "@sveltejs/kit": "^2.51.0",
-    "@sveltejs/vite-plugin-svelte": "^6.2.2",
-    "@tailwindcss/vite": "^4.2.4",
-    "svelte": "^5.44.0",
-    "svelte-check": "^4.4.0",
-    "tailwindcss": "^4.2.4",
+    "@sveltejs/adapter-auto": "^6.1.1",
+    "@sveltejs/kit": "^2.70.2",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "svelte": "^5.56.8",
+    "svelte-check": "^4.7.4",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.3.6"
   }
 }
