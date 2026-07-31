@@ -212,6 +212,72 @@ describe('processPreprRequest', () => {
       expect(result.requestHeaders.has('Prepr-Preview-Bar')).toBe(false);
     });
 
+    // Regression: the Prepr editor iframes the site cross-site, where the
+    // browser drops the toolbar's own Lax Prepr-Preview-Mode write. The
+    // toolbar then remounted as previewMode:false, the editor's prepr:initVE
+    // set it true, and that transition triggered a reload — endlessly.
+    it('seeds Prepr-Preview-Mode=true so the toolbar mounts already in preview', () => {
+      const request = makeRequest('https://example.com/');
+      const result = processPreprRequest(request, { preview: true });
+
+      const cookie = result.responseCookies.find(
+        c => c.name === 'Prepr-Preview-Mode'
+      );
+      expect(cookie?.value).toBe('true');
+      expect(cookie?.sameSite).toBe('None');
+      expect(cookie?.secure).toBe(true);
+    });
+
+    it('does not seed Prepr-Preview-Mode when the request already carries it', () => {
+      const request = makeRequest('https://example.com/', {
+        headers: { cookie: 'Prepr-Preview-Mode=true' },
+      });
+      const result = processPreprRequest(request, { preview: true });
+
+      expect(
+        result.responseCookies.some(c => c.name === 'Prepr-Preview-Mode')
+      ).toBe(false);
+    });
+
+    it('does not seed Prepr-Preview-Mode in the live preview iframe', () => {
+      // prepr_hide_bar=true means no toolbar mounts, so there is no loop to
+      // break and no cookie to write.
+      const request = makeRequest('https://example.com/?prepr_hide_bar=true');
+      const result = processPreprRequest(request, { preview: true });
+
+      expect(
+        result.responseCookies.some(c => c.name === 'Prepr-Preview-Mode')
+      ).toBe(false);
+    });
+
+    it('leaves preview cookies attribute-free over plain HTTP', () => {
+      // Browsers reject `Secure` off HTTPS, so setting it would drop the
+      // cookie entirely and break plain-HTTP local dev.
+      const request = makeRequest(
+        'http://localhost:3000/?prepr_preview_segment=vip'
+      );
+      const result = processPreprRequest(request, { preview: true });
+
+      for (const cookie of result.responseCookies) {
+        expect(cookie.sameSite).toBeUndefined();
+        expect(cookie.secure).toBeUndefined();
+      }
+    });
+
+    it('treats x-forwarded-proto=https as secure behind a TLS proxy', () => {
+      const request = makeRequest(
+        'http://internal:3000/?prepr_preview_segment=vip',
+        { headers: { 'x-forwarded-proto': 'https, http' } }
+      );
+      const result = processPreprRequest(request, { preview: true });
+
+      const cookie = result.responseCookies.find(
+        c => c.name === 'Prepr-Segments'
+      );
+      expect(cookie?.sameSite).toBe('None');
+      expect(cookie?.secure).toBe(true);
+    });
+
     it('query params take priority over the Prepr-Preview-Mode=false cookie', () => {
       const request = makeRequest(
         'https://example.com/?prepr_preview_segment=vip',

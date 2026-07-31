@@ -1,4 +1,8 @@
-import { processPreprRequest, type PreprMiddlewareOptions } from '../core/middleware';
+import {
+  processPreprRequest,
+  serializeCookie,
+  type PreprMiddlewareOptions,
+} from '../core/middleware';
 
 export type { PreprMiddlewareOptions };
 
@@ -69,12 +73,7 @@ export function handlePreprRequest(event: H3EventLike, options?: PreprMiddleware
 
   // appendHeader, not setHeader — each cookie needs its own Set-Cookie header.
   for (const cookie of responseCookies) {
-    const parts = [
-      `${cookie.name}=${encodeURIComponent(cookie.value)}`,
-      `Max-Age=${cookie.maxAge}`,
-      `Path=${cookie.path}`,
-    ];
-    event.node.res.appendHeader('Set-Cookie', parts.join('; '));
+    event.node.res.appendHeader('Set-Cookie', serializeCookie(cookie));
   }
 }
 

@@ -24,11 +24,44 @@ export interface CookieSpec {
   value: string;
   maxAge: number;
   path: string;
+  /**
+   * Set to `'None'` for cookies that must survive the Prepr editor's
+   * cross-site preview iframe — browsers drop the browser-default `Lax`
+   * cookies there. Always paired with `secure`, which browsers require for
+   * `SameSite=None`.
+   */
+  sameSite?: 'Strict' | 'Lax' | 'None';
+  /** Adds `Secure`. Required by browsers alongside `SameSite=None`. */
+  secure?: boolean;
 }
 
 export interface PreprMiddlewareResult {
   requestHeaders: Headers;
   responseCookies: CookieSpec[];
+}
+
+/**
+ * Serialize a `CookieSpec` into a `Set-Cookie` header value.
+ *
+ * Shared by every framework wrapper that writes the header itself (Astro,
+ * SvelteKit, Nuxt), so the attribute set stays identical across them.
+ */
+export function serializeCookie(cookie: CookieSpec): string {
+  const parts = [
+    `${cookie.name}=${encodeURIComponent(cookie.value)}`,
+    `Max-Age=${cookie.maxAge}`,
+    `Path=${cookie.path}`,
+  ];
+
+  if (cookie.sameSite) {
+    parts.push(`SameSite=${cookie.sameSite}`);
+  }
+
+  if (cookie.secure) {
+    parts.push('Secure');
+  }
+
+  return parts.join('; ');
 }
 
 export interface PreprMiddlewareOptions {
@@ -68,7 +101,23 @@ export function processPreprRequest(
   const requestHeaders = new Headers(request.headers);
   const responseCookies: CookieSpec[] = [];
   const requestCookies = parseCookies(request);
-  const searchParams = new URL(request.url).searchParams;
+  const url = new URL(request.url);
+  const searchParams = url.searchParams;
+
+  // Preview cookies have to survive the editor's cross-site iframe, which
+  // needs `SameSite=None; Secure` — and browsers reject `Secure` off HTTPS.
+  // Behind a proxy the origin request is often plain HTTP, so trust
+  // `x-forwarded-proto` when it is present.
+  const forwardedProto = request.headers
+    .get('x-forwarded-proto')
+    ?.split(',')[0]
+    ?.trim();
+  const isSecure = forwardedProto
+    ? forwardedProto === 'https'
+    : url.protocol === 'https:';
+  const crossSite: Pick<CookieSpec, 'sameSite' | 'secure'> = isSecure
+    ? { sameSite: 'None', secure: true }
+    : {};
 
   for (const key of UTM_PARAMS) {
     const value = searchParams.get(key);
@@ -137,6 +186,24 @@ export function processPreprRequest(
   // must be ignored entirely — segments/variants come only from query params.
   const isLivePreview = searchParams.get(PARAM_HIDE_BAR) === 'true';
 
+  // Seed Prepr-Preview-Mode server-side when it is absent.
+  //
+  // The toolbar writes this cookie itself, but only as a side effect of a
+  // previewMode *transition*. Inside the editor's cross-site iframe that write
+  // used to be dropped by the browser, so the toolbar remounted as
+  // previewMode:false, the editor's `prepr:initVE` flipped it to true, and the
+  // resulting transition triggered a reload — over and over. Writing it here
+  // means the toolbar mounts already in preview mode and initVE is a no-op.
+  if (!isLivePreview && !requestCookies.has(COOKIE_PREVIEW_MODE)) {
+    responseCookies.push({
+      name: COOKIE_PREVIEW_MODE,
+      value: 'true',
+      maxAge: ONE_YEAR_SECONDS,
+      path: '/',
+      ...crossSite,
+    });
+  }
+
   if (!isLivePreview) {
     const segmentCookie = requestCookies.get(COOKIE_SEGMENT);
     if (segmentCookie) {
@@ -158,6 +225,7 @@ export function processPreprRequest(
         value: previewAb,
         maxAge: ONE_YEAR_SECONDS,
         path: '/',
+        ...crossSite,
       });
     }
   }
@@ -171,6 +239,7 @@ export function processPreprRequest(
         value: previewSegment,
         maxAge: ONE_YEAR_SECONDS,
         path: '/',
+        ...crossSite,
       });
     }
   }

@@ -55,6 +55,11 @@ export function createPreprMiddleware(
     response.cookies.set(cookie.name, cookie.value, {
       maxAge: cookie.maxAge,
       path: cookie.path,
+      // Lower-cased: Next's cookie API expects 'none' | 'lax' | 'strict'.
+      ...(cookie.sameSite
+        ? { sameSite: cookie.sameSite.toLowerCase() as 'none' | 'lax' | 'strict' }
+        : {}),
+      ...(cookie.secure ? { secure: true } : {}),
     });
   }
 

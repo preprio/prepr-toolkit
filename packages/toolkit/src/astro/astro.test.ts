@@ -78,15 +78,61 @@ describe('onPreprRequest', () => {
     const response = await onPreprRequest({ request }, next, { preview: true });
 
     const setCookies = response.headers.getSetCookie();
-    expect(setCookies).toHaveLength(3);
+    expect(setCookies).toHaveLength(4);
     expect(setCookies.some(c => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(true);
     expect(setCookies.some(c => c.startsWith('Prepr-Segments=seg-1'))).toBe(true);
     expect(setCookies.some(c => c.startsWith('Prepr-ABtesting=B'))).toBe(true);
+    expect(setCookies.some(c => c.startsWith('Prepr-Preview-Mode=true'))).toBe(true);
     // Every cookie carries the standard attributes independently.
     for (const cookie of setCookies) {
       expect(cookie).toMatch(/Max-Age=31536000/);
       expect(cookie).toMatch(/Path=\//);
     }
+    // Preview cookies must survive the editor's cross-site iframe.
+    for (const cookie of setCookies.filter(c => c.startsWith('Prepr-'))) {
+      expect(cookie).toMatch(/SameSite=None/);
+      expect(cookie).toMatch(/Secure/);
+    }
+  });
+
+  it('omits SameSite=None/Secure over plain HTTP, which browsers would reject', async () => {
+    const request = makeRequest('http://localhost:3000/?prepr_preview_segment=seg-1');
+    const next = async (): Promise<Response> => new Response('ok');
+
+    const response = await onPreprRequest({ request }, next, { preview: true });
+
+    for (const cookie of response.headers.getSetCookie()) {
+      expect(cookie).not.toMatch(/SameSite=None/);
+      expect(cookie).not.toMatch(/Secure/);
+    }
+  });
+
+  it('trusts x-forwarded-proto so cookies stay cross-site behind a TLS proxy', async () => {
+    const request = makeRequest('http://internal:3000/?prepr_preview_segment=seg-1', {
+      headers: { 'x-forwarded-proto': 'https' },
+    });
+    const next = async (): Promise<Response> => new Response('ok');
+
+    const response = await onPreprRequest({ request }, next, { preview: true });
+
+    const segment = response.headers
+      .getSetCookie()
+      .find(c => c.startsWith('Prepr-Segments='));
+    expect(segment).toMatch(/SameSite=None/);
+    expect(segment).toMatch(/Secure/);
+  });
+
+  it('does not re-seed Prepr-Preview-Mode when the request already carries it', async () => {
+    const request = makeRequest('https://example.com/?prepr_preview_segment=seg-1', {
+      headers: { cookie: '__prepr_uid=existing-uuid; Prepr-Preview-Mode=false' },
+    });
+    const next = async (): Promise<Response> => new Response('ok');
+
+    const response = await onPreprRequest({ request }, next, { preview: true });
+
+    expect(
+      response.headers.getSetCookie().some(c => c.startsWith('Prepr-Preview-Mode='))
+    ).toBe(false);
   });
 
   it('does not overwrite an existing __prepr_uid cookie with a new Set-Cookie', async () => {
