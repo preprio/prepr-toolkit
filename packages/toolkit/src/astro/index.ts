@@ -5,7 +5,11 @@ import {
   getPreprUUIDFromHeaders,
   getToolbarPropsFromHeaders,
 } from '../core/server';
-import { processPreprRequest, type PreprMiddlewareOptions } from '../core/middleware';
+import {
+  processPreprRequest,
+  serializeCookie,
+  type PreprMiddlewareOptions,
+} from '../core/middleware';
 import type { PreprHeaders, PreprToolbarProps } from '../core/types';
 
 export type { PreprMiddlewareOptions };
@@ -47,12 +51,7 @@ export async function onPreprRequest(
   const response = await next();
 
   for (const cookie of responseCookies) {
-    const parts = [
-      `${cookie.name}=${encodeURIComponent(cookie.value)}`,
-      `Max-Age=${cookie.maxAge}`,
-      `Path=${cookie.path}`,
-    ];
-    response.headers.append('Set-Cookie', parts.join('; '));
+    response.headers.append('Set-Cookie', serializeCookie(cookie));
   }
 
   return response;

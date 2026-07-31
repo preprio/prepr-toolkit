@@ -7,11 +7,25 @@ import {
   PARAM_SEGMENT,
   PARAM_VARIANT,
 } from './constants';
-import { removeCookie, setCookie } from './cookies';
+import { crossSiteCookieOptions, removeCookie, setCookie } from './cookies';
 import type { ToolbarState, ToolbarStore } from './store';
 import { sendPreprEvent } from './utils';
 
-const COOKIE_OPTS = { maxAge: ONE_YEAR_SECONDS, path: '/' } as const;
+// Resolved per call, not once at module load: `crossSiteCookieOptions` reads
+// `window`, which is absent when this module is imported during SSR.
+//
+// Inside the editor's cross-site iframe every one of these cookies is a
+// third-party cookie, so without SameSite=None the browser drops the write.
+// Losing Prepr-Preview-Mode there is what caused a reload loop: the toolbar
+// remounted as previewMode:false, the editor's `prepr:initVE` set it back to
+// true, and that transition triggered another reload.
+function cookieOpts() {
+  return {
+    maxAge: ONE_YEAR_SECONDS,
+    path: '/',
+    ...crossSiteCookieOptions(),
+  };
+}
 
 export interface ChangeHandlerDeps {
   store: ToolbarStore;
@@ -55,9 +69,9 @@ export function createChangeHandler(
   ): void {
     if (before.selectedSegment !== after.selectedSegment) {
       if (after.selectedSegment === null) {
-        removeCookie(COOKIE_SEGMENT);
+        removeCookie(COOKIE_SEGMENT, '/', crossSiteCookieOptions());
       } else {
-        setCookie(COOKIE_SEGMENT, after.selectedSegment, COOKIE_OPTS);
+        setCookie(COOKIE_SEGMENT, after.selectedSegment, cookieOpts());
       }
       updateParam(PARAM_SEGMENT, after.selectedSegment);
       sendPreprEvent('segment_changed', {
@@ -67,9 +81,9 @@ export function createChangeHandler(
 
     if (before.selectedVariant !== after.selectedVariant) {
       if (after.selectedVariant === null) {
-        removeCookie(COOKIE_VARIANT);
+        removeCookie(COOKIE_VARIANT, '/', crossSiteCookieOptions());
       } else {
-        setCookie(COOKIE_VARIANT, after.selectedVariant, COOKIE_OPTS);
+        setCookie(COOKIE_VARIANT, after.selectedVariant, cookieOpts());
       }
       updateParam(PARAM_VARIANT, after.selectedVariant);
       sendPreprEvent('variant_changed', {
@@ -101,8 +115,8 @@ export function createChangeHandler(
       if (Object.keys(coupled).length > 0) {
         store.set(coupled);
       }
-      setCookie(COOKIE_PREVIEW_MODE, String(after.previewMode), COOKIE_OPTS);
-      setCookie(COOKIE_TOOLBAR_OPEN, 'false', COOKIE_OPTS);
+      setCookie(COOKIE_PREVIEW_MODE, String(after.previewMode), cookieOpts());
+      setCookie(COOKIE_TOOLBAR_OPEN, 'false', cookieOpts());
       sendPreprEvent('preview_mode_toggled', { previewMode: after.previewMode });
       // Auto-clean runs only in preview mode.
       syncAutoClean(after.previewMode);
@@ -124,7 +138,7 @@ export function createChangeHandler(
     }
 
     if (before.toolbarOpen !== after.toolbarOpen) {
-      setCookie(COOKIE_TOOLBAR_OPEN, String(after.toolbarOpen), COOKIE_OPTS);
+      setCookie(COOKIE_TOOLBAR_OPEN, String(after.toolbarOpen), cookieOpts());
     }
   };
 }
