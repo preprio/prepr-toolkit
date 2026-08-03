@@ -47,12 +47,39 @@ describe('createIframeBridge — editor origin validation', () => {
     expect(store.get().previewMode).toBe(true);
   });
 
-  it('rejects origins that merely contain an allowlisted origin', () => {
+  it('accepts any single-label tenant subdomain', () => {
+    for (const tenant of [
+      'https://acme.prepr.io',
+      'https://editor.prepr.io',
+      'https://app.prepr.io',
+      'https://customer-with-dashes.prepr.io',
+    ]) {
+      const s = createToolbarStore();
+      const b = createIframeBridge(s);
+      b.start();
+      postFrom(tenant, { event: 'prepr:initVE' });
+      expect(s.get().previewMode, `${tenant} must be trusted`).toBe(true);
+      b.stop();
+    }
+  });
+
+  it('rejects lookalike and nested origins', () => {
     for (const near of [
+      // Suffix-match traps: all of these pass a naive endsWith/includes check.
       'https://editor.prepr.io.attacker.com',
-      'https://noteditor.prepr.io',
-      'http://editor.prepr.io', // wrong scheme
-      'https://editor.prepr.io:8080', // wrong port
+      'https://evil-prepr.io',
+      'https://preprio.io',
+      'https://attacker.com/?x=https://acme.prepr.io',
+      // The apex itself is not a tenant.
+      'https://prepr.io',
+      // Nested hosts — asset/CDN subdomains must never drive the toolbar.
+      'https://foo.stream.prepr.io',
+      'https://cdn.tracking.prepr.io',
+      // Wrong scheme / non-default port.
+      'http://acme.prepr.io',
+      'https://acme.prepr.io:8080',
+      // Opaque origin from a sandboxed frame.
+      'null',
     ]) {
       const s = createToolbarStore();
       const b = createIframeBridge(s);
@@ -63,13 +90,14 @@ describe('createIframeBridge — editor origin validation', () => {
     }
   });
 
-  it('honours a custom allowlist for self-hosted editors', () => {
+  it('an explicit allowlist replaces the wildcard entirely', () => {
     const s = createToolbarStore();
     const b = createIframeBridge(s, {
       allowedEditorOrigins: ['https://editor.internal'],
     });
     b.start();
 
+    // A tenant origin that the wildcard would accept is now rejected.
     postFrom(EDITOR, { event: 'prepr:initVE' });
     expect(s.get().previewMode).toBe(false);
 

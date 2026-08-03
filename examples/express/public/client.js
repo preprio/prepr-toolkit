@@ -55,7 +55,7 @@ function P(e2) {
   return { cleaned: e2.replace(x, ""), encoded: ((r2 = e2.match(x)) == null ? void 0 : r2[0]) || "" };
 }
 
-// ../../packages/toolkit/dist/chunk-NRPVGEUK.js
+// ../../packages/toolkit/dist/chunk-NLQIRN5O.js
 var trustedParentOrigin = null;
 function setTrustedParentOrigin(origin) {
   trustedParentOrigin = origin;
@@ -1836,15 +1836,23 @@ function t2(key, locale, vars) {
   if (typeof msg === "string") return format(msg, vars);
   return key;
 }
-var DEFAULT_ALLOWED_EDITOR_ORIGINS = [
-  "https://editor.prepr.io",
-  "https://app.prepr.io"
-];
+var EDITOR_BASE_DOMAIN = "prepr.io";
 function isAllowedEditorOrigin(origin, allowed) {
-  return allowed.includes(origin);
+  if (allowed) return allowed.includes(origin);
+  let url;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" || url.port !== "") return false;
+  const suffix = `.${EDITOR_BASE_DOMAIN}`;
+  if (!url.hostname.endsWith(suffix)) return false;
+  const label = url.hostname.slice(0, -suffix.length);
+  return label.length > 0 && !label.includes(".");
 }
 function createIframeBridge(store, options = {}) {
-  const allowedOrigins = options.allowedEditorOrigins ?? DEFAULT_ALLOWED_EDITOR_ORIGINS;
+  const allowedOrigins = options.allowedEditorOrigins;
   let parentOrigin = null;
   const onKeyDown = (event) => {
     const key = event.key.toLowerCase();
