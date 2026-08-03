@@ -1,4 +1,8 @@
-import { processPreprRequest, type PreprMiddlewareOptions } from '../core/middleware';
+import {
+  processPreprRequest,
+  serializeCookie,
+  type PreprMiddlewareOptions,
+} from '../core/middleware';
 
 export type { PreprMiddlewareOptions };
 
@@ -57,12 +61,7 @@ export function preprHandle(options?: PreprMiddlewareOptions): Handle {
 
     // `.append`, not `.set` — each cookie needs its own Set-Cookie header.
     for (const cookie of responseCookies) {
-      const parts = [
-        `${cookie.name}=${encodeURIComponent(cookie.value)}`,
-        `Max-Age=${cookie.maxAge}`,
-        `Path=${cookie.path}`,
-      ];
-      response.headers.append('Set-Cookie', parts.join('; '));
+      response.headers.append('Set-Cookie', serializeCookie(cookie));
     }
 
     return response;

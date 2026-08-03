@@ -95,7 +95,7 @@ describe('preprHandle', () => {
     const response = await preprHandle({ preview: true })({ event: { request, locals: {} }, resolve });
 
     const setCookies = response.headers.getSetCookie();
-    expect(setCookies).toHaveLength(3);
+    expect(setCookies).toHaveLength(4);
     expect(setCookies.some(c => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(true);
     expect(setCookies.some(c => c.startsWith('Prepr-Segments=seg-1'))).toBe(true);
     expect(setCookies.some(c => c.startsWith('Prepr-ABtesting=B'))).toBe(true);

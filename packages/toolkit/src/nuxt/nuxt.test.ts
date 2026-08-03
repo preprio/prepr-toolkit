@@ -68,7 +68,7 @@ describe('handlePreprRequest', () => {
 
     handlePreprRequest(event, { preview: true });
 
-    expect(event.setCookies).toHaveLength(3);
+    expect(event.setCookies).toHaveLength(4);
     expect(event.setCookies.some(c => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(true);
     expect(event.setCookies.some(c => c.startsWith('Prepr-Segments=seg-1'))).toBe(true);
     expect(event.setCookies.some(c => c.startsWith('Prepr-ABtesting=B'))).toBe(true);
