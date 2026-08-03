@@ -17,7 +17,6 @@ Add environment variables to your `.env`:
 
 ```bash
 PREPR_GRAPHQL_URL=https://graphql.prepr.io/{YOUR_ACCESS_TOKEN}
-PREPR_ENV=preview
 ```
 
 Set up middleware in `middleware.ts`:
@@ -27,7 +26,10 @@ import type { NextRequest } from 'next/server';
 import { createPreprMiddleware } from '@preprio/toolkit/nextjs';
 
 export function middleware(request: NextRequest) {
-  return createPreprMiddleware(request, { preview: true });
+  // You decide what "preview" means — the toolkit reads no env vars itself.
+  // On Vercel, `process.env.VERCEL_ENV !== 'production'` is the usual choice.
+  const preview = process.env.NODE_ENV !== 'production';
+  return createPreprMiddleware(request, { preview });
 }
 
 export const config = {
@@ -89,10 +91,11 @@ For Nuxt, Astro, SvelteKit, or any other framework, see the [package README](./p
 
 | Path | Description |
 | --- | --- |
-| `packages/toolkit` | The published `@preprio/toolkit` package — vanilla core plus the Next.js, Astro, and SvelteKit wrappers. |
+| `packages/toolkit` | The published `@preprio/toolkit` package — vanilla core plus the Next.js, Nuxt, Astro, and SvelteKit wrappers. |
 | `examples/nextjs` | App Router, middleware, Apollo Client, custom image loader. |
 | `examples/astro` | Astro middleware and the `.astro` components. |
 | `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, the `.svelte` components. |
+| `examples/nuxt` | Nitro middleware, `runtimeConfig`, the `.vue` components. |
 | `examples/express` | Vanilla core — a hand-written adapter for an unsupported framework. |
 
 A pnpm workspace (`packages/*`, `examples/*`) built with Turborepo.
@@ -108,6 +111,8 @@ A pnpm workspace (`packages/*`, `examples/*`) built with Turborepo.
 | `@preprio/toolkit/astro/components/*` | none | `PreprToolbar.astro`, `PreprTrackingPixel.astro` (ship as source). |
 | `@preprio/toolkit/sveltekit` | none | `preprHandle` hook and `Headers`-based server helpers. |
 | `@preprio/toolkit/sveltekit/components/*` | `svelte` | `PreprToolbar.svelte`, `PreprTrackingPixel.svelte` (ship as source). |
+| `@preprio/toolkit/nuxt` | none | `handlePreprRequest` Nitro handler and `H3Event`-based server helpers. |
+| `@preprio/toolkit/nuxt/components/*` | `vue` | `PreprToolbar.vue`, `PreprTrackingPixel.vue` (ship as source). |
 
 All peer dependencies are optional — installing without React or Next.js is fine as long as you only import the entry points you have dependencies for.
 
@@ -115,21 +120,21 @@ All peer dependencies are optional — installing without React or Next.js is fi
 
 ### Environment Variables
 
+**The toolkit reads no environment variables of its own.** Every value reaches it as an explicit argument, so you choose the variable names and how they are loaded.
+
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `PREPR_GRAPHQL_URL` | Yes | — | Your Prepr GraphQL endpoint URL. The name is yours to choose; it is passed to `getToolbarProps` as a plain string. |
-| `PREPR_ENV` | Yes | — | Environment mode: `preview` or `production`. Read from the environment directly by the Next.js and Astro wrappers. |
+
+Because the URL embeds an access token, keep it server-side. Only expose it to the browser through a framework-public variable (`PUBLIC_`/`NUXT_PUBLIC_`) when you intend the token to be public.
 
 ### The preview gate
 
-Preview mode is gated on **two** conditions that must both hold:
+Preview mode is gated on exactly one thing the toolkit checks: **the app opts in**, by passing `{ preview: true }` to the middleware.
 
-- **The app opts in** — `{ preview: true }` passed to the middleware.
-- **`PREPR_ENV=preview`** — checked at request time.
+Deciding *when* that is true is yours — the toolkit never inspects the environment. The examples use `process.env.NODE_ENV !== 'production'`; on Vercel, `process.env.VERCEL_ENV !== 'production'` is the usual choice. Whatever you pick, make sure it evaluates to `false` in production, since a hardcoded `preview: true` will enable preview mode there.
 
-So a stray `preview: true` left in your code cannot switch preview mode on in production. `getToolbarProps` follows the same gate: outside preview mode it returns empty props immediately, with no header read and no API call — which is why it is safe to call unconditionally in a root layout.
-
-SvelteKit is the one exception: its `getToolbarProps` does not read env, because SvelteKit's env story is `$env` rather than `process.env` in bundled package code. Gate it yourself in `+layout.server.ts`.
+`getToolbarProps` follows the same gate: outside preview mode it returns empty props immediately, with no header read and no API call — which is why it is safe to call unconditionally in a root layout.
 
 ## Running the Examples
 
@@ -207,7 +212,7 @@ Stega cleaning is automatic — no `vercelStegaSplit` calls or hand-managed hidd
 
 ### Toolbar not showing
 
-- **Check the environment**: `PREPR_ENV=preview` must be set. Both halves of the gate are required — `{ preview: true }` alone does nothing.
+- **Check the preview gate**: `{ preview: true }` must actually evaluate to `true` for this request. The toolkit reads no environment variables, so whatever expression you passed to the middleware is the only gate.
 - **Verify the GraphQL URL**: it must match `https://graphql.prepr.io/YOUR_ACCESS_TOKEN`.
 - **Check the token permissions**: "Enable edit mode" must be checked on the token in Prepr.
 - **Confirm the middleware matcher**: if it excludes the current path, no Prepr headers were set for it.
