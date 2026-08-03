@@ -647,9 +647,13 @@ validatePreprToken(process.env.PREPR_GRAPHQL_URL!); // throws PreprError if inva
 
 Extracts the access token from a Prepr GraphQL URL — the value `PreprTrackingPixel` needs as its `id`.
 
+Returns the token as a `string`. It never returns `null` — a URL that is malformed, not on `graphql.prepr.io`, or missing a token segment throws a `PreprError` with code `INVALID_TOKEN`.
+
 ```typescript
 const token = extractAccessToken('https://graphql.prepr.io/abc123');
-// 'abc123' or null
+// 'abc123'
+
+extractAccessToken('not-a-url'); // throws PreprError(INVALID_TOKEN)
 ```
 
 ### Components
