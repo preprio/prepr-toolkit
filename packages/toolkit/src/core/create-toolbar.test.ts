@@ -39,6 +39,22 @@ function element(): HTMLElement | null {
   return document.querySelector('prepr-toolbar');
 }
 
+// Must be an allowlisted editor origin — the bridge rejects the handshake
+// from anything else, so events would never reach the parent.
+const PARENT_ORIGIN = 'https://editor.prepr.io';
+
+function postFromParent(data: unknown, origin = PARENT_ORIGIN): void {
+  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+}
+
+/**
+ * Complete the editor handshake so payload events target PARENT_ORIGIN
+ * instead of being dropped for want of a trusted parent.
+ */
+function handshake(): void {
+  postFromParent({ event: 'prepr:initVE' });
+}
+
 function storeOf(controller: PreprToolbarController): ToolbarStore {
   const store = getControllerStore(controller);
   if (!store) throw new Error('controller has no store');
@@ -134,6 +150,8 @@ describe('createPreprToolbar', () => {
 
   it('emits getScrollPosition {value:0} on mount', () => {
     createPreprToolbar({ props: PROPS });
+    // Fires before the bridge starts, so there is no trusted origin yet — it
+    // broadcasts like `loaded` because the payload is a constant zero.
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'getScrollPosition', value: 0 }),
       '*'
@@ -143,6 +161,7 @@ describe('createPreprToolbar', () => {
   it('segment change navigates with prepr_preview_segment and emits segment_changed', () => {
     const nav = fakeNavigation();
     const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    handshake();
 
     storeOf(controller).set({ selectedSegment: 'seg-2' });
 
@@ -155,7 +174,7 @@ describe('createPreprToolbar', () => {
         event: 'segment_changed',
         segment: 'seg-2',
       }),
-      '*'
+      PARENT_ORIGIN
     );
     expect(document.cookie).toContain('Prepr-Segments=seg-2');
     controller.destroy();
@@ -164,6 +183,7 @@ describe('createPreprToolbar', () => {
   it('variant change navigates with prepr_preview_ab and emits variant_changed', () => {
     const nav = fakeNavigation();
     const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    handshake();
 
     storeOf(controller).set({ selectedVariant: 'B' });
 
@@ -175,7 +195,7 @@ describe('createPreprToolbar', () => {
         event: 'variant_changed',
         variant: 'B',
       }),
-      '*'
+      PARENT_ORIGIN
     );
     expect(document.cookie).toContain('Prepr-ABtesting=B');
     controller.destroy();
@@ -183,6 +203,7 @@ describe('createPreprToolbar', () => {
 
   it('preview-mode change sets the Prepr-Preview-Mode cookie and reloads', () => {
     const controller = createPreprToolbar({ props: PROPS });
+    handshake();
 
     storeOf(controller).set({ previewMode: true });
 
@@ -190,7 +211,7 @@ describe('createPreprToolbar', () => {
     expect(reloadSpy).toHaveBeenCalled();
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'preview_mode_toggled' }),
-      '*'
+      PARENT_ORIGIN
     );
     controller.destroy();
   });
@@ -244,6 +265,7 @@ describe('createPreprToolbar', () => {
   it('reset clears the segment and returns the variant to A; never emits personalization_reset', () => {
     const nav = fakeNavigation();
     const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    handshake();
 
     // Establish personalization, then reset the way the element does:
     // segment → null, variant → 'A'.
@@ -254,11 +276,11 @@ describe('createPreprToolbar', () => {
     // A reset is two ordinary change events...
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'segment_changed' }),
-      '*'
+      PARENT_ORIGIN
     );
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'variant_changed', variant: 'A' }),
-      '*'
+      PARENT_ORIGIN
     );
     // ...never a dedicated personalization_reset.
     const resetCalls = postMessageSpy.mock.calls.filter(
@@ -273,6 +295,7 @@ describe('createPreprToolbar', () => {
 
   it('preview toggle emits exactly one preview_mode_toggled and one reload', () => {
     const controller = createPreprToolbar({ props: PROPS });
+    handshake();
     // Preview on + edit on + toolbar open, so turning preview off has to force
     // editMode and toolbarOpen off via the coupled write.
     storeOf(controller).set({ previewMode: true });
@@ -294,6 +317,7 @@ describe('createPreprToolbar', () => {
 
   it('editMode re-enable after forced-off still fires edit_mode_toggled', () => {
     const controller = createPreprToolbar({ props: PROPS });
+    handshake();
     storeOf(controller).set({ previewMode: true });
     storeOf(controller).set({ editMode: true });
     storeOf(controller).set({ previewMode: false });
@@ -305,7 +329,7 @@ describe('createPreprToolbar', () => {
 
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'edit_mode_toggled', editMode: true }),
-      '*'
+      PARENT_ORIGIN
     );
     controller.destroy();
   });
@@ -321,11 +345,6 @@ describe('createPreprToolbar', () => {
   });
 
   // --- Editor-driven activation (iframe) -----------------------------------
-  const PARENT_ORIGIN = 'https://editor.prepr.io';
-
-  function postFromParent(data: unknown, origin = PARENT_ORIGIN): void {
-    window.dispatchEvent(new MessageEvent('message', { data, origin }));
-  }
 
   it('prepr:initVE seeds preview + edit mode inside an iframe', () => {
     const controller = createPreprToolbar({ props: PROPS });

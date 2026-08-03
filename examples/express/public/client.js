@@ -55,8 +55,12 @@ function P(e2) {
   return { cleaned: e2.replace(x, ""), encoded: ((r2 = e2.match(x)) == null ? void 0 : r2[0]) || "" };
 }
 
-// ../../packages/toolkit/dist/chunk-3FOY6KL4.js
-function sendPreprEvent(event, data) {
+// ../../packages/toolkit/dist/chunk-NRPVGEUK.js
+var trustedParentOrigin = null;
+function setTrustedParentOrigin(origin) {
+  trustedParentOrigin = origin;
+}
+function sendPreprEvent(event, data, options) {
   if (typeof window !== "undefined") {
     const message = {
       name: "prepr_preview_bar",
@@ -67,7 +71,11 @@ function sendPreprEvent(event, data) {
       new CustomEvent("prepr_preview_bar", { detail: message })
     );
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage(message, "*");
+      if (trustedParentOrigin) {
+        window.parent.postMessage(message, trustedParentOrigin);
+      } else if (options?.allowUntrustedTarget) {
+        window.parent.postMessage(message, "*");
+      }
     }
   }
 }
@@ -1828,7 +1836,15 @@ function t2(key, locale, vars) {
   if (typeof msg === "string") return format(msg, vars);
   return key;
 }
-function createIframeBridge(store) {
+var DEFAULT_ALLOWED_EDITOR_ORIGINS = [
+  "https://editor.prepr.io",
+  "https://app.prepr.io"
+];
+function isAllowedEditorOrigin(origin, allowed) {
+  return allowed.includes(origin);
+}
+function createIframeBridge(store, options = {}) {
+  const allowedOrigins = options.allowedEditorOrigins ?? DEFAULT_ALLOWED_EDITOR_ORIGINS;
   let parentOrigin = null;
   const onKeyDown = (event) => {
     const key = event.key.toLowerCase();
@@ -1838,14 +1854,16 @@ function createIframeBridge(store) {
   const onMessage = (evt) => {
     const data = evt?.data;
     if (data?.event === "prepr:initVE" && !parentOrigin) {
+      if (!isAllowedEditorOrigin(evt.origin, allowedOrigins)) return;
       parentOrigin = evt.origin;
+      setTrustedParentOrigin(parentOrigin);
       if (data.scrollPosition != null) {
         const top = data.scrollPosition;
         setTimeout(() => window.scrollTo(0, top), 1);
       }
       store.set({ previewMode: true, editMode: data.editMode ?? true });
     }
-    if (evt.origin !== parentOrigin) return;
+    if (!parentOrigin || evt.origin !== parentOrigin) return;
     if (data?.event === "prepr:getScrollPosition") {
       const currentScrollY = window.scrollY || document.documentElement.scrollTop;
       sendPreprEvent("getScrollPosition", { value: currentScrollY });
@@ -1853,13 +1871,15 @@ function createIframeBridge(store) {
   };
   return {
     start() {
-      sendPreprEvent("loaded");
+      sendPreprEvent("loaded", void 0, { allowUntrustedTarget: true });
       window.addEventListener("keydown", onKeyDown);
       window.addEventListener("message", onMessage);
     },
     stop() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("message", onMessage);
+      parentOrigin = null;
+      setTrustedParentOrigin(null);
     }
   };
 }
@@ -1872,25 +1892,28 @@ function cookieOpts() {
 }
 function createChangeHandler(deps) {
   const { store, stega, syncAutoClean } = deps;
-  function updateParam(name, value) {
+  function updateParams(patch) {
     const [path, existing] = splitPath(deps.currentPath());
     const params = new URLSearchParams(existing);
-    if (value === null) {
-      params.delete(name);
-    } else {
-      params.set(name, value);
+    for (const [name, value] of Object.entries(patch)) {
+      if (value === null) {
+        params.delete(name);
+      } else {
+        params.set(name, value);
+      }
     }
     const query = params.toString();
     deps.navigate(query ? `${path}?${query}` : path);
   }
   return function handleChange(before, after) {
+    const paramPatch = {};
     if (before.selectedSegment !== after.selectedSegment) {
       if (after.selectedSegment === null) {
         removeCookie(COOKIE_SEGMENT, "/", crossSiteCookieOptions());
       } else {
         setCookie(COOKIE_SEGMENT, after.selectedSegment, cookieOpts());
       }
-      updateParam(PARAM_SEGMENT, after.selectedSegment);
+      paramPatch[PARAM_SEGMENT] = after.selectedSegment;
       sendPreprEvent("segment_changed", {
         segment: after.selectedSegment ?? void 0
       });
@@ -1901,10 +1924,13 @@ function createChangeHandler(deps) {
       } else {
         setCookie(COOKIE_VARIANT, after.selectedVariant, cookieOpts());
       }
-      updateParam(PARAM_VARIANT, after.selectedVariant);
+      paramPatch[PARAM_VARIANT] = after.selectedVariant;
       sendPreprEvent("variant_changed", {
         variant: after.selectedVariant ?? void 0
       });
+    }
+    if (Object.keys(paramPatch).length > 0) {
+      updateParams(paramPatch);
     }
     if (before.editMode !== after.editMode) {
       if (after.editMode) {
@@ -2051,7 +2077,9 @@ function createPreprToolbar(opts) {
   });
   syncAutoClean(store.get().previewMode);
   const bridge = createIframeBridge(store);
-  sendPreprEvent("getScrollPosition", { value: 0 });
+  sendPreprEvent("getScrollPosition", { value: 0 }, {
+    allowUntrustedTarget: true
+  });
   if (isIframe) {
     bridge.start();
   }

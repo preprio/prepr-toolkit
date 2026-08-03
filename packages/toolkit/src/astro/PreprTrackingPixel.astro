@@ -14,6 +14,8 @@
  * from '@preprio/toolkit'` would fail to resolve in the browser. See
  * `PreprToolbar.astro` for the full explanation.
  */
+import { serializeForScriptTag } from '@preprio/toolkit/json-script';
+
 interface Props {
   id: string;
   config?: {
@@ -34,7 +36,7 @@ const payload = { id, config };
 <script
   type="application/json"
   data-prepr-pixel-props
-  set:html={JSON.stringify(payload)}
+  set:html={serializeForScriptTag(payload)}
 />
 
 <script>

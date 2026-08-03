@@ -7,10 +7,31 @@ export interface PreprEventData {
   readonly [key: string]: string | boolean | number | undefined;
 }
 
-/** Fans a Prepr event out to the current window and, if framed, the parent. */
+/**
+ * Origin validated by the editor handshake, set by `createIframeBridge`.
+ * `null` until the handshake completes.
+ */
+let trustedParentOrigin: string | null = null;
+
+/** @internal Set by the iframe bridge once an editor origin is allowlisted. */
+export function setTrustedParentOrigin(origin: string | null): void {
+  trustedParentOrigin = origin;
+}
+
+/**
+ * Fans a Prepr event out to the current window and, if framed, the parent.
+ *
+ * Events are posted to the origin validated during the editor handshake.
+ * Before the handshake completes there is no trusted parent, so only the
+ * payload-free `loaded` ping may go out — it opts in explicitly via
+ * `allowUntrustedTarget`. Everything else carries content data (segment /
+ * variant / field-edit details, including internal CMS entry ids) and is
+ * dropped rather than broadcast to an arbitrary framing page.
+ */
 export function sendPreprEvent(
   event: PreprEventType,
-  data?: PreprEventData
+  data?: PreprEventData,
+  options?: { allowUntrustedTarget?: boolean }
 ): void {
   if (typeof window !== 'undefined') {
     const message = {
@@ -23,8 +44,14 @@ export function sendPreprEvent(
       new CustomEvent('prepr_preview_bar', { detail: message })
     );
 
+    // The same-window CustomEvent above always fires — in-page listeners are
+    // not a cross-origin surface. Only the postMessage hop is gated.
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage(message, '*');
+      if (trustedParentOrigin) {
+        window.parent.postMessage(message, trustedParentOrigin);
+      } else if (options?.allowUntrustedTarget) {
+        window.parent.postMessage(message, '*');
+      }
     }
   }
 }

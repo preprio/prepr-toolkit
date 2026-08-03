@@ -207,8 +207,12 @@ export function createPreprToolbar(
   const bridge = createIframeBridge(store);
 
   // Mount-time scroll handshake. Fired even outside an iframe, with the
-  // `{ value: 0 }` payload the editor expects.
-  sendPreprEvent('getScrollPosition', { value: 0 });
+  // `{ value: 0 }` payload the editor expects. Runs before `bridge.start()`,
+  // so no trusted origin exists yet — allowed to broadcast because the
+  // constant `{ value: 0 }` carries no content data, same as `loaded`.
+  sendPreprEvent('getScrollPosition', { value: 0 }, {
+    allowUntrustedTarget: true,
+  });
 
   if (isIframe) {
     bridge.start();

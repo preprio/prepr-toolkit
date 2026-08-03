@@ -29,6 +29,7 @@
  * data shape of primitives/arrays.)
  */
 import type { PreprToolbarProps } from '@preprio/toolkit';
+import { serializeForScriptTag } from '@preprio/toolkit/json-script';
 
 type Props = PreprToolbarProps;
 
@@ -40,7 +41,7 @@ const props = { activeSegment, activeVariant, segments: segments ?? data ?? [] }
 <script
   type="application/json"
   data-prepr-toolbar-props
-  set:html={JSON.stringify(props)}
+  set:html={serializeForScriptTag(props)}
 />
 
 <script>
