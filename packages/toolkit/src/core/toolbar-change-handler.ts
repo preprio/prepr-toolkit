@@ -51,13 +51,19 @@ export function createChangeHandler(
 ): (before: ToolbarState, after: ToolbarState) => void {
   const { store, stega, syncAutoClean } = deps;
 
-  function updateParam(name: string, value: string | null): void {
+  // ponytail: one navigate for all param writes in a transition. `navigate` is a
+  // full page load, so two calls raced: the second recomputed its URL from the
+  // still-unchanged `currentPath()` and resurrected the param the first removed.
+  // That is why clearing a segment+variant pill only cleared the variant.
+  function updateParams(patch: Record<string, string | null>): void {
     const [path, existing] = splitPath(deps.currentPath());
     const params = new URLSearchParams(existing);
-    if (value === null) {
-      params.delete(name);
-    } else {
-      params.set(name, value);
+    for (const [name, value] of Object.entries(patch)) {
+      if (value === null) {
+        params.delete(name);
+      } else {
+        params.set(name, value);
+      }
     }
     const query = params.toString();
     deps.navigate(query ? `${path}?${query}` : path);
@@ -67,13 +73,15 @@ export function createChangeHandler(
     before: ToolbarState,
     after: ToolbarState
   ): void {
+    const paramPatch: Record<string, string | null> = {};
+
     if (before.selectedSegment !== after.selectedSegment) {
       if (after.selectedSegment === null) {
         removeCookie(COOKIE_SEGMENT, '/', crossSiteCookieOptions());
       } else {
         setCookie(COOKIE_SEGMENT, after.selectedSegment, cookieOpts());
       }
-      updateParam(PARAM_SEGMENT, after.selectedSegment);
+      paramPatch[PARAM_SEGMENT] = after.selectedSegment;
       sendPreprEvent('segment_changed', {
         segment: after.selectedSegment ?? undefined,
       });
@@ -85,10 +93,14 @@ export function createChangeHandler(
       } else {
         setCookie(COOKIE_VARIANT, after.selectedVariant, cookieOpts());
       }
-      updateParam(PARAM_VARIANT, after.selectedVariant);
+      paramPatch[PARAM_VARIANT] = after.selectedVariant;
       sendPreprEvent('variant_changed', {
         variant: after.selectedVariant ?? undefined,
       });
+    }
+
+    if (Object.keys(paramPatch).length > 0) {
+      updateParams(paramPatch);
     }
 
     if (before.editMode !== after.editMode) {

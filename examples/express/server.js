@@ -10,9 +10,14 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 8787;
-const GRAPHQL_URL =
-  process.env.PREPR_GRAPHQL_URL ||
-  'https://graphql.prepr.io/ac_5e48636ec968b4fe9b7490b0fc4f7702e51873418ae2acbc58c6431d9fe27429';
+const GRAPHQL_URL = process.env.PREPR_GRAPHQL_URL;
+if (!GRAPHQL_URL) {
+  console.error(
+    'PREPR_GRAPHQL_URL is not set. Copy .env.example to .env and add your Prepr\n' +
+      'GraphQL endpoint (Settings > Access tokens > GraphQL).',
+  );
+  process.exit(1);
+}
 // The toolkit reads no env vars of its own — you decide what "preview" means.
 const IS_PREVIEW = process.env.NODE_ENV !== 'production';
 

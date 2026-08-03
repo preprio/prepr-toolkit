@@ -1,8 +1,28 @@
 {
   "name": "@preprio/toolkit",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "description": "Prepr personalization, A/B testing and preview toolkit for Next.js, Nuxt, Astro, SvelteKit and Express",
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "author": "Prepr B.V. (https://prepr.io)",
+  "keywords": [
+    "prepr",
+    "cms",
+    "headless-cms",
+    "personalization",
+    "ab-testing",
+    "preview",
+    "visual-editing",
+    "nextjs",
+    "nuxt",
+    "astro",
+    "sveltekit"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/preprio/prepr-toolkit.git",
@@ -22,6 +42,16 @@
       "types": "./dist/nextjs/index.d.ts",
       "import": "./dist/nextjs/index.js",
       "require": "./dist/nextjs/index.cjs"
+    },
+    "./json-script": {
+      "types": "./dist/json-script.d.ts",
+      "import": "./dist/json-script.js",
+      "require": "./dist/json-script.cjs"
+    },
+    "./nextjs/components": {
+      "types": "./dist/nextjs/components.d.ts",
+      "import": "./dist/nextjs/components.js",
+      "require": "./dist/nextjs/components.cjs"
     },
     "./nextjs/image-loader": {
       "types": "./dist/nextjs/image-loader.d.ts",
@@ -70,7 +100,9 @@
   "peerDependencies": {
     "next": ">=13",
     "react": ">=17",
-    "react-dom": ">=17"
+    "react-dom": ">=17",
+    "svelte": ">=4",
+    "vue": ">=3"
   },
   "peerDependenciesMeta": {
     "next": {
@@ -80,6 +112,12 @@
       "optional": true
     },
     "react-dom": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    },
+    "vue": {
       "optional": true
     }
   },

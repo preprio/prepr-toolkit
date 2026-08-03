@@ -1,5 +1,5 @@
 import type { ToolbarStore } from './store';
-import { sendPreprEvent } from './utils';
+import { sendPreprEvent, setTrustedParentOrigin } from './utils';
 
 // Message shapes the Prepr editor posts into the preview iframe.
 interface EditorMessage {
@@ -15,17 +15,78 @@ export interface IframeBridge {
 }
 
 /**
+ * Base domain whose subdomains may drive the toolbar. Editor hosts are
+ * per-tenant (`acme.prepr.io`), so an exact list is impossible by design.
+ *
+ * The handshake grants control of preview/edit mode, so this must never be
+ * open to any framing page: without the check, any site that iframes a
+ * preview URL can race a `prepr:initVE` message on load, become the trusted
+ * parent, and both drive toolbar state and receive the events posted back.
+ */
+const EDITOR_BASE_DOMAIN = 'prepr.io';
+
+/**
+ * True for `https://<label>.prepr.io` — exactly one subdomain label, HTTPS,
+ * default port.
+ *
+ * Parsed with `URL` rather than matched as a string. A raw
+ * `origin.endsWith('.prepr.io')` accepts `https://attacker.com/?x=https://
+ * acme.prepr.io` and plain-HTTP origins, and matching on the whole origin
+ * string rather than the parsed hostname is how those slip through.
+ *
+ * The single-label rule additionally rules out nested hosts such as
+ * `foo.stream.prepr.io` and `cdn.tracking.prepr.io`. Tenant editors are always
+ * one label deep, so nothing legitimate is lost, and asset/CDN subdomains stay
+ * unable to drive the toolbar even if content on them is ever attacker-shaped.
+ */
+function isAllowedEditorOrigin(origin: string, allowed?: string[]): boolean {
+  // An explicit list opts out of the wildcard entirely (self-hosted editors).
+  if (allowed) return allowed.includes(origin);
+
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  // `origin` from a MessageEvent is scheme://host[:port] — a non-default port
+  // survives into url.port, and "null" (sandboxed/opaque) fails URL parsing.
+  if (url.protocol !== 'https:' || url.port !== '') return false;
+
+  const suffix = `.${EDITOR_BASE_DOMAIN}`;
+  if (!url.hostname.endsWith(suffix)) return false;
+
+  const label = url.hostname.slice(0, -suffix.length);
+  // Exactly one non-empty label, no nested subdomains.
+  return label.length > 0 && !label.includes('.');
+}
+
+export interface IframeBridgeOptions {
+  /**
+   * Replace the `*.prepr.io` wildcard with an exact origin list. Intended for
+   * self-hosted editors; when set, the wildcard no longer applies.
+   */
+  allowedEditorOrigins?: string[];
+}
+
+/**
  * Handshake with the parent Prepr editor and keep the store in sync with
  * editor-driven activation.
  *
- * - `prepr:initVE`: first message wins as the trusted origin. Restores the
- *   editor-saved scroll position and seeds preview + edit mode. `editMode`
+ * - `prepr:initVE`: accepted only from `https://<tenant>.prepr.io`, or from an
+ *   exact origin in `allowedEditorOrigins` when that option is set. Restores
+ *   the editor-saved scroll position and seeds preview + edit mode. `editMode`
  *   defaults to true; the editor may send false for preview-only.
  * - `prepr:getScrollPosition`: replies with the current scroll offset.
  * - Ctrl/Cmd+S/P/L are swallowed — the browser save/print dialogs break the
  *   editor overlay.
  */
-export function createIframeBridge(store: ToolbarStore): IframeBridge {
+export function createIframeBridge(
+  store: ToolbarStore,
+  options: IframeBridgeOptions = {},
+): IframeBridge {
+  const allowedOrigins = options.allowedEditorOrigins;
   let parentOrigin: string | null = null;
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -38,14 +99,19 @@ export function createIframeBridge(store: ToolbarStore): IframeBridge {
   const onMessage = (evt: MessageEvent): void => {
     const data = evt?.data as EditorMessage | undefined;
     if (data?.event === 'prepr:initVE' && !parentOrigin) {
+      // Validate BEFORE touching the store: this branch enables preview and
+      // edit mode, so an unvalidated sender must not reach it.
+      if (!isAllowedEditorOrigin(evt.origin, allowedOrigins)) return;
       parentOrigin = evt.origin;
+      // From here on, outbound events target this origin instead of '*'.
+      setTrustedParentOrigin(parentOrigin);
       if (data.scrollPosition != null) {
         const top = data.scrollPosition;
         setTimeout(() => window.scrollTo(0, top), 1);
       }
       store.set({ previewMode: true, editMode: data.editMode ?? true });
     }
-    if (evt.origin !== parentOrigin) return;
+    if (!parentOrigin || evt.origin !== parentOrigin) return;
     if (data?.event === 'prepr:getScrollPosition') {
       const currentScrollY =
         window.scrollY || document.documentElement.scrollTop;
@@ -55,13 +121,19 @@ export function createIframeBridge(store: ToolbarStore): IframeBridge {
 
   return {
     start(): void {
-      sendPreprEvent('loaded');
+      // The only message sent before the handshake: no payload, and the parent
+      // origin is unknown by definition, so it is the one '*' target allowed.
+      sendPreprEvent('loaded', undefined, { allowUntrustedTarget: true });
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('message', onMessage);
     },
     stop(): void {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('message', onMessage);
+      // Drop the trust grant with the listeners, so a re-`start()` must
+      // re-validate rather than inheriting a stale origin.
+      parentOrigin = null;
+      setTrustedParentOrigin(null);
     },
   };
 }

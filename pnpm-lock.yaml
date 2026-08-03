@@ -251,6 +251,12 @@ importers:
       preact:
         specifier: ^10.29.7
         version: 10.29.7
+      svelte:
+        specifier: '>=4'
+        version: 5.56.8(@typescript-eslint/types@8.64.0)
+      vue:
+        specifier: '>=3'
+        version: 3.5.40(typescript@5.9.3)
     devDependencies:
       '@types/node':
         specifier: ^22.20.1

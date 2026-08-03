@@ -1,9 +1,24 @@
 import type { CodegenConfig } from '@graphql-codegen/cli';
 
+/**
+ * Schema URL comes from the environment — it embeds an access token, so it must
+ * never be committed. Copy .env.example to .env before running codegen.
+ *
+ * The generated `gql/` output is committed, so a build without credentials is
+ * fine: codegen exits cleanly instead of failing the build.
+ */
+const schema = process.env.NUXT_PUBLIC_PREPR_GRAPHQL_URL;
+if (!schema) {
+  console.warn(
+    '[codegen] NUXT_PUBLIC_PREPR_GRAPHQL_URL is not set — skipping codegen and using the ' +
+      'committed gql/ output. Set it in .env to regenerate.',
+  );
+  process.exit(0);
+}
+
 const config: CodegenConfig = {
   overwrite: true,
-  schema:
-    'https://graphql.prepr.io/ac_5e48636ec968b4fe9b7490b0fc4f7702e51873418ae2acbc58c6431d9fe27429',
+  schema,
   documents: ['app/queries/**/*.graphql'],
   generates: {
     'app/gql/': {

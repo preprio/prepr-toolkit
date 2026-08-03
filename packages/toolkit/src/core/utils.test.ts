@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { sendPreprEvent } from './utils';
+import { sendPreprEvent, setTrustedParentOrigin } from './utils';
 
 describe('sendPreprEvent', () => {
   it('dispatches a CustomEvent named prepr_preview_bar on window', () => {
@@ -20,7 +20,7 @@ describe('sendPreprEvent', () => {
     window.removeEventListener('prepr_preview_bar', listener);
   });
 
-  it('postMessages the parent window when parent differs from window', () => {
+  it('postMessages the parent at the trusted origin once the handshake ran', () => {
     const postMessageSpy = vi.fn();
     const fakeParent = { postMessage: postMessageSpy } as unknown as Window;
     const originalParent = window.parent;
@@ -29,6 +29,7 @@ describe('sendPreprEvent', () => {
       value: fakeParent,
       configurable: true,
     });
+    setTrustedParentOrigin('https://app.prepr.io');
 
     sendPreprEvent('segment_changed', { segment: 'abc' });
 
@@ -39,6 +40,34 @@ describe('sendPreprEvent', () => {
         event: 'segment_changed',
         segment: 'abc',
       }),
+      'https://app.prepr.io'
+    );
+
+    setTrustedParentOrigin(null);
+    Object.defineProperty(window, 'parent', {
+      value: originalParent,
+      configurable: true,
+    });
+  });
+
+  it('drops payload events to the parent before the handshake', () => {
+    const postMessageSpy = vi.fn();
+    const fakeParent = { postMessage: postMessageSpy } as unknown as Window;
+    const originalParent = window.parent;
+
+    Object.defineProperty(window, 'parent', {
+      value: fakeParent,
+      configurable: true,
+    });
+
+    // No trusted origin yet — a framing page must not receive CMS payloads.
+    sendPreprEvent('segment_changed', { segment: 'abc' });
+    expect(postMessageSpy).not.toHaveBeenCalled();
+
+    // The payload-free readiness ping is the one permitted exception.
+    sendPreprEvent('loaded', undefined, { allowUntrustedTarget: true });
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'loaded' }),
       '*'
     );
 

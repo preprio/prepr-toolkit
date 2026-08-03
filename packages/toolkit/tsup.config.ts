@@ -19,6 +19,10 @@ export default defineConfig([
     ...sharedOptions,
     entry: {
       index: 'src/index.ts',
+      // Consumed by the `.astro` components, which ship as source and are
+      // compiled in the consumer's pipeline — so this needs its own entry and
+      // a matching `./json-script` export, not just inlining into the barrel.
+      'json-script': 'src/core/json-script.ts',
       'nextjs/components': 'src/nextjs/components.ts',
     },
     // No `clean` on any config here: tsup runs this array concurrently, so a
