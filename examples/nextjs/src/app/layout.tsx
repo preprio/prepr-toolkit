@@ -14,12 +14,19 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({children,}: {children: React.ReactNode})
 {
-    const accessToken = extractAccessToken(preprGraphqlUrl())
-    
+    // Prerendered pages (/_not-found) build without a configured endpoint, so
+    // a missing env var degrades to "no pixel" instead of failing the build.
+    let accessToken: string | null = null
+    try {
+      accessToken = extractAccessToken(preprGraphqlUrl())
+    } catch {
+      accessToken = null
+    }
+
   return (
       <html lang="en">
       <head>
-        <PreprTrackingPixel id={accessToken!}/>
+        {accessToken && <PreprTrackingPixel id={accessToken}/>}
       </head>
       <body className={ubuntu.className}>
         <NavBar/>
