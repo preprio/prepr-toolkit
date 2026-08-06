@@ -51,10 +51,11 @@ export function createChangeHandler(
 ): (before: ToolbarState, after: ToolbarState) => void {
   const { store, stega, syncAutoClean } = deps;
 
-  // ponytail: one navigate for all param writes in a transition. `navigate` is a
-  // full page load, so two calls raced: the second recomputed its URL from the
-  // still-unchanged `currentPath()` and resurrected the param the first removed.
-  // That is why clearing a segment+variant pill only cleared the variant.
+  // Batches every param write in a transition into a single `navigate` call.
+  // `navigate` triggers a full page load, so two calls race: the second
+  // recomputes its URL from the still-unchanged `currentPath()` and resurrects
+  // the param the first one removed. Clearing a segment and a variant together
+  // would otherwise only clear the variant.
   function updateParams(patch: Record<string, string | null>): void {
     const [path, existing] = splitPath(deps.currentPath());
     const params = new URLSearchParams(existing);

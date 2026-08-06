@@ -104,7 +104,7 @@ A pnpm workspace (`packages/*`, `examples/*`) built with Turborepo.
 
 | Entry point | Peer dependencies | What it gives you |
 | --- | --- | --- |
-| `@preprio/toolkit` | none | Vanilla core: `processPreprRequest`, `createPreprToolbar`, the pixel facade, header-based server helpers. |
+| `@preprio/toolkit` | none | Vanilla core: `processPreprRequest`, `createPreprToolbar`, `createPreprScrollSync`, the pixel facade, header-based server helpers. |
 | `@preprio/toolkit/nextjs` | `next` >= 13, `react` >= 17, `react-dom` >= 17 | Middleware, `next/headers` server helpers, React components. |
 | `@preprio/toolkit/nextjs/image-loader` | `next` | Custom `next/image` loader for Prepr's stream CDN. |
 | `@preprio/toolkit/astro` | none | Astro middleware and `Headers`-based server helpers. |
@@ -175,6 +175,19 @@ The toolbar's CSS is compiled from `.css` sources into `*.generated.ts` files by
 
 Every push to `main` and every pull request runs the same `typecheck`, `test`, and `build` via the `CI` workflow.
 
+### Code comments
+
+This is a published package: every comment ships to npm and shows up in consumers' editors through the `.d.ts` files. Write them for an external developer who has never seen this repo and has no access to the discussion that produced the code.
+
+- **Explain why, not what.** The code says what it does. A comment earns its place by recording the constraint, browser quirk, or bug that forced the shape — like the `navigate` race in [`toolbar-change-handler.ts`](./packages/toolkit/src/core/toolbar-change-handler.ts).
+- **No internal shorthand or process labels.** No tool names, ticket IDs, agent or workflow markers, or personal conventions as comment prefixes.
+- **No conversational voice.** Not "as we discussed", "for now", "you asked for", or first-person narration. State the fact in the present tense.
+- **No `TODO`/`FIXME`/`HACK`.** Open work belongs in an issue, where it is tracked and searchable, not in a published `.d.ts`.
+- **Describe the code, not its history.** "Batches every param write into a single call" ages well; "changed this to fix the reset bug" is meaningless to a reader who never saw the old version.
+- **Reference public API, not file layout.** Consumers can see `createPreprScrollSync`; they cannot see `src/core/create-toolbar.ts`. Internal cross-references are fine in `.ts` sources but should not leak into exported doc comments.
+
+Public exports get a JSDoc block covering what the function does, when to reach for it, and any gotcha a caller cannot infer from the signature.
+
 ## Releasing
 
 Push a `v*` tag and CI builds and publishes to npm. See [`RELEASING.md`](./RELEASING.md) for the full walkthrough.
@@ -207,6 +220,37 @@ The toolbar renders with Preact into a shadow-DOM custom element (`<prepr-toolba
 With edit mode enabled the toolkit scans for stega-encoded content, strips the invisible Unicode characters after load so they cannot cause layout shifts, highlights editable elements by cursor proximity, and talks to the Prepr editor over a `postMessage` bridge when running inside the live-preview iframe.
 
 Stega cleaning is automatic — no `vercelStegaSplit` calls or hand-managed hidden spans required.
+
+### Scroll position without the toolbar
+
+Inside the live-preview iframe the editor saves and restores the reader's scroll position over the same `postMessage` bridge. **This is already included in `createPreprToolbar` — if you mount the toolbar, you get it, with no extra call and no configuration.**
+
+`?prepr_hide_bar=true` suppresses the visible bar only; the bridge stays connected, so scroll position is still restored. The same is true inside the editor iframe, where the toolbar renders no chrome of its own.
+
+For previews that want scroll restore but *no* personalization UI — no segments, no A/B variants, no click-to-edit, no `<prepr-toolbar>` element — mount the bridge on its own:
+
+```js
+import { createPreprScrollSync } from '@preprio/toolkit'
+
+const scrollSync = createPreprScrollSync()
+
+// Later, on teardown (SPA route change, component unmount):
+scrollSync.destroy()
+```
+
+Framework-agnostic: it uses only `window`, `document` and `postMessage`, so it works in React, Vue, Svelte, Astro or plain HTML. It lives on the root `@preprio/toolkit` entry point — the framework subpaths are server/middleware-only and do not re-export it.
+
+Self-hosted editors can pass an exact origin list, which replaces the `*.prepr.io` wildcard:
+
+```js
+createPreprScrollSync({ allowedEditorOrigins: ['https://cms.example.com'] })
+```
+
+Outside an iframe it is a no-op, so mounting it unconditionally is safe.
+
+**Use one or the other, not both.** `createPreprToolbar` and `createPreprScrollSync` are separate entry points into the same bridge. Calling both on one page starts two bridges and announces the preview twice; pick `createPreprToolbar` whenever you want the toolbar at all.
+
+Both paths validate the parent origin identically — the handshake is only accepted from `https://<tenant>.prepr.io`, or from `allowedEditorOrigins` when set.
 
 ## Troubleshooting
 

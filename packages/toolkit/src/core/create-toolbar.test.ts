@@ -116,11 +116,34 @@ describe('createPreprToolbar', () => {
     controller.destroy();
   });
 
-  it('does not mount when ?prepr_hide_bar=true is present', () => {
+  it('does not mount a visible element when ?prepr_hide_bar=true is present', () => {
     stubTopLevel();
     window.history.replaceState({}, '', '/blog?prepr_hide_bar=true');
     const controller = createPreprToolbar({ props: PROPS });
     expect(element()).toBeNull();
+    controller.destroy();
+  });
+
+  it('still restores the editor scroll position when ?prepr_hide_bar=true', () => {
+    // The flag marks the editor's live-preview iframe, which is exactly where
+    // scroll restore matters — hiding the bar must not disable the bridge.
+    window.history.replaceState({}, '', '/blog?prepr_hide_bar=true');
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    vi.useFakeTimers();
+
+    const controller = createPreprToolbar({ props: PROPS });
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { event: 'prepr:initVE', scrollPosition: 640 },
+        origin: 'https://editor.prepr.io',
+      }),
+    );
+    vi.runAllTimers();
+
+    expect(element()).toBeNull();
+    expect(scrollTo).toHaveBeenCalledWith(0, 640);
+
+    vi.useRealTimers();
     controller.destroy();
   });
 
