@@ -11,14 +11,11 @@ import type { ImageLoaderProps } from 'next/image';
  * The API emits the asset's real dimensions, so the URL renders as-is; this
  * loader rewrites them to the width `next/image` asks for. Height is scaled
  * alongside width, holding the emitted ratio — which for a cropped asset is the
- * authored crop box, so the crop survives the resize.
+ * authored crop box, so the crop survives the resize. Order within the segment
+ * doesn't matter, and unrecognised options are carried through untouched.
  *
  * `fx`/`fy` are focal-point percentages, so they hold at any size and ride
- * through untouched. Quality is not a supported CDN option.
- *
- * Dimensions must be emitted as `w_{n}` first, `h_{n}` immediately after: the
- * pair is rewritten as a unit, and a height that doesn't follow its width is
- * left at the emitted value, distorting the image at the requested width.
+ * through unchanged. Quality is not a supported CDN option.
  *
  * Consumers can't point `loaderFile` at this package directly — Next joins the
  * path against the app root and `existsSync`-checks it, so a bare specifier
@@ -29,12 +26,18 @@ import type { ImageLoaderProps } from 'next/image';
  * plus `images: { loader: 'custom', loaderFile: './prepr-image-loader.ts' }`.
  */
 
-/** Matches `w_800` or `w_800,h_600` in a transform segment. */
-const DIMENSIONS = /\bw_(\d+)(?:,h_(\d+))?/;
+/**
+ * A slash-delimited segment containing a `w_` option. Both slashes are required
+ * so the filename — always the last segment — can never match: an asset called
+ * `w_960-banner.jpg` is a name, not a transform.
+ */
+const TRANSFORM_SEGMENT = /\/([^/]*\bw_\d+[^/]*)\//;
+
+const isPositiveInteger = (value: string) => /^\d+$/.test(value);
 
 /**
  * Rewrites Prepr stream URLs to the width `next/image` asks for. URLs with no
- * `w_` option (other hosts, relative paths) come back unchanged — set
+ * transform segment (other hosts, relative paths) come back unchanged — set
  * `unoptimized` on those `<Image>`s.
  *
  * No upper clamp: the emitted width is the asset's own size or its crop box,
@@ -42,9 +45,23 @@ const DIMENSIONS = /\bw_(\d+)(?:,h_(\d+))?/;
  * would rule out retina.
  */
 export default function preprImageLoader({ src, width }: ImageLoaderProps): string {
-  return src.replace(DIMENSIONS, (_match, emittedWidth: string, emittedHeight?: string) => {
-    if (!emittedHeight) return `w_${width}`;
-    const height = Math.round((width * Number(emittedHeight)) / Number(emittedWidth));
-    return `w_${width},h_${height}`;
+  return src.replace(TRANSFORM_SEGMENT, (match, segment: string) => {
+    const options = segment.split(',').map((pair) => {
+      const underscore = pair.indexOf('_');
+      return [pair.slice(0, underscore), pair.slice(underscore + 1)] as [string, string];
+    });
+
+    const emittedWidth = options.find(([key]) => key === 'w');
+    if (!emittedWidth || !isPositiveInteger(emittedWidth[1])) return match;
+
+    const emittedHeight = options.find(([key]) => key === 'h');
+    if (emittedHeight && isPositiveInteger(emittedHeight[1])) {
+      emittedHeight[1] = String(
+        Math.round((width * Number(emittedHeight[1])) / Number(emittedWidth[1])),
+      );
+    }
+    emittedWidth[1] = String(width);
+
+    return `/${options.map(([key, value]) => `${key}_${value}`).join(',')}/`;
   });
 }
