@@ -4,13 +4,21 @@
   import PreprToolbar from '@preprio/toolkit/sveltekit/components/PreprToolbar';
   import PreprTrackingPixel from '@preprio/toolkit/sveltekit/components/PreprTrackingPixel';
   import { extractAccessToken } from '@preprio/toolkit/sveltekit';
-  import { PREPR_GRAPHQL_URL, preprFeatures } from '$lib/prepr';
+  import { preprFeatures, preprGraphqlUrl } from '$lib/prepr';
   import type { Snippet } from 'svelte';
   import type { LayoutData } from './$types';
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-  const accessToken = extractAccessToken(PREPR_GRAPHQL_URL);
+  // The pixel is already optional below, so a missing endpoint degrades to
+  // "no pixel" rather than throwing and blanking the whole layout.
+  const accessToken: string | null = (() => {
+    try {
+      return extractAccessToken(preprGraphqlUrl());
+    } catch {
+      return null;
+    }
+  })();
 </script>
 
 <NavBar />

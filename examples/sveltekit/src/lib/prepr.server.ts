@@ -1,12 +1,12 @@
 import { env } from '$env/dynamic/private';
 import { getPreprHeaders } from '@preprio/toolkit/sveltekit';
-import { PREPR_GRAPHQL_URL } from './prepr';
+import { preprGraphqlUrl } from './prepr';
 
 // The `.server.ts` suffix keeps `$env/dynamic/private` out of the client bundle —
 // SvelteKit fails the build if this module is ever reached from browser code.
 
 /** GraphQL endpoint, overridable per deployment. */
-export const graphqlUrl = () => env.PREPR_GRAPHQL_URL || PREPR_GRAPHQL_URL;
+export const graphqlUrl = () => env.PREPR_GRAPHQL_URL || preprGraphqlUrl();
 
 // Forward the Prepr request headers (segments / A-B variant / customer id) so
 // the GraphQL response is personalized for this request.

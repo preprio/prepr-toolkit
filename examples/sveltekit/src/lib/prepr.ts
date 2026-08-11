@@ -1,7 +1,12 @@
 // Imported from both server load functions and `+layout.svelte`, so this module
-// must stay free of server-only imports. The URL is injected at build time from
-// PUBLIC_PREPR_GRAPHQL_URL — never hardcode a token here, it ships to the browser.
-import { PUBLIC_PREPR_GRAPHQL_URL } from '$env/static/public';
+// must stay free of server-only imports. Never hardcode a token here — this
+// value ships to the browser.
+//
+// `$env/dynamic/public` rather than `$env/static/public`: the static form only
+// generates a typed export for variables that exist at build time, so a build
+// or typecheck without a local `.env` fails to compile. The dynamic form reads
+// at runtime and always typechecks, which is what CI needs.
+import { env } from '$env/dynamic/public';
 import type { PreprFeatures } from '@preprio/toolkit';
 
 /**
@@ -16,11 +21,17 @@ import type { PreprFeatures } from '@preprio/toolkit';
  */
 export const preprFeatures: PreprFeatures = {};
 
-if (!PUBLIC_PREPR_GRAPHQL_URL) {
-  throw new Error(
-    'PUBLIC_PREPR_GRAPHQL_URL is not set. Copy .env.example to .env and add your ' +
-      'Prepr GraphQL endpoint (Settings > Access tokens > GraphQL).',
-  );
+/**
+ * Prepr GraphQL endpoint. Throws when unset — lazily, so importing this module
+ * (during typecheck, build, or SSR of a page that never calls it) does not.
+ */
+export function preprGraphqlUrl(): string {
+  const url = env.PUBLIC_PREPR_GRAPHQL_URL;
+  if (!url) {
+    throw new Error(
+      'PUBLIC_PREPR_GRAPHQL_URL is not set. Copy .env.example to .env and add ' +
+        'your Prepr GraphQL endpoint (Settings > Access tokens > GraphQL).',
+    );
+  }
+  return url;
 }
-
-export const PREPR_GRAPHQL_URL = PUBLIC_PREPR_GRAPHQL_URL;
