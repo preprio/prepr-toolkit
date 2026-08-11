@@ -10,6 +10,8 @@ import {
   PARAM_SEGMENT,
   PARAM_VARIANT,
 } from './constants';
+import { resolveFeatures } from './features';
+import type { PreprFeatures } from './types';
 
 const UTM_PARAMS = [
   'utm_source',
@@ -67,6 +69,12 @@ export function serializeCookie(cookie: CookieSpec): string {
 export interface PreprMiddlewareOptions {
   /** Enable preview-mode headers (segment/AB overrides, preview bar). */
   preview?: boolean;
+  /**
+   * Disable features app-wide. Pass the same object you give the toolbar: a
+   * disabled feature injects no header and persists no cookie, whatever the
+   * request carries.
+   */
+  features?: PreprFeatures;
   /** Override the version reported in Prepr-Package (mainly for tests). */
   version?: string;
 }
@@ -167,10 +175,15 @@ export function processPreprRequest(
     return { requestHeaders, responseCookies };
   }
 
+  const features = resolveFeatures(opts?.features);
+
   // Preview query params outrank the cookie: the CMS dashboard iframes the site
   // and drives segments purely via params, whatever the browser cookie says.
+  // A disabled feature's param does not count — it is ignored below, so letting
+  // it override the preview cookie would enable preview for nothing.
   const hasPreviewParams =
-    searchParams.has(PARAM_SEGMENT) || searchParams.has(PARAM_VARIANT);
+    (features.segments && searchParams.has(PARAM_SEGMENT)) ||
+    (features.abTesting && searchParams.has(PARAM_VARIANT));
 
   if (!hasPreviewParams) {
     const previewModeCookie = requestCookies.get(COOKIE_PREVIEW_MODE);
@@ -205,18 +218,22 @@ export function processPreprRequest(
   }
 
   if (!isLivePreview) {
-    const segmentCookie = requestCookies.get(COOKIE_SEGMENT);
+    const segmentCookie = features.segments
+      ? requestCookies.get(COOKIE_SEGMENT)
+      : undefined;
     if (segmentCookie) {
       requestHeaders.set('Prepr-Segments', segmentCookie);
     }
 
-    const abCookie = requestCookies.get(COOKIE_VARIANT);
+    const abCookie = features.abTesting
+      ? requestCookies.get(COOKIE_VARIANT)
+      : undefined;
     if (abCookie) {
       requestHeaders.set('Prepr-ABtesting', abCookie);
     }
   }
 
-  const previewAb = searchParams.get(PARAM_VARIANT);
+  const previewAb = features.abTesting ? searchParams.get(PARAM_VARIANT) : null;
   if (previewAb !== null) {
     requestHeaders.set('Prepr-ABtesting', previewAb);
     if (!isLivePreview) {
@@ -230,7 +247,9 @@ export function processPreprRequest(
     }
   }
 
-  const previewSegment = searchParams.get(PARAM_SEGMENT);
+  const previewSegment = features.segments
+    ? searchParams.get(PARAM_SEGMENT)
+    : null;
   if (previewSegment !== null) {
     requestHeaders.set('Prepr-Segments', previewSegment);
     if (!isLivePreview) {

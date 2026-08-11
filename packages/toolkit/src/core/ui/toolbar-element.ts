@@ -39,28 +39,31 @@ export class PreprToolbarElement extends HTMLElementBase {
     onToggle: () => this.set({ toolbarOpen: !this.state.toolbarOpen }),
     onClose: () => this.set({ toolbarOpen: false }),
     onPreviewMode: value => this.set({ previewMode: value }),
-    onEditMode: value => this.set({ editMode: value }),
+    onEditMode: value => {
+      if (!this.state.features.editMode) return;
+      this.set({ editMode: value });
+    },
     onVariant: value => {
+      if (!this.state.features.abTesting) return;
       if (!this.state.previewMode) return;
       this.set({ selectedVariant: value });
     },
     // Reset contract: segment to none, variant to 'A' — NOT null, since the
     // resulting `variant_changed` must carry 'A' on the wire — edit mode off.
-    onReset: () =>
-      this.set({
-        selectedSegment: null,
-        selectedVariant: 'A',
-        editMode: false,
-      }),
+    // Disabled features are left untouched: their state is already inert and
+    // writing it would emit events for a feature the consumer turned off.
+    onReset: () => this.set(this.resetPatch({ editMode: false })),
     onStatusPill: () => {
       if (!this.state.previewMode) {
         this.set({ previewMode: true });
         return;
       }
       // Same reset contract as onReset, minus the edit-mode change.
-      if (this.state.selectedSegment !== null || this.state.selectedVariant !== 'A') {
-        this.set({ selectedSegment: null, selectedVariant: 'A' });
-      }
+      const patch = this.resetPatch();
+      const dirty =
+        ('selectedSegment' in patch && this.state.selectedSegment !== null) ||
+        ('selectedVariant' in patch && this.state.selectedVariant !== 'A');
+      if (dirty) this.set(patch);
     },
     onCloseEditPill: () => this.set({ editMode: false }),
     onSegmentButtonClick: () => this.toggleListbox(!this.listboxOpen),
@@ -108,6 +111,15 @@ export class PreprToolbarElement extends HTMLElementBase {
 
   private set(patch: Partial<ToolbarState>): void {
     this.store?.set(patch);
+  }
+
+  /** Reset patch covering only the enabled personalization features. */
+  private resetPatch(base: Partial<ToolbarState> = {}): Partial<ToolbarState> {
+    const { features } = this.state;
+    const patch: Partial<ToolbarState> = { ...base };
+    if (features.segments) patch.selectedSegment = null;
+    if (features.abTesting) patch.selectedVariant = 'A';
+    return patch;
   }
 
   // Synchronous: Preact's top-level render() mutates the DOM before returning.
@@ -307,6 +319,7 @@ export class PreprToolbarElement extends HTMLElementBase {
   }
 
   private chooseSegment(id: string): void {
+    if (!this.state.features.segments) return;
     this.listboxOpen = false;
     this.segmentFilter = '';
     // store.set re-renders via the subscriber; the explicit renderPanel below

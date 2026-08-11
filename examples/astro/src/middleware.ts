@@ -1,5 +1,6 @@
 import { onPreprRequest } from '@preprio/toolkit/astro';
 import type { MiddlewareHandler } from 'astro';
+import { preprFeatures } from './lib/prepr-features';
 
 // `astro dev` loads .env into `import.meta.env` (Vite) only — NOT process.env.
 // The toolkit no longer reads env vars, so only the GraphQL URL needs bridging
@@ -15,4 +16,7 @@ process.env.PREPR_GRAPHQL_URL ??= import.meta.env.PREPR_GRAPHQL_URL;
 // already has. When on, request headers (Prepr-Segments, etc.) are forwarded
 // downstream and preview cookies set on the response.
 export const onRequest: MiddlewareHandler = (context, next) =>
-  onPreprRequest(context, next, { preview: import.meta.env.DEV });
+  onPreprRequest(context, next, {
+    preview: import.meta.env.DEV,
+    features: preprFeatures,
+  });

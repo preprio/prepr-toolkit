@@ -357,4 +357,63 @@ describe('processPreprRequest', () => {
       ).toBeUndefined();
     });
   });
+
+  describe('disabled features', () => {
+    it('injects no Prepr-ABtesting from cookie or query param when abTesting is off', () => {
+      const request = makeRequest('https://example.com/?prepr_preview_ab=B', {
+        headers: { cookie: 'Prepr-ABtesting=A; Prepr-Segments=vip' },
+      });
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { abTesting: false },
+      });
+
+      expect(result.requestHeaders.has('Prepr-ABtesting')).toBe(false);
+      expect(
+        result.responseCookies.find(c => c.name === 'Prepr-ABtesting')
+      ).toBeUndefined();
+      // The enabled feature is untouched.
+      expect(result.requestHeaders.get('Prepr-Segments')).toBe('vip');
+    });
+
+    it('injects no Prepr-Segments from cookie or query param when segments are off', () => {
+      const request = makeRequest(
+        'https://example.com/?prepr_preview_segment=new-seg',
+        { headers: { cookie: 'Prepr-Segments=vip; Prepr-ABtesting=A' } }
+      );
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { segments: false },
+      });
+
+      expect(result.requestHeaders.has('Prepr-Segments')).toBe(false);
+      expect(
+        result.responseCookies.find(c => c.name === 'Prepr-Segments')
+      ).toBeUndefined();
+      expect(result.requestHeaders.get('Prepr-ABtesting')).toBe('A');
+    });
+
+    it("a disabled feature's query param does not override the preview-off cookie", () => {
+      const request = makeRequest(
+        'https://example.com/?prepr_preview_segment=new-seg',
+        { headers: { cookie: 'Prepr-Preview-Mode=false' } }
+      );
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { segments: false },
+      });
+
+      expect(result.requestHeaders.has('Prepr-Preview-Bar')).toBe(false);
+    });
+
+    it('leaves preview mode itself alone — it is the master switch, not a feature', () => {
+      const request = makeRequest('https://example.com/');
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { segments: false, abTesting: false, editMode: false },
+      });
+
+      expect(result.requestHeaders.get('Prepr-Preview-Bar')).toBe('true');
+    });
+  });
 });

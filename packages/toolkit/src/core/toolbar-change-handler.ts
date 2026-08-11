@@ -9,6 +9,7 @@ import {
 } from './constants';
 import { crossSiteCookieOptions, removeCookie, setCookie } from './cookies';
 import type { ToolbarState, ToolbarStore } from './store';
+import type { ResolvedPreprFeatures } from './types';
 import { sendPreprEvent } from './utils';
 
 // Resolved per call, not once at module load: `crossSiteCookieOptions` reads
@@ -29,6 +30,13 @@ function cookieOpts() {
 
 export interface ChangeHandlerDeps {
   store: ToolbarStore;
+  /** Disabled features write no cookies, no query params and emit no events. */
+  features: ResolvedPreprFeatures;
+  /**
+   * Whether click-to-edit may run at all: `features.editMode`, OR the editor
+   * iframe, which drives edit mode itself.
+   */
+  editingEnabled: boolean;
   navigate(url: string): void;
   currentPath(): string;
   reload(): void;
@@ -49,7 +57,7 @@ export interface ChangeHandlerDeps {
 export function createChangeHandler(
   deps: ChangeHandlerDeps
 ): (before: ToolbarState, after: ToolbarState) => void {
-  const { store, stega, syncAutoClean } = deps;
+  const { store, stega, syncAutoClean, features, editingEnabled } = deps;
 
   // Batches every param write in a transition into a single `navigate` call.
   // `navigate` triggers a full page load, so two calls race: the second
@@ -76,7 +84,7 @@ export function createChangeHandler(
   ): void {
     const paramPatch: Record<string, string | null> = {};
 
-    if (before.selectedSegment !== after.selectedSegment) {
+    if (features.segments && before.selectedSegment !== after.selectedSegment) {
       if (after.selectedSegment === null) {
         removeCookie(COOKIE_SEGMENT, '/', crossSiteCookieOptions());
       } else {
@@ -88,7 +96,7 @@ export function createChangeHandler(
       });
     }
 
-    if (before.selectedVariant !== after.selectedVariant) {
+    if (features.abTesting && before.selectedVariant !== after.selectedVariant) {
       if (after.selectedVariant === null) {
         removeCookie(COOKIE_VARIANT, '/', crossSiteCookieOptions());
       } else {
@@ -105,7 +113,10 @@ export function createChangeHandler(
     }
 
     if (before.editMode !== after.editMode) {
-      if (after.editMode) {
+      // `edit_mode_toggled` stays unconditional — the editor tracks it even when
+      // the site's own click-to-edit is off — but the overlay only runs when
+      // editing is actually enabled here.
+      if (after.editMode && editingEnabled) {
         stega.start();
       } else {
         stega.stop();

@@ -6,6 +6,7 @@ import {
   PARAM_HIDE_BAR,
 } from './constants';
 import { getCookie } from './cookies';
+import { resolveFeatures } from './features';
 import { isLocale, t as translate, type Locale } from './i18n';
 import { createIframeBridge } from './iframe-bridge';
 import { createStegaAutoClean, type StegaAutoClean } from './stega/auto-clean';
@@ -118,20 +119,30 @@ export function createPreprToolbar(
   }
 
   const locale = resolveLocale(options);
+  const features = resolveFeatures(options?.features);
 
-  // Props win; persisted cookies fill the gaps.
+  // Props win; persisted cookies fill the gaps. A disabled feature seeds empty
+  // rather than reading its cookie at all, so a stale value left over from
+  // before it was turned off cannot resurrect it.
   const previewMode = getCookie(COOKIE_PREVIEW_MODE) === 'true';
   const toolbarOpen = getCookie(COOKIE_TOOLBAR_OPEN) === 'true';
-  const cookieSegment = getCookie(COOKIE_SEGMENT);
-  const cookieVariant = getCookie(COOKIE_VARIANT);
-  const rawVariant = props.activeVariant ?? cookieVariant;
+  const cookieSegment = features.segments ? getCookie(COOKIE_SEGMENT) : null;
+  const cookieVariant = features.abTesting ? getCookie(COOKIE_VARIANT) : null;
+  const rawVariant = features.abTesting
+    ? props.activeVariant ?? cookieVariant
+    : null;
   const selectedVariant: PreprVariant | null =
     rawVariant === 'A' || rawVariant === 'B' ? rawVariant : null;
 
   const store = createToolbarStore({
     locale,
-    segments: buildSegments(props.segments ?? props.data ?? []),
-    selectedSegment: props.activeSegment ?? cookieSegment ?? null,
+    features,
+    segments: features.segments
+      ? buildSegments(props.segments ?? props.data ?? [])
+      : [],
+    selectedSegment: features.segments
+      ? props.activeSegment ?? cookieSegment ?? null
+      : null,
     selectedVariant,
     previewMode,
     toolbarOpen,
@@ -153,6 +164,11 @@ export function createPreprToolbar(
   }
 
   // --- Stega controllers ---------------------------------------------------
+  // `features.editMode` gates the site's OWN click-to-edit. Inside the editor's
+  // iframe the CMS drives edit mode over `prepr:initVE`, so the machinery stays
+  // wired there regardless of config — see the JSDoc on PreprFeatures.editMode.
+  const editingEnabled = features.editMode || isIframe;
+
   const stega = createStegaController({
     // The CMS deep-link tooltip is noise inside the editor; clicking the
     // element itself requests the edit there.
@@ -184,6 +200,8 @@ export function createPreprToolbar(
   // --- Subscriptions (side effects) ----------------------------------------
   const handleChange = createChangeHandler({
     store,
+    features,
+    editingEnabled,
     navigate: url => navigation.navigate(url),
     currentPath: () => navigation.currentPath(),
     reload: navigation.reload ?? (() => window.location.reload()),

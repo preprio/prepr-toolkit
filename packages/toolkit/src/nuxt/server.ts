@@ -5,7 +5,11 @@ import {
   getPreprUUIDFromHeaders,
   getToolbarPropsFromHeaders,
 } from '../core/server';
-import type { PreprHeaders, PreprToolbarProps } from '../core/types';
+import type {
+  PreprFeatures,
+  PreprHeaders,
+  PreprToolbarProps,
+} from '../core/types';
 
 // Same shape as the SvelteKit/Astro helpers: take a standard `Headers` —
 // build one from `useRequestHeaders()` or read `getPreprHeadersFromEvent(event)`.
@@ -37,7 +41,8 @@ export function getPreprHeaders(headers: Headers): PreprHeaders {
  */
 export async function getToolbarProps(
   headers: Headers,
-  token: string
+  token: string,
+  features?: PreprFeatures
 ): Promise<PreprToolbarProps> {
-  return getToolbarPropsFromHeaders(headers, token);
+  return getToolbarPropsFromHeaders(headers, token, features);
 }

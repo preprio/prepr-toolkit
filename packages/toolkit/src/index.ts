@@ -5,6 +5,10 @@ export type {
   PreprSegment,
   PreprToolbarOptions,
   PreprToolbarProps,
+  PreprToolbarComponentProps,
+  PreprFeatureConfig,
+  PreprFeatures,
+  ResolvedPreprFeatures,
   PreprHeaderName,
   PreprHeaders,
   PreprVariant,
@@ -12,6 +16,7 @@ export type {
   PreprEventType,
   PreprErrorCode,
 } from './core/types';
+export { resolveFeatures } from './core/features';
 export type { ToolbarState, ToolbarStore } from './core/store';
 
 // --- Toolbar mount controller + UI ------------------------------------------

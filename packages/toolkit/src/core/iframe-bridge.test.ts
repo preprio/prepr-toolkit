@@ -106,6 +106,22 @@ describe('createIframeBridge — editor origin validation', () => {
     b.stop();
   });
 
+  // The deliberate split: `features.editMode` gates the site's own
+  // click-to-edit, not the CMS driving its own preview iframe.
+  it('still activates edit mode when the site disabled its own edit mode', () => {
+    const s = createToolbarStore({
+      features: { segments: true, abTesting: true, editMode: false },
+    });
+    const b = createIframeBridge(s);
+    b.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE', editMode: true });
+
+    expect(s.get().previewMode).toBe(true);
+    expect(s.get().editMode).toBe(true);
+    b.stop();
+  });
+
   it('does not reply to scroll requests from an untrusted origin', () => {
     const spy = vi.spyOn(window.parent, 'postMessage');
     postFrom(ATTACKER, { event: 'prepr:getScrollPosition' });

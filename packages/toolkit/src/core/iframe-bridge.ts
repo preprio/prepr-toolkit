@@ -113,6 +113,10 @@ export function createIframeBridge(
         const top = data.scrollPosition;
         setTimeout(() => window.scrollTo(0, top), 1);
       }
+      // Deliberately ignores `features.editMode`: that option gates the site's
+      // own click-to-edit affordance, not the CMS driving its own preview
+      // iframe. A consumer who disabled edit mode still gets a working visual
+      // editor. See the JSDoc on PreprFeatures.editMode.
       store?.set({ previewMode: true, editMode: data.editMode ?? true });
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;

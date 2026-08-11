@@ -10,7 +10,11 @@ import {
   serializeCookie,
   type PreprMiddlewareOptions,
 } from '../core/middleware';
-import type { PreprHeaders, PreprToolbarProps } from '../core/types';
+import type {
+  PreprFeatures,
+  PreprHeaders,
+  PreprToolbarProps,
+} from '../core/types';
 
 export type { PreprMiddlewareOptions };
 
@@ -89,7 +93,8 @@ export function getPreprHeaders(headers: Headers): PreprHeaders {
  */
 export async function getToolbarProps(
   headers: Headers,
-  token: string
+  token: string,
+  features?: PreprFeatures
 ): Promise<PreprToolbarProps> {
-  return getToolbarPropsFromHeaders(headers, token);
+  return getToolbarPropsFromHeaders(headers, token, features);
 }

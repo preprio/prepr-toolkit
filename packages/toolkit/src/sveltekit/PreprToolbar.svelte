@@ -8,13 +8,20 @@
    */
   import { onMount } from 'svelte';
   import { createPreprToolbar } from '@preprio/toolkit';
-  import type { PreprToolbarProps } from '@preprio/toolkit';
+  import type { PreprToolbarComponentProps } from '@preprio/toolkit';
 
-  let { activeSegment, activeVariant, data, segments }: PreprToolbarProps = $props();
+  let {
+    activeSegment,
+    activeVariant,
+    data,
+    segments,
+    options,
+  }: PreprToolbarComponentProps = $props();
 
   onMount(() => {
     const controller = createPreprToolbar({
       props: { activeSegment, activeVariant, data, segments },
+      options,
     });
     return () => controller.destroy();
   });

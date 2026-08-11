@@ -333,6 +333,7 @@ function StatusPill({
   t: Translate;
   handlers: PanelHandlers;
 }): VNode {
+  const { features } = state;
   const defaultSegmentName =
     state.segments.find(s => s._id === 'all_other_users')?.name ??
     t('adaptiveContent.allOtherUsers');
@@ -358,20 +359,28 @@ function StatusPill({
       <span class="prepr-status-viewing" data-prepr="status-viewing">
         {t('common.viewingAs')}
       </span>
-      <span class="prepr-status-segment" data-prepr="status-segment">
+      <span
+        class="prepr-status-segment"
+        data-prepr="status-segment"
+        hidden={!features.segments}
+      >
         {segmentLabel}
       </span>
       <span
         class="prepr-status-variant"
         data-prepr="status-variant"
-        hidden={!state.previewMode}
+        hidden={!features.abTesting || !state.previewMode}
       >
         {state.selectedVariant === 'B' ? 'B' : 'A'}
       </span>
       <span
         class="prepr-status-x"
         data-prepr="status-x"
-        hidden={!state.previewMode || state.selectedSegment === null}
+        hidden={
+          !features.segments ||
+          !state.previewMode ||
+          state.selectedSegment === null
+        }
       >
         <RawSvg svg={XMARK_ICON_SVG} />
       </span>
@@ -394,7 +403,7 @@ function CloseEditPill({
       class="prepr-close-edit-pill"
       data-prepr="close-edit-pill"
       aria-label={t('editingTools.ariaCloseEditMode')}
-      hidden={!state.editMode || state.isIframe}
+      hidden={!state.features.editMode || !state.editMode || state.isIframe}
       onClick={() => handlers.onCloseEditPill()}
     >
       <span data-prepr="close-edit-label">{t('editingTools.editMode')}</span>
@@ -412,8 +421,13 @@ export function Panel({
   segmentFilter,
   handlers,
 }: PanelProps): VNode {
+  const { features } = state;
+  // Only count what the user can actually see, or Reset lights up on state
+  // they have no control over.
   const hasPersonalization =
-    state.selectedSegment !== null || state.selectedVariant !== null;
+    (features.segments && state.selectedSegment !== null) ||
+    (features.abTesting && state.selectedVariant !== null);
+  const showAdaptive = features.segments || features.abTesting;
 
   return (
     <>
@@ -455,9 +469,13 @@ export function Panel({
         >
           <Header t={t} onClose={handlers.onClose} />
 
+          {/* Preview mode is the master switch, not a feature, so it stays
+              even when both adaptive features are off. */}
           <div class="prepr-section" data-prepr="section-adaptive">
             <span class="prepr-section-label" data-prepr="adaptive-label">
-              {t('adaptiveContent.adaptiveContent')}
+              {showAdaptive
+                ? t('adaptiveContent.adaptiveContent')
+                : t('adaptiveContent.enablePreview')}
             </span>
 
             <div class="prepr-row">
@@ -467,38 +485,44 @@ export function Panel({
               <PreviewSelector state={state} t={t} handlers={handlers} />
             </div>
 
-            <div class="prepr-row">
-              <h2 class="prepr-row-title" data-prepr="segment-label">
-                {t('adaptiveContent.segment')}
-              </h2>
-              <SegmentListbox
-                state={state}
-                t={t}
-                listboxOpen={listboxOpen}
-                segmentFilter={segmentFilter}
-                handlers={handlers}
-              />
-            </div>
+            {features.segments && (
+              <div class="prepr-row">
+                <h2 class="prepr-row-title" data-prepr="segment-label">
+                  {t('adaptiveContent.segment')}
+                </h2>
+                <SegmentListbox
+                  state={state}
+                  t={t}
+                  listboxOpen={listboxOpen}
+                  segmentFilter={segmentFilter}
+                  handlers={handlers}
+                />
+              </div>
+            )}
 
-            <div class="prepr-row">
-              <h2 class="prepr-row-title" data-prepr="variant-label">
-                {t('adaptiveContent.ABVariant')}
-              </h2>
-              <VariantSelector state={state} handlers={handlers} />
-            </div>
+            {features.abTesting && (
+              <div class="prepr-row">
+                <h2 class="prepr-row-title" data-prepr="variant-label">
+                  {t('adaptiveContent.ABVariant')}
+                </h2>
+                <VariantSelector state={state} handlers={handlers} />
+              </div>
+            )}
           </div>
 
-          <div class="prepr-section" data-prepr="section-editing">
-            <span class="prepr-section-label" data-prepr="editing-label">
-              {t('editingTools.editingTools')}
-            </span>
-            <div class="prepr-row">
-              <h2 class="prepr-row-title" data-prepr="edit-label">
-                {t('editingTools.editMode')}
-              </h2>
-              <EditModeSelector state={state} t={t} handlers={handlers} />
+          {features.editMode && (
+            <div class="prepr-section" data-prepr="section-editing">
+              <span class="prepr-section-label" data-prepr="editing-label">
+                {t('editingTools.editingTools')}
+              </span>
+              <div class="prepr-row">
+                <h2 class="prepr-row-title" data-prepr="edit-label">
+                  {t('editingTools.editMode')}
+                </h2>
+                <EditModeSelector state={state} t={t} handlers={handlers} />
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="button"

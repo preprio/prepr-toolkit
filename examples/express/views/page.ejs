@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title><%= (page && page.title) || 'Prepr Express complete starter' %></title>
   <link rel="stylesheet" href="/styles.css" />
-  <%- include('partials/prepr-head', { token: token, toolbarProps: toolbarProps }) %>
+  <%- include('partials/prepr-head', { token: token, toolbarProps: toolbarProps, toolbarOptions: toolbarOptions }) %>
 </head>
 <body>
   <%- include('partials/navbar') %>

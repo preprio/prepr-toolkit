@@ -1,5 +1,10 @@
+import { ALL_FEATURES_ENABLED } from './features';
 import type { Locale } from './i18n';
-import type { PreprSegment, PreprVariant } from './types';
+import type {
+  PreprSegment,
+  PreprVariant,
+  ResolvedPreprFeatures,
+} from './types';
 
 export interface ToolbarState {
   locale: Locale;
@@ -10,6 +15,11 @@ export interface ToolbarState {
   previewMode: boolean;
   toolbarOpen: boolean;
   isIframe: boolean;
+  /**
+   * Set once at construction, never patched. Lives here so the panel and the
+   * element read it the same way they read everything else.
+   */
+  features: ResolvedPreprFeatures;
 }
 
 const DEFAULT_STATE: ToolbarState = {
@@ -21,6 +31,7 @@ const DEFAULT_STATE: ToolbarState = {
   previewMode: false,
   toolbarOpen: false,
   isIframe: false,
+  features: ALL_FEATURES_ENABLED,
 };
 
 export interface ToolbarStore {

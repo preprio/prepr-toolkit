@@ -7,7 +7,11 @@ import {
   getPreprUUIDFromHeaders,
   getToolbarPropsFromHeaders,
 } from '../core/server';
-import type { PreprHeaders, PreprToolbarProps } from '../core/types';
+import type {
+  PreprFeatures,
+  PreprHeaders,
+  PreprToolbarProps,
+} from '../core/types';
 
 /**
  * `headers()` is sync on Next 13/14 and returns a Promise from Next 15 on.
@@ -52,7 +56,10 @@ export async function getPreprHeaders(): Promise<PreprHeaders> {
  * Never throws: segment-fetch failures degrade to an empty segment list, so a
  * bad or missing token can't crash the host app.
  */
-export async function getToolbarProps(token: string): Promise<PreprToolbarProps> {
+export async function getToolbarProps(
+  token: string,
+  features?: PreprFeatures
+): Promise<PreprToolbarProps> {
   const h = await readHeaders();
-  return getToolbarPropsFromHeaders(h, token);
+  return getToolbarPropsFromHeaders(h, token, features);
 }

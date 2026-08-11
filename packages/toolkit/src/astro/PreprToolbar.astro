@@ -28,20 +28,25 @@
  * (JSON-serializable values only — matches `PreprToolbarProps`, a plain
  * data shape of primitives/arrays.)
  */
-import type { PreprToolbarProps } from '@preprio/toolkit';
+import type { PreprToolbarComponentProps } from '@preprio/toolkit';
 import { serializeForScriptTag } from '@preprio/toolkit/json-script';
 
-type Props = PreprToolbarProps;
+type Props = PreprToolbarComponentProps;
 
-const { activeSegment, activeVariant, segments, data } = Astro.props as Props;
+const { activeSegment, activeVariant, segments, data, options } =
+  Astro.props as Props;
 // `data` is the deprecated alias for `segments`; accept either.
-const props = { activeSegment, activeVariant, segments: segments ?? data ?? [] };
+// `options` travels in the same JSON payload — it is plain data too.
+const payload = {
+  props: { activeSegment, activeVariant, segments: segments ?? data ?? [] },
+  options,
+};
 ---
 
 <script
   type="application/json"
   data-prepr-toolbar-props
-  set:html={serializeForScriptTag(props)}
+  set:html={serializeForScriptTag(payload)}
 />
 
 <script>
@@ -49,6 +54,7 @@ const props = { activeSegment, activeVariant, segments: segments ?? data ?? [] }
 
   const el = document.querySelector('script[data-prepr-toolbar-props]');
   if (el?.textContent) {
-    createPreprToolbar({ props: JSON.parse(el.textContent) });
+    const { props, options } = JSON.parse(el.textContent);
+    createPreprToolbar({ props, options });
   }
 </script>

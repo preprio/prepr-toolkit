@@ -14,4 +14,8 @@ const pixel = readJSON('script[data-prepr-pixel-props]');
 if (pixel?.id) loadTrackingPixel(pixel.id);
 
 const toolbarProps = readJSON('script[data-prepr-toolbar-props]');
-if (toolbarProps) createPreprToolbar({ props: toolbarProps });
+// Same feature config the server used, so a disabled feature is off both sides.
+const toolbarOptions = readJSON('script[data-prepr-toolbar-options]');
+if (toolbarProps) {
+  createPreprToolbar({ props: toolbarProps, options: toolbarOptions ?? undefined });
+}

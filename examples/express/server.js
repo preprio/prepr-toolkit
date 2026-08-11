@@ -7,6 +7,7 @@ import {
   getToolbarProps,
   extractAccessToken,
 } from './src/prepr.js';
+import { preprFeatures } from './src/prepr-features.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 8787;
@@ -27,7 +28,7 @@ app.set('view engine', 'ejs');
 app.set('views', join(__dirname, 'views'));
 
 app.use(express.static(join(__dirname, 'public')));
-app.use(preprMiddleware({ preview: IS_PREVIEW }));
+app.use(preprMiddleware({ preview: IS_PREVIEW, features: preprFeatures }));
 
 app.get('/{*slug}', async (req, res) => {
   const rest = req.params.slug; // undefined at '/', else an array of path segments
@@ -37,10 +38,16 @@ app.get('/{*slug}', async (req, res) => {
   if (!page) return res.status(404).type('text/plain').send('Page not found');
 
   const toolbarProps = IS_PREVIEW
-    ? await getToolbarProps(res.locals.preprHeaders, GRAPHQL_URL)
+    ? await getToolbarProps(res.locals.preprHeaders, GRAPHQL_URL, preprFeatures)
     : null;
 
-  res.render('page', { page, toolbarProps, token: extractAccessToken(GRAPHQL_URL) });
+  res.render('page', {
+    page,
+    toolbarProps,
+    // Serialized into the page so the client toolbar gets the same config.
+    toolbarOptions: { features: preprFeatures },
+    token: extractAccessToken(GRAPHQL_URL),
+  });
 });
 
 app.listen(PORT, () => {
