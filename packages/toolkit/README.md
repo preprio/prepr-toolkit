@@ -80,6 +80,7 @@ Per-framework requirements:
 | Entry point | Peer dependencies |
 | --- | --- |
 | `@preprio/toolkit` (vanilla core) | none |
+| `@preprio/toolkit/react` | `react` >= 17, `react-dom` >= 17 |
 | `@preprio/toolkit/nextjs` | `next` >= 13, `react` >= 17, `react-dom` >= 17 |
 | `@preprio/toolkit/astro` | none (`.astro` components compile in your own pipeline) |
 | `@preprio/toolkit/sveltekit` | `svelte` (only for the `.svelte` components) |
@@ -535,6 +536,81 @@ const preprHeaders = getPreprHeadersFromEvent(event);
 
 See the runnable example at `examples/nuxt` for the full source of truth.
 
+## React (no framework)
+
+`@preprio/toolkit/react` carries the two components that need nothing but React — for Vite + React Router, TanStack Router, Remix SPA mode, or Create React App. Next.js users want the [Next.js section](#nextjs) instead; its `PreprToolbar` binds the App Router for you.
+
+```tsx
+import { PreprPreview, PreprTrackingPixel } from '@preprio/toolkit/react';
+
+export function App() {
+  return (
+    <>
+      <YourRoutes />
+      {import.meta.env.DEV && <PreprPreview />}
+      <PreprTrackingPixel id={import.meta.env.VITE_PREPR_TRACKING_ID} />
+    </>
+  );
+}
+```
+
+Mount `PreprPreview` once per page — two copies start two editor bridges.
+
+### Without personalization
+
+A client-rendered app with no segments and no A/B testing needs **no middleware and no server helpers at all**. The middleware exists to resolve segment and variant cookies into request headers; with both features off there are no headers to resolve. What remains is click-to-edit and the editor's scroll restore, which are pure client concerns:
+
+```tsx
+<PreprPreview options={{ features: { segments: false, abTesting: false } }} />
+```
+
+No `navigation` prop is needed here. The default adapter drives `window.location`, and with both features off the only reachable path is the preview-mode refresh — a full reload either way. `PreprPreview` also needs no router context in this configuration, so it can mount anywhere in the tree.
+
+### With personalization
+
+Segments and A/B testing need request headers, which need a server. A static SPA has none — so this requires either a framework with a server (React Router in framework mode, Next.js) or your own backend using the [vanilla core](#any-other-framework).
+
+Once there is a server, pass a `navigation` adapter so segment and variant switches route softly instead of reloading:
+
+```tsx
+import { useNavigate, useLocation } from 'react-router';
+
+const navigate = useNavigate();
+const location = useLocation();
+
+<PreprPreview
+  {...toolbarProps}
+  navigation={{
+    navigate: url => navigate(url),
+    currentPath: () => location.pathname + location.search,
+  }}
+/>;
+```
+
+`navigation.reload` is optional and defaults to `window.location.reload()`. React Router has no soft-refresh equivalent, so leaving it unset is usually right.
+
+### Tracking pageviews
+
+`loadTrackingPixel` queues one `pageload` event when it installs. Client-side route changes emit nothing on their own, so a SPA records a single pageview per session unless you fire them yourself:
+
+```tsx
+import { useEffect } from 'react';
+import { useLocation } from 'react-router';
+import { trackEvent } from '@preprio/toolkit';
+
+function usePreprPageviews() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    trackEvent('pageload');
+  }, [pathname]);
+}
+```
+
+This double-counts the first pageview, since the pixel's own install event fires too. Skip the initial run with a ref if the exact count matters.
+
+The `id` is your access token, and in a client-rendered app it is public — bundled into JS and visible in devtools. Use a tracking-only token; do not derive it from a browser-exposed GraphQL URL, which would also expose content read access.
+
 ## Any other framework
 
 The core is runtime-neutral: it works off a WHATWG `Request` and hands back the headers to forward to Prepr plus the cookies to persist. Adapting it to Express, Hono, Fastify, or a plain server is roughly twenty lines.
@@ -680,9 +756,25 @@ The toolbar. Takes the props returned by `getToolbarProps`, and renders nothing 
 
 There is no provider to wrap your tree in; state lives in the toolbar's own store.
 
+#### `PreprPreview`
+
+From `@preprio/toolkit/react`. The framework-free equivalent of `PreprToolbar`: same preview runtime, with the router binding left to you. Renders nothing.
+
+```tsx
+<PreprPreview {...toolbarProps} navigation={adapter} />
+```
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `activeSegment` / `activeVariant` / `segments` | — | Toolbar data, as returned by `getToolbarProps`. Optional for a headless preview. |
+| `options` | `PreprPreviewOptions` | Feature flags, `ui`, locale, debug (see [Preview Options](#preview-options)). |
+| `navigation` | `PreprNavigationAdapter` | Optional router binding. Defaults to `window.location`, which is correct for any router that keeps the URL bar in sync. |
+
+Every prop is read once on mount; changing one afterwards has no effect, since a live update would have to tear down the editor bridge and re-announce the preview. Remount to change configuration.
+
 #### `PreprTrackingPixel`
 
-Loads Prepr's CDN tracking pixel on mount. Renders nothing.
+Loads Prepr's CDN tracking pixel on mount. Renders nothing. Exported from both `@preprio/toolkit/react` and `@preprio/toolkit/nextjs` — the same component, with nothing Next-specific about it.
 
 ```tsx
 <PreprTrackingPixel id={accessToken} config={{ destinations: { googleTagManager: true } }} />

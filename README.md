@@ -1,6 +1,6 @@
 # Prepr Toolkit
 
-A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). One vanilla core, with thin wrappers for Next.js, Nuxt, Astro, and SvelteKit.
+A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). One vanilla core, with thin wrappers for React, Next.js, Nuxt, Astro, and SvelteKit.
 
 This is the monorepo. The published package lives in [`packages/toolkit`](./packages/toolkit) and has its own [README](./packages/toolkit/README.md) with the complete API reference.
 
@@ -105,6 +105,7 @@ A pnpm workspace (`packages/*`, `examples/*`) built with Turborepo.
 | Entry point | Peer dependencies | What it gives you |
 | --- | --- | --- |
 | `@preprio/toolkit` | none | Vanilla core: `processPreprRequest`, `createPreprPreview`, the pixel facade, header-based server helpers. |
+| `@preprio/toolkit/react` | `react` >= 17, `react-dom` >= 17 | `PreprPreview` and `PreprTrackingPixel` for React without a framework — Vite, React Router, TanStack Router. |
 | `@preprio/toolkit/nextjs` | `next` >= 13, `react` >= 17, `react-dom` >= 17 | Middleware, `next/headers` server helpers, React components. |
 | `@preprio/toolkit/nextjs/image-loader` | `next` | Custom `next/image` loader for Prepr's stream CDN. |
 | `@preprio/toolkit/astro` | none | Astro middleware and `Headers`-based server helpers. |

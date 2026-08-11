@@ -34,6 +34,20 @@ export default defineConfig([
   },
   {
     ...sharedOptions,
+    // Its own config, not an added entry above: `'use client'` is only
+    // preserved on a config's own entry file, and these components need the
+    // directive on the module where the hooks actually run.
+    entry: { index: 'src/react/index.ts', components: 'src/react/components.ts' },
+    outDir: 'dist/react',
+    clean: false,
+    // `./components.js` stays a real import into the sibling built above rather
+    // than being inlined — same directive-preservation reason as `nextjs`.
+    // The extension is explicit so the emitted ESM resolves under plain Node,
+    // which does not do extensionless lookup the way bundlers do.
+    external: ['react', 'react-dom', './components.js'],
+  },
+  {
+    ...sharedOptions,
     entry: {
       index: 'src/nextjs/index.ts',
       // Standalone loader: consumers point next/image's `loaderFile` at a

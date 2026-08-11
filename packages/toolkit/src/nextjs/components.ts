@@ -4,9 +4,15 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
-import { loadTrackingPixel } from '../core/pixel';
-import type { PreprPixelConfig } from '../core/pixel';
 import type { PreprToolbarComponentProps } from '../core/types';
+
+// Nothing Next-specific about the pixel — it lives on the framework-free
+// `@preprio/toolkit/react` entry point and is re-exported here so the
+// long-standing `@preprio/toolkit/nextjs` import keeps resolving.
+export {
+  PreprTrackingPixel,
+  type PreprTrackingPixelProps,
+} from '../react/components';
 
 /**
  * Mounts the Prepr toolbar and wires it to the Next.js router so segment/variant
@@ -39,18 +45,3 @@ export function PreprToolbar({
   return null;
 }
 
-export interface PreprTrackingPixelProps {
-  /** Prepr tracking/access token. */
-  id: string;
-  config?: PreprPixelConfig;
-}
-
-/** Loads Prepr's CDN tracking pixel on mount. Renders nothing. */
-export function PreprTrackingPixel({ id, config }: PreprTrackingPixelProps): null {
-  useEffect(() => {
-    loadTrackingPixel(id, config);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return null;
-}
