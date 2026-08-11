@@ -2,69 +2,84 @@ import { describe, expect, it } from 'vitest';
 
 import preprImageLoader from './image-loader';
 
-const load = (src: string, width = 200, quality?: number) =>
-  preprImageLoader({ src, width, quality: quality as number });
+const load = (src: string, width = 200) =>
+  preprImageLoader({ src, width, quality: undefined as unknown as number });
+
+const CDN = 'https://393qibegr87z.b-cdn.net';
 
 describe('preprImageLoader', () => {
-  it('adds width to a bare stream URL (empty `//` transform slot)', () => {
-    expect(load('https://acme.stream.prepr.io//image.jpg')).toBe(
-      'https://acme.stream.prepr.io/w_200/image.jpg',
+  it('scales width and height, holding the emitted ratio', () => {
+    expect(load(`${CDN}/w_800,h_600/b7ijwafd586-photo.jpg`, 400)).toBe(
+      `${CDN}/w_400,h_300/b7ijwafd586-photo.jpg`,
     );
   });
 
-  it('upserts width onto an existing single-option transform', () => {
-    expect(load('https://acme.stream.prepr.io/w_50/image.jpg')).toBe(
-      'https://acme.stream.prepr.io/w_200/image.jpg',
+  it('preserves the focal point across a resize', () => {
+    expect(load(`${CDN}/w_800,h_600,fx_75,fy_67/b7ijwafd586-photo.jpg`, 400)).toBe(
+      `${CDN}/w_400,h_300,fx_75,fy_67/b7ijwafd586-photo.jpg`,
     );
   });
 
-  it('drops a standalone height so width drives the resize', () => {
-    expect(load('https://acme.stream.prepr.io/w_50,h_50/image.jpg')).toBe(
-      'https://acme.stream.prepr.io/w_200/image.jpg',
+  it('rewrites a width with no height alongside it', () => {
+    expect(load(`${CDN}/w_800/b7ijwafd586-photo.jpg`, 400)).toBe(
+      `${CDN}/w_400/b7ijwafd586-photo.jpg`,
     );
   });
 
-  it('keeps height when a crop-extract preset is present', () => {
-    expect(load('https://acme.stream.prepr.io/ex_0,ey_0,ew_3888,h_100,w_3888/image.jpg')).toBe(
-      'https://acme.stream.prepr.io/ex_0,ey_0,ew_3888,h_100,w_200/image.jpg',
+  it('keeps the focal point when there is no height', () => {
+    expect(load(`${CDN}/w_800,fx_75,fy_67/b7ijwafd586-photo.jpg`, 400)).toBe(
+      `${CDN}/w_400,fx_75,fy_67/b7ijwafd586-photo.jpg`,
+    );
+  });
+
+  it('scales height regardless of option order', () => {
+    expect(load(`${CDN}/h_600,w_800/b7ijwafd586-photo.jpg`, 400)).toBe(
+      `${CDN}/h_300,w_400/b7ijwafd586-photo.jpg`,
+    );
+    expect(load(`${CDN}/w_800,fx_75,h_600/b7ijwafd586-photo.jpg`, 400)).toBe(
+      `${CDN}/w_400,fx_75,h_300/b7ijwafd586-photo.jpg`,
+    );
+  });
+
+  it('rounds a non-integer scaled height', () => {
+    // 300 * 401/800 = 150.375
+    expect(load(`${CDN}/w_800,h_300/b7ijwafd586-photo.jpg`, 401)).toBe(
+      `${CDN}/w_401,h_150/b7ijwafd586-photo.jpg`,
+    );
+  });
+
+  it('does not clamp to the emitted width', () => {
+    expect(load(`${CDN}/w_800,h_600/b7ijwafd586-photo.jpg`, 1600)).toBe(
+      `${CDN}/w_1600,h_1200/b7ijwafd586-photo.jpg`,
     );
   });
 
   it('preserves a leading asset-id segment', () => {
-    expect(load('https://acme.stream.prepr.io/1pvvjg1/w_50/image.jpg')).toBe(
-      'https://acme.stream.prepr.io/1pvvjg1/w_200/image.jpg',
+    expect(load(`${CDN}/1pvvjg1/w_800,h_600/photo.jpg`, 400)).toBe(
+      `${CDN}/1pvvjg1/w_400,h_300/photo.jpg`,
     );
   });
 
-  it('appends quality when given, replacing any existing q', () => {
-    expect(load('https://acme.stream.prepr.io/w_50,q_50/image.jpg', 200, 80)).toBe(
-      'https://acme.stream.prepr.io/w_200,q_80/image.jpg',
-    );
-  });
-
-  it('handles the Bunny CDN host family', () => {
-    expect(load('https://acme.b-cdn.net/w_50/image.jpg')).toBe(
-      'https://acme.b-cdn.net/w_200/image.jpg',
-    );
-  });
-
-  it('does not mistake an asset id or filename for a transform', () => {
-    // 1pvvjg1vm has no underscore; my_image.jpg has an unknown key.
-    expect(load('https://acme.stream.prepr.io/1pvvjg1vm/my_image.jpg')).toBe(
-      'https://acme.stream.prepr.io/1pvvjg1vm/w_200/my_image.jpg',
-    );
+  it('never rewrites the filename, even when it looks like a transform', () => {
+    // A `w_`-prefixed asset name is a name, not a transform.
+    expect(load(`${CDN}/w_960-banner.jpg`, 400)).toBe(`${CDN}/w_960-banner.jpg`);
+    expect(load(`${CDN}/w_800/w_960-banner.jpg`, 400)).toBe(`${CDN}/w_400/w_960-banner.jpg`);
   });
 
   it('preserves query strings', () => {
-    expect(load('https://acme.stream.prepr.io/w_50/image.jpg?v=2')).toBe(
-      'https://acme.stream.prepr.io/w_200/image.jpg?v=2',
+    expect(load(`${CDN}/w_800/b7ijwafd586-photo.jpg?v=2`, 400)).toBe(
+      `${CDN}/w_400/b7ijwafd586-photo.jpg?v=2`,
     );
   });
 
-  it('returns non-Prepr and unparseable URLs unchanged', () => {
-    expect(load('https://example.com/w_50/image.jpg')).toBe(
-      'https://example.com/w_50/image.jpg',
-    );
+  it('leaves a transform with no width alone', () => {
+    expect(load(`${CDN}/fx_75,fy_67/photo.jpg`)).toBe(`${CDN}/fx_75,fy_67/photo.jpg`);
+    expect(load(`${CDN}/h_600/photo.jpg`)).toBe(`${CDN}/h_600/photo.jpg`);
+  });
+
+  it('returns URLs with no transform segment unchanged', () => {
+    expect(load(`${CDN}/b7ijwafd586-photo.jpg`)).toBe(`${CDN}/b7ijwafd586-photo.jpg`);
+    expect(load('https://example.com/photo.jpg')).toBe('https://example.com/photo.jpg');
     expect(load('/local/relative.jpg')).toBe('/local/relative.jpg');
   });
 });

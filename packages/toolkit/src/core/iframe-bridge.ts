@@ -74,6 +74,10 @@ export interface IframeBridgeOptions {
  * Handshake with the parent Prepr editor and keep the store in sync with
  * editor-driven activation.
  *
+ * `store` may be null: scroll restore and the origin handshake work on their
+ * own, without a toolbar or any personalization state. See
+ * `createPreprScrollSync` for that entry point.
+ *
  * - `prepr:initVE`: accepted only from `https://<tenant>.prepr.io`, or from an
  *   exact origin in `allowedEditorOrigins` when that option is set. Restores
  *   the editor-saved scroll position and seeds preview + edit mode. `editMode`
@@ -83,7 +87,7 @@ export interface IframeBridgeOptions {
  *   editor overlay.
  */
 export function createIframeBridge(
-  store: ToolbarStore,
+  store: ToolbarStore | null,
   options: IframeBridgeOptions = {},
 ): IframeBridge {
   const allowedOrigins = options.allowedEditorOrigins;
@@ -109,7 +113,7 @@ export function createIframeBridge(
         const top = data.scrollPosition;
         setTimeout(() => window.scrollTo(0, top), 1);
       }
-      store.set({ previewMode: true, editMode: data.editMode ?? true });
+      store?.set({ previewMode: true, editMode: data.editMode ?? true });
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;
     if (data?.event === 'prepr:getScrollPosition') {

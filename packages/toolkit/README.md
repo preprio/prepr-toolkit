@@ -292,7 +292,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
 ### API Integration
 
-Use `getPreprHeaders()` to forward Prepr's personalization context to your own CMS or GraphQL fetches. Without these headers Prepr cannot resolve segments or A/B variants for the request.
+Use `getPreprHeaders()` to forward the request's Prepr personalization context to your Prepr GraphQL fetches. Prepr resolves segments and A/B variants from these headers, so a query sent without them always returns the default, unpersonalized content.
+
+The headers are set by the middleware, so they are only present on routes its matcher covers — off-matcher requests yield an empty object.
+
+The signature differs per framework: `getPreprHeaders()` is async and zero-argument on Next.js (it reads `headers()` for you), while the Astro, SvelteKit, and Nuxt builds are synchronous and take the request's `Headers`.
 
 #### With the Fetch API
 
@@ -364,7 +368,15 @@ export default {
 };
 ```
 
-The loader only rewrites URLs on `*.stream.prepr.io` and `*.b-cdn.net`; anything else passes through untouched. Existing crop and quality transforms in the URL survive the resize.
+The API emits each asset's real dimensions, so a Prepr URL renders as-is:
+
+```
+https://393qibegr87z.b-cdn.net/w_800,h_600,fx_75,fy_67/b7ijwafd586-photo.jpg
+```
+
+The loader rewrites `w_` to the width Next asks for and scales `h_` alongside it, holding the emitted ratio — for a cropped asset that ratio is the authored crop box, so the crop survives the resize. Focal points (`fx`/`fy`) are percentages and carry through unchanged, as does any other option in the segment. Quality is not a CDN option and is ignored.
+
+URLs with no transform segment pass through untouched — set `unoptimized` on those `<Image>`s.
 
 See the runnable example at `examples/nextjs` for the full source of truth.
 

@@ -27,6 +27,13 @@ export {
 } from './core/ui/toolbar-element';
 export { createToolbarStore } from './core/store';
 
+// --- Scroll sync (toolbar-free) ---------------------------------------------
+export {
+  createPreprScrollSync,
+  type PreprScrollSync,
+} from './core/scroll-sync';
+export type { IframeBridgeOptions } from './core/iframe-bridge';
+
 // --- Stega ------------------------------------------------------------------
 export { stegaClean } from './core/stega';
 

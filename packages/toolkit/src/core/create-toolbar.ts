@@ -114,8 +114,7 @@ export function createPreprToolbar(
   const hideBar = search.get(PARAM_HIDE_BAR) === 'true';
 
   if (hideBar) {
-    debug.log(`${PARAM_HIDE_BAR}=true — skipping mount`);
-    return noop();
+    debug.log(`${PARAM_HIDE_BAR}=true — no visible toolbar`);
   }
 
   const locale = resolveLocale(options);
@@ -140,10 +139,13 @@ export function createPreprToolbar(
   });
 
   // --- Element mount -------------------------------------------------------
-  // Inside an iframe the visual editor owns all visible chrome, so we skip the
-  // element entirely — every non-visual side effect below is still wired.
+  // Two cases skip the visible element while keeping every non-visual side
+  // effect below wired: inside an iframe the visual editor owns all visible
+  // chrome, and `?prepr_hide_bar=true` asks for a preview with no bar. Both
+  // still need the editor bridge, so neither may short-circuit the mount — the
+  // scroll position the editor restores travels over that bridge.
   let el: PreprToolbarElement | null = null;
-  if (!isIframe) {
+  if (!isIframe && !hideBar) {
     definePreprToolbar();
     el = document.createElement('prepr-toolbar') as PreprToolbarElement;
     document.body.appendChild(el);
