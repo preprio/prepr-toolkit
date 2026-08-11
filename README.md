@@ -199,12 +199,22 @@ The other examples follow the same pattern — `example-astro`, `example-sveltek
 
 ```bash
 pnpm install       # install all workspace dependencies
-pnpm build         # build every package and example, in dependency order
+pnpm build         # build the published packages
 pnpm test          # run the test suites
-pnpm typecheck     # typecheck everything
+pnpm typecheck     # typecheck the published packages
 ```
 
-All three commands run through Turborepo, so they are cached and only re-run what changed. To scope one to a single workspace:
+These three cover `packages/*` only — they are what CI and the release workflow run, so a release is never blocked by an example. The examples have their own commands:
+
+```bash
+pnpm build:examples       # build every example
+pnpm typecheck:examples    # typecheck every example
+pnpm check:all             # everything, packages and examples
+```
+
+Examples need their own `.env` to typecheck: `examples/sveltekit` reads `PUBLIC_PREPR_GRAPHQL_URL` through SvelteKit's `$env/static/public`, which is only declared when a `.env` supplies it. That is why they are out of the release path.
+
+All commands run through Turborepo, so they are cached and only re-run what changed. To scope one to a single workspace:
 
 ```bash
 pnpm --filter @preprio/toolkit test
@@ -212,7 +222,7 @@ pnpm --filter @preprio/toolkit test
 
 The toolbar's CSS is compiled from `.css` sources into `*.generated.ts` files by `scripts/compile-css.mjs`. This runs automatically before build, test, and typecheck — the generated files are gitignored, so a fresh clone has none until you run one of those commands.
 
-Every push to `main` and every pull request runs the same `typecheck`, `test`, and `build` via the `CI` workflow.
+Every push to `main` and every pull request runs the same `typecheck`, `test`, and `build` via the `CI` workflow — packages only. Run `pnpm check:all` locally before touching an example.
 
 ### Code comments
 

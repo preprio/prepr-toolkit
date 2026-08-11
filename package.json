@@ -3,9 +3,12 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "build": "turbo build",
-    "test": "turbo test",
-    "typecheck": "turbo typecheck"
+    "build": "turbo build --filter='./packages/*'",
+    "test": "turbo test --filter='./packages/*'",
+    "typecheck": "turbo typecheck --filter='./packages/*'",
+    "build:examples": "turbo build --filter='./examples/*'",
+    "typecheck:examples": "turbo typecheck --filter='./examples/*'",
+    "check:all": "turbo build test typecheck"
   },
   "devDependencies": {
     "turbo": "^2.10.7"
