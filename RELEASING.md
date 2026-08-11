@@ -104,6 +104,44 @@ pnpm add @preprio/toolkit@beta
 Going stable afterwards is just a normal release: bump to `0.1.0`, tag `v0.1.0`, and
 it publishes to `latest`.
 
+## Breaking changes
+
+### 0.2.0-beta.1 — one preview runtime
+
+`createPreprToolbar` and `createPreprScrollSync` were replaced by a single
+`createPreprPreview`. Both old names are **removed**, not deprecated — pre-1.0, and
+`createPreprScrollSync` had no known consumers.
+
+```diff
+-import { createPreprToolbar } from '@preprio/toolkit'
+-createPreprToolbar({ props })
++import { createPreprPreview } from '@preprio/toolkit'
++createPreprPreview({ props })
+```
+
+`createPreprScrollSync()` becomes an explicit opt-out of everything else:
+
+```diff
+-createPreprScrollSync()
++createPreprPreview({
++  options: {
++    ui: false,
++    features: { segments: false, abTesting: false, editMode: false },
++  },
++})
+```
+
+Renamed types: `PreprToolbarController` → `PreprPreviewController`,
+`CreatePreprToolbarOptions` → `CreatePreprPreviewOptions`. `PreprScrollSync` is gone.
+`PreprToolbarOptions` still exists; `PreprPreviewOptions` extends it with `ui` and
+`allowedEditorOrigins`.
+
+The `<PreprToolbar>` components are unchanged in every framework — only the core
+function was renamed. Apps using the wrappers need no changes.
+
+The minor bump (rather than another `0.1.0-beta.x`) is deliberate: the break should
+be legible in the version.
+
 ## When something goes wrong
 
 ### The tag didn't trigger anything

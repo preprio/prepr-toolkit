@@ -43,6 +43,31 @@ export interface PreprToolbarOptions {
   features?: PreprFeatures;
 }
 
+/**
+ * Options for the preview runtime. Two independent axes: `features` decides
+ * *what runs*, `ui` decides *whether the toolbar is visible*.
+ */
+export interface PreprPreviewOptions extends PreprToolbarOptions {
+  /**
+   * Mount the visible `<prepr-toolbar>` element. Default `true`.
+   *
+   * `false` keeps every non-visual side effect wired — click-to-edit, the
+   * editor bridge, scroll restore, cookies and headers — with no chrome of its
+   * own. That is how a site gets live editing, or editor scroll restore, while
+   * rendering its own UI instead of the bar.
+   *
+   * Already implied inside the editor's iframe (the CMS owns the chrome there)
+   * and by `?prepr_hide_bar=true`, so this option is for consumers who want a
+   * headless preview by their own choice.
+   */
+  ui?: boolean;
+  /**
+   * Replace the `*.prepr.io` editor-origin wildcard with an exact list.
+   * Intended for self-hosted editors; when set, the wildcard no longer applies.
+   */
+  allowedEditorOrigins?: string[];
+}
+
 export interface PreprToolbarProps {
   readonly activeSegment: string | null;
   readonly activeVariant: string | null;
@@ -54,10 +79,10 @@ export interface PreprToolbarProps {
 
 /**
  * Prop type for the framework `<PreprToolbar>` components: the toolbar data
- * plus the options bag core `createPreprToolbar` accepts.
+ * plus the options bag core `createPreprPreview` accepts.
  */
 export interface PreprToolbarComponentProps extends PreprToolbarProps {
-  options?: PreprToolbarOptions;
+  options?: PreprPreviewOptions;
 }
 
 // Header names the Prepr API expects — casing must match exactly.

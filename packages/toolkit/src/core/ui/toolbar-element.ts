@@ -22,7 +22,7 @@ const HTMLElementBase: typeof HTMLElement =
  *
  * This element is the controller: it owns interaction state (listbox open,
  * keyboard nav, tooltip positioning, outside-click) and writes back ONLY via
- * `store.set(...)`. Cookies/postMessage/navigation belong to create-toolbar.ts,
+ * `store.set(...)`. Cookies/postMessage/navigation belong to create-preview.ts,
  * which subscribes to the same store.
  *
  * State reaches `<Panel>` as a prop rather than internal Preact state, so every

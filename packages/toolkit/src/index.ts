@@ -4,6 +4,7 @@ export { VERSION } from './version';
 export type {
   PreprSegment,
   PreprToolbarOptions,
+  PreprPreviewOptions,
   PreprToolbarProps,
   PreprToolbarComponentProps,
   PreprFeatureConfig,
@@ -19,24 +20,19 @@ export type {
 export { resolveFeatures } from './core/features';
 export type { ToolbarState, ToolbarStore } from './core/store';
 
-// --- Toolbar mount controller + UI ------------------------------------------
+// --- Preview runtime + UI ---------------------------------------------------
 export {
-  createPreprToolbar,
+  createPreprPreview,
   type PreprNavigationAdapter,
-  type CreatePreprToolbarOptions,
-  type PreprToolbarController,
-} from './core/create-toolbar';
+  type CreatePreprPreviewOptions,
+  type PreprPreviewController,
+} from './core/create-preview';
 export {
   PreprToolbarElement,
   definePreprToolbar,
 } from './core/ui/toolbar-element';
 export { createToolbarStore } from './core/store';
 
-// --- Scroll sync (toolbar-free) ---------------------------------------------
-export {
-  createPreprScrollSync,
-  type PreprScrollSync,
-} from './core/scroll-sync';
 export type { IframeBridgeOptions } from './core/iframe-bridge';
 
 // --- Stega ------------------------------------------------------------------

@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { createPreprToolbar } from '../core/create-toolbar';
+import { createPreprPreview } from '../core/create-preview';
 import { loadTrackingPixel } from '../core/pixel';
 import type { PreprPixelConfig } from '../core/pixel';
 import type { PreprToolbarComponentProps } from '../core/types';
@@ -11,7 +11,7 @@ import type { PreprToolbarComponentProps } from '../core/types';
 /**
  * Mounts the Prepr toolbar and wires it to the Next.js router so segment/variant
  * switches navigate. Renders nothing — the toolbar UI is a custom element that
- * `createPreprToolbar` mounts imperatively.
+ * `createPreprPreview` mounts imperatively.
  */
 export function PreprToolbar({
   options,
@@ -23,7 +23,7 @@ export function PreprToolbar({
   // Mount-time config: the empty dep array below means changing `options`
   // after mount has no effect.
   useEffect(() => {
-    const toolbar = createPreprToolbar({
+    const toolbar = createPreprPreview({
       props,
       options,
       navigation: {

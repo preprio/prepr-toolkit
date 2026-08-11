@@ -386,6 +386,37 @@ describe('definePreprToolbar', () => {
       expect(root.querySelector('[data-prepr="variant-group"]')).not.toBeNull();
     });
 
+    it('falls back to the generic user label when segments are off', () => {
+      const store = createToolbarStore({
+        previewMode: true,
+        selectedVariant: 'B',
+        features: { segments: false, abTesting: true, editMode: true },
+      });
+      const root = mount(store).shadowRoot!;
+      const label = root.querySelector('[data-prepr="status-segment"]')!;
+
+      // Not hidden and not empty — a blank span leaves a dangling "Viewing as:".
+      expect(label.hasAttribute('hidden')).toBe(false);
+      expect(label.textContent).toBe('T[common.user]');
+      // Nothing to clear, so no X.
+      expect(
+        root.querySelector('[data-prepr="status-x"]')!.hasAttribute('hidden')
+      ).toBe(true);
+    });
+
+    it('still names the segment when segments are enabled', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        selectedSegment: 'seg-1',
+      });
+      const root = mount(store).shadowRoot!;
+
+      expect(
+        root.querySelector('[data-prepr="status-segment"]')!.textContent
+      ).toBe('Cat lovers');
+    });
+
     it('does not write variant state when abTesting is disabled', () => {
       const store = createToolbarStore({
         previewMode: true,

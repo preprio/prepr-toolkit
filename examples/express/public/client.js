@@ -55,7 +55,7 @@ function P(e2) {
   return { cleaned: e2.replace(x, ""), encoded: ((r2 = e2.match(x)) == null ? void 0 : r2[0]) || "" };
 }
 
-// ../../packages/toolkit/dist/chunk-E6PEL7LG.js
+// ../../packages/toolkit/dist/chunk-6OOGNVJ4.js
 function isEnabled(config) {
   if (typeof config === "boolean") return config;
   return config?.enabled ?? true;
@@ -1298,7 +1298,7 @@ function StatusPill({
   const { features } = state;
   const defaultSegmentName = state.segments.find((s2) => s2._id === "all_other_users")?.name ?? t3("adaptiveContent.allOtherUsers");
   let segmentLabel;
-  if (!state.previewMode) {
+  if (!state.previewMode || !features.segments) {
     segmentLabel = t3("common.user");
   } else if (state.selectedSegment !== null) {
     const seg = state.segments.find((s2) => s2._id === state.selectedSegment);
@@ -1316,15 +1316,7 @@ function StatusPill({
       onClick: () => handlers.onStatusPill(),
       children: [
         /* @__PURE__ */ u22("span", { class: "prepr-status-viewing", "data-prepr": "status-viewing", children: t3("common.viewingAs") }),
-        /* @__PURE__ */ u22(
-          "span",
-          {
-            class: "prepr-status-segment",
-            "data-prepr": "status-segment",
-            hidden: !features.segments,
-            children: segmentLabel
-          }
-        ),
+        /* @__PURE__ */ u22("span", { class: "prepr-status-segment", "data-prepr": "status-segment", children: segmentLabel }),
         /* @__PURE__ */ u22(
           "span",
           {
@@ -2023,7 +2015,7 @@ function splitPath(full) {
   if (index === -1) return [full, ""];
   return [full.slice(0, index), full.slice(index + 1)];
 }
-var debug7 = createScopedLogger("create-toolbar");
+var debug7 = createScopedLogger("create-preview");
 var controllerStores = /* @__PURE__ */ new WeakMap();
 function defaultNavigation() {
   return {
@@ -2044,7 +2036,7 @@ function resolveLocale(options) {
   }
   return "en";
 }
-function createPreprToolbar(opts) {
+function createPreprPreview(opts = {}) {
   const { props, options } = opts;
   const navigation = opts.navigation ?? defaultNavigation();
   initDebugLogger(options?.debug ?? false);
@@ -2059,26 +2051,27 @@ function createPreprToolbar(opts) {
   if (hideBar) {
     debug7.log(`${PARAM_HIDE_BAR}=true \u2014 no visible toolbar`);
   }
+  const mountUi = (options?.ui ?? true) && !isIframe && !hideBar;
   const locale = resolveLocale(options);
   const features = resolveFeatures(options?.features);
   const previewMode = getCookie(COOKIE_PREVIEW_MODE) === "true";
   const toolbarOpen = getCookie(COOKIE_TOOLBAR_OPEN) === "true";
   const cookieSegment = features.segments ? getCookie(COOKIE_SEGMENT) : null;
   const cookieVariant = features.abTesting ? getCookie(COOKIE_VARIANT) : null;
-  const rawVariant = features.abTesting ? props.activeVariant ?? cookieVariant : null;
+  const rawVariant = features.abTesting ? props?.activeVariant ?? cookieVariant : null;
   const selectedVariant = rawVariant === "A" || rawVariant === "B" ? rawVariant : null;
   const store = createToolbarStore({
     locale,
     features,
-    segments: features.segments ? buildSegments(props.segments ?? props.data ?? []) : [],
-    selectedSegment: features.segments ? props.activeSegment ?? cookieSegment ?? null : null,
+    segments: features.segments ? buildSegments(props?.segments ?? props?.data ?? []) : [],
+    selectedSegment: features.segments ? props?.activeSegment ?? cookieSegment ?? null : null,
     selectedVariant,
     previewMode,
     toolbarOpen,
     isIframe
   });
   let el = null;
-  if (!isIframe && !hideBar) {
+  if (mountUi) {
     definePreprToolbar();
     el = document.createElement("prepr-toolbar");
     document.body.appendChild(el);
@@ -2086,9 +2079,10 @@ function createPreprToolbar(opts) {
   }
   const editingEnabled = features.editMode || isIframe;
   const stega = createStegaController({
-    // The CMS deep-link tooltip is noise inside the editor; clicking the
-    // element itself requests the edit there.
-    tooltip: !isIframe,
+    // The CMS deep-link tooltip is chrome, so it follows the same decision as
+    // the bar: noise inside the editor (clicking the element itself requests
+    // the edit there), and unwanted in a headless preview that asked for no UI.
+    tooltip: mountUi,
     // In the editor, ask the parent to focus the field instead of opening a new
     // tab. Standalone previews keep the window.open behaviour.
     onEdit: ({ href, origin, id, field }) => {
@@ -2127,7 +2121,9 @@ function createPreprToolbar(opts) {
     handleChange(before, state);
   });
   syncAutoClean(store.get().previewMode);
-  const bridge = createIframeBridge(store);
+  const bridge = createIframeBridge(store, {
+    allowedEditorOrigins: options?.allowedEditorOrigins
+  });
   sendPreprEvent("getScrollPosition", { value: 0 }, {
     allowUntrustedTarget: true
   });
@@ -2142,7 +2138,7 @@ function createPreprToolbar(opts) {
       bridge.stop();
     }
     el?.remove();
-    debug7.log("toolbar destroyed");
+    debug7.log("preview destroyed");
   }
   const controller = { destroy };
   controllerStores.set(controller, store);
@@ -2200,5 +2196,5 @@ if (pixel?.id) loadTrackingPixel(pixel.id);
 var toolbarProps = readJSON("script[data-prepr-toolbar-props]");
 var toolbarOptions = readJSON("script[data-prepr-toolbar-options]");
 if (toolbarProps) {
-  createPreprToolbar({ props: toolbarProps, options: toolbarOptions ?? void 0 });
+  createPreprPreview({ props: toolbarProps, options: toolbarOptions ?? void 0 });
 }

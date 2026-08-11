@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createPreprToolbar, getControllerStore } from './create-toolbar';
-import type { PreprNavigationAdapter } from './create-toolbar';
-import type { PreprToolbarController } from './create-toolbar';
+import { createPreprPreview, getControllerStore } from './create-preview';
+import type { PreprNavigationAdapter } from './create-preview';
+import type { PreprPreviewController } from './create-preview';
 import type { ToolbarStore } from './store';
 import type { PreprToolbarProps } from './types';
 
@@ -39,6 +39,11 @@ function element(): HTMLElement | null {
   return document.querySelector('prepr-toolbar');
 }
 
+/** The stylesheet the stega controller injects on start(). */
+function stegaStyle(): HTMLStyleElement | null {
+  return document.querySelector<HTMLStyleElement>('style[data-prepr-stega]');
+}
+
 // Must be an allowlisted editor origin — the bridge rejects the handshake
 // from anything else, so events would never reach the parent.
 const PARENT_ORIGIN = 'https://editor.prepr.io';
@@ -55,13 +60,13 @@ function handshake(): void {
   postFromParent({ event: 'prepr:initVE' });
 }
 
-function storeOf(controller: PreprToolbarController): ToolbarStore {
+function storeOf(controller: PreprPreviewController): ToolbarStore {
   const store = getControllerStore(controller);
   if (!store) throw new Error('controller has no store');
   return store;
 }
 
-describe('createPreprToolbar', () => {
+describe('createPreprPreview', () => {
   let postMessageSpy: ReturnType<typeof vi.fn>;
   let reloadSpy: ReturnType<typeof vi.fn<() => void>>;
 
@@ -105,13 +110,16 @@ describe('createPreprToolbar', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    // The stega stylesheet lands in <head> and is reused if left behind, which
+    // would make a later "did it start?" assertion pass vacuously.
+    stegaStyle()?.remove();
     clearCookies();
     vi.restoreAllMocks();
   });
 
   it('mounts a <prepr-toolbar> element on the document body (top level)', () => {
     stubTopLevel();
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     expect(element()).not.toBeNull();
     controller.destroy();
   });
@@ -119,7 +127,7 @@ describe('createPreprToolbar', () => {
   it('does not mount a visible element when ?prepr_hide_bar=true is present', () => {
     stubTopLevel();
     window.history.replaceState({}, '', '/blog?prepr_hide_bar=true');
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     expect(element()).toBeNull();
     controller.destroy();
   });
@@ -131,7 +139,7 @@ describe('createPreprToolbar', () => {
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     vi.useFakeTimers();
 
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     window.dispatchEvent(
       new MessageEvent('message', {
         data: { event: 'prepr:initVE', scrollPosition: 640 },
@@ -149,7 +157,7 @@ describe('createPreprToolbar', () => {
 
   it('destroy() removes the element from the DOM (top level)', () => {
     stubTopLevel();
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     expect(element()).not.toBeNull();
     controller.destroy();
     expect(element()).toBeNull();
@@ -157,13 +165,13 @@ describe('createPreprToolbar', () => {
 
   it('does NOT render a visible <prepr-toolbar> when inside an iframe', () => {
     // Default context is iframe (see beforeEach).
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     expect(element()).toBeNull();
     controller.destroy();
   });
 
   it('still emits the loaded postMessage on mount when in an iframe', () => {
-    createPreprToolbar({ props: PROPS });
+    createPreprPreview({ props: PROPS });
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'prepr_preview_bar', event: 'loaded' }),
       '*'
@@ -172,7 +180,7 @@ describe('createPreprToolbar', () => {
   });
 
   it('emits getScrollPosition {value:0} on mount', () => {
-    createPreprToolbar({ props: PROPS });
+    createPreprPreview({ props: PROPS });
     // Fires before the bridge starts, so there is no trusted origin yet — it
     // broadcasts like `loaded` because the payload is a constant zero.
     expect(postMessageSpy).toHaveBeenCalledWith(
@@ -183,7 +191,7 @@ describe('createPreprToolbar', () => {
 
   it('segment change navigates with prepr_preview_segment and emits segment_changed', () => {
     const nav = fakeNavigation();
-    const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    const controller = createPreprPreview({ props: PROPS, navigation: nav });
     handshake();
 
     storeOf(controller).set({ selectedSegment: 'seg-2' });
@@ -205,7 +213,7 @@ describe('createPreprToolbar', () => {
 
   it('variant change navigates with prepr_preview_ab and emits variant_changed', () => {
     const nav = fakeNavigation();
-    const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    const controller = createPreprPreview({ props: PROPS, navigation: nav });
     handshake();
 
     storeOf(controller).set({ selectedVariant: 'B' });
@@ -225,7 +233,7 @@ describe('createPreprToolbar', () => {
   });
 
   it('preview-mode change sets the Prepr-Preview-Mode cookie and reloads', () => {
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     handshake();
 
     storeOf(controller).set({ previewMode: true });
@@ -246,7 +254,7 @@ describe('createPreprToolbar', () => {
     nav.currentPath = () =>
       '/blog?prepr_preview_segment=seg-1&prepr_preview_ab=B&foo=bar';
     document.cookie = 'Prepr-Preview-Mode=true;path=/';
-    const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    const controller = createPreprPreview({ props: PROPS, navigation: nav });
 
     storeOf(controller).set({ previewMode: false });
 
@@ -258,7 +266,7 @@ describe('createPreprToolbar', () => {
   it('uses navigation.reload instead of window.location.reload when provided', () => {
     const softReload = vi.fn();
     const nav = { ...fakeNavigation(), reload: softReload };
-    const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    const controller = createPreprPreview({ props: PROPS, navigation: nav });
 
     storeOf(controller).set({ previewMode: true });
 
@@ -268,7 +276,7 @@ describe('createPreprToolbar', () => {
   });
 
   it('turning preview mode off forces edit mode off', () => {
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     storeOf(controller).set({ previewMode: true, editMode: true });
     reloadSpy.mockClear();
 
@@ -279,7 +287,7 @@ describe('createPreprToolbar', () => {
   });
 
   it('toolbarOpen change persists the Prepr-Toolbar-Open cookie', () => {
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     storeOf(controller).set({ toolbarOpen: true });
     expect(document.cookie).toContain('Prepr-Toolbar-Open=true');
     controller.destroy();
@@ -287,7 +295,7 @@ describe('createPreprToolbar', () => {
 
   it('reset clears the segment and returns the variant to A; never emits personalization_reset', () => {
     const nav = fakeNavigation();
-    const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    const controller = createPreprPreview({ props: PROPS, navigation: nav });
     handshake();
 
     // Establish personalization, then reset the way the element does:
@@ -317,7 +325,7 @@ describe('createPreprToolbar', () => {
   });
 
   it('preview toggle emits exactly one preview_mode_toggled and one reload', () => {
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     handshake();
     // Preview on + edit on + toolbar open, so turning preview off has to force
     // editMode and toolbarOpen off via the coupled write.
@@ -339,7 +347,7 @@ describe('createPreprToolbar', () => {
   });
 
   it('editMode re-enable after forced-off still fires edit_mode_toggled', () => {
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     handshake();
     storeOf(controller).set({ previewMode: true });
     storeOf(controller).set({ editMode: true });
@@ -359,7 +367,7 @@ describe('createPreprToolbar', () => {
 
   it('destroy() unsubscribes so later store writes have no side effects', () => {
     const nav = fakeNavigation();
-    const controller = createPreprToolbar({ props: PROPS, navigation: nav });
+    const controller = createPreprPreview({ props: PROPS, navigation: nav });
     controller.destroy();
 
     const before = nav.navigated.length;
@@ -370,7 +378,7 @@ describe('createPreprToolbar', () => {
   // --- Editor-driven activation (iframe) -----------------------------------
 
   it('prepr:initVE seeds preview + edit mode inside an iframe', () => {
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     postFromParent({ event: 'prepr:initVE' });
     const state = storeOf(controller).get();
     expect(state.previewMode).toBe(true);
@@ -379,7 +387,7 @@ describe('createPreprToolbar', () => {
   });
 
   it('prepr:initVE with editMode:false gives preview-only', () => {
-    const controller = createPreprToolbar({ props: PROPS });
+    const controller = createPreprPreview({ props: PROPS });
     postFromParent({ event: 'prepr:initVE', editMode: false });
     const state = storeOf(controller).get();
     expect(state.previewMode).toBe(true);
@@ -387,4 +395,89 @@ describe('createPreprToolbar', () => {
     controller.destroy();
   });
 
+  // --- Headless previews (ui: false) ---------------------------------------
+
+  // Top-level throughout: in an iframe the element is skipped anyway, so these
+  // would pass without `ui` doing any work.
+  describe('ui: false', () => {
+    it('mounts no element but keeps the machinery wired', () => {
+      stubTopLevel();
+      const controller = createPreprPreview({
+        props: PROPS,
+        options: { ui: false },
+      });
+
+      expect(element()).toBeNull();
+      // The store still exists and still carries state — the thing the old
+      // scroll-sync entry point structurally could not do.
+      expect(storeOf(controller).get().segments.length).toBeGreaterThan(0);
+      controller.destroy();
+    });
+
+    it('still runs click-to-edit — the reason headless exists', () => {
+      stubTopLevel();
+      const controller = createPreprPreview({
+        props: PROPS,
+        options: { ui: false, features: { editMode: true } },
+      });
+
+      storeOf(controller).set({ previewMode: true, editMode: true });
+
+      // Starting the stega controller injects its stylesheet.
+      expect(stegaStyle()).not.toBeNull();
+      // ...and with no UI it takes the lean editor-mode path: a pointer cursor
+      // and a capture-phase click, no hover overlay.
+      expect(stegaStyle()!.textContent).toContain('cursor:pointer');
+      controller.destroy();
+    });
+
+    it('does not run click-to-edit when editMode is disabled', () => {
+      stubTopLevel();
+      const controller = createPreprPreview({
+        props: PROPS,
+        options: { ui: false, features: { editMode: false } },
+      });
+
+      storeOf(controller).set({ previewMode: true, editMode: true });
+
+      expect(stegaStyle()).toBeNull();
+      controller.destroy();
+    });
+
+    it('restores editor scroll position with no props at all', () => {
+      const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+      vi.useFakeTimers();
+
+      // The old createPreprScrollSync case, expressed through the one entry
+      // point: no props, no UI.
+      const controller = createPreprPreview({ options: { ui: false } });
+      postFromParent({ event: 'prepr:initVE', scrollPosition: 420 });
+      vi.runAllTimers();
+
+      expect(scrollTo).toHaveBeenCalledWith(0, 420);
+      vi.useRealTimers();
+      controller.destroy();
+    });
+
+    it('honours allowedEditorOrigins, which the toolbar path could not reach', () => {
+      const controller = createPreprPreview({
+        options: { ui: false, allowedEditorOrigins: ['https://cms.example.com'] },
+      });
+
+      // An origin the *.prepr.io wildcard would accept is now rejected.
+      postFromParent({ event: 'prepr:initVE' }, 'https://editor.prepr.io');
+      expect(storeOf(controller).get().previewMode).toBe(false);
+
+      postFromParent({ event: 'prepr:initVE' }, 'https://cms.example.com');
+      expect(storeOf(controller).get().previewMode).toBe(true);
+      controller.destroy();
+    });
+  });
+
+  it('mounts the element by default (ui defaults to true)', () => {
+    stubTopLevel();
+    const controller = createPreprPreview({ props: PROPS });
+    expect(element()).not.toBeNull();
+    controller.destroy();
+  });
 });

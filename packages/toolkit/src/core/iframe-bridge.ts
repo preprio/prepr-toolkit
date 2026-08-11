@@ -75,8 +75,9 @@ export interface IframeBridgeOptions {
  * editor-driven activation.
  *
  * `store` may be null: scroll restore and the origin handshake work on their
- * own, without a toolbar or any personalization state. See
- * `createPreprScrollSync` for that entry point.
+ * own, without a toolbar or any personalization state. The preview runtime
+ * always passes a real store — a headless preview (`ui: false`) still carries
+ * edit state — so the null case is for direct callers and tests.
  *
  * - `prepr:initVE`: accepted only from `https://<tenant>.prepr.io`, or from an
  *   exact origin in `allowedEditorOrigins` when that option is set. Restores

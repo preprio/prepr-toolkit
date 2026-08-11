@@ -1,7 +1,7 @@
 ---
 /**
  * Server-renders nothing visible — mounts the framework-free Prepr toolbar
- * custom element client-side via `createPreprToolbar` (core).
+ * custom element client-side via `createPreprPreview` (core).
  *
  * Ships as SOURCE: this file is compiled by the *consumer's* Astro/Vite
  * pipeline (not by this package's own `tsup` build), matching how Astro
@@ -10,7 +10,7 @@
  *
  * Astro is multi-page (MPA) by default, so the default navigation adapter
  * (core's `window.location.assign`, used when no `navigation` override is
- * passed to `createPreprToolbar`) is the correct choice here — a full page
+ * passed to `createPreprPreview`) is the correct choice here — a full page
  * navigation re-runs Astro's server-rendered output (and this component's
  * frontmatter) with the new query params, which is what drives segment /
  * A/B query-param personalization. No client-router
@@ -22,7 +22,7 @@
  * NON-inline `<script>` that Astro/Vite bundles. We deliberately do NOT use
  * `define:vars`, which would force the mount script to be `is:inline` —
  * Astro/Vite do not process bare `import` specifiers in inline scripts, so
- * `import { createPreprToolbar } from '@preprio/toolkit'` would fail to
+ * `import { createPreprPreview } from '@preprio/toolkit'` would fail to
  * resolve in the browser. A processed (bundled) module script gets its
  * imports rewritten to real, hashed module URLs, so the import resolves.
  * (JSON-serializable values only — matches `PreprToolbarProps`, a plain
@@ -50,11 +50,11 @@ const payload = {
 />
 
 <script>
-  import { createPreprToolbar } from '@preprio/toolkit';
+  import { createPreprPreview } from '@preprio/toolkit';
 
   const el = document.querySelector('script[data-prepr-toolbar-props]');
   if (el?.textContent) {
     const { props, options } = JSON.parse(el.textContent);
-    createPreprToolbar({ props, options });
+    createPreprPreview({ props, options });
   }
 </script>

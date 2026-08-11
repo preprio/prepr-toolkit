@@ -338,8 +338,10 @@ function StatusPill({
     state.segments.find(s => s._id === 'all_other_users')?.name ??
     t('adaptiveContent.allOtherUsers');
 
+  // With segments off there is no segment to name, so the pill falls back to
+  // the generic "user" label rather than rendering a dangling "Viewing as:".
   let segmentLabel: string;
-  if (!state.previewMode) {
+  if (!state.previewMode || !features.segments) {
     segmentLabel = t('common.user');
   } else if (state.selectedSegment !== null) {
     const seg = state.segments.find(s => s._id === state.selectedSegment);
@@ -359,11 +361,7 @@ function StatusPill({
       <span class="prepr-status-viewing" data-prepr="status-viewing">
         {t('common.viewingAs')}
       </span>
-      <span
-        class="prepr-status-segment"
-        data-prepr="status-segment"
-        hidden={!features.segments}
-      >
+      <span class="prepr-status-segment" data-prepr="status-segment">
         {segmentLabel}
       </span>
       <span

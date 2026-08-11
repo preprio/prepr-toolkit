@@ -7,7 +7,7 @@
  * tsup build. See the `./nuxt/components/*` export in package.json.
  */
 import { onMounted, onUnmounted } from 'vue';
-import { createPreprToolbar } from '@preprio/toolkit';
+import { createPreprPreview } from '@preprio/toolkit';
 import type { PreprToolbarComponentProps } from '@preprio/toolkit';
 
 const props = defineProps<{
@@ -18,10 +18,10 @@ const props = defineProps<{
   options?: PreprToolbarComponentProps['options'];
 }>();
 
-let controller: ReturnType<typeof createPreprToolbar> | null = null;
+let controller: ReturnType<typeof createPreprPreview> | null = null;
 
 onMounted(() => {
-  controller = createPreprToolbar({
+  controller = createPreprPreview({
     props: {
       activeSegment: props.activeSegment,
       activeVariant: props.activeVariant,

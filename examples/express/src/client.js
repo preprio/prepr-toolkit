@@ -1,4 +1,4 @@
-import { createPreprToolbar, loadTrackingPixel } from '@preprio/toolkit';
+import { createPreprPreview, loadTrackingPixel } from '@preprio/toolkit';
 
 function readJSON(selector) {
   const el = document.querySelector(selector);
@@ -17,5 +17,5 @@ const toolbarProps = readJSON('script[data-prepr-toolbar-props]');
 // Same feature config the server used, so a disabled feature is off both sides.
 const toolbarOptions = readJSON('script[data-prepr-toolbar-options]');
 if (toolbarProps) {
-  createPreprToolbar({ props: toolbarProps, options: toolbarOptions ?? undefined });
+  createPreprPreview({ props: toolbarProps, options: toolbarOptions ?? undefined });
 }

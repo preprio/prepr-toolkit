@@ -253,11 +253,11 @@ describe('components', () => {
     vi.resetModules();
   });
 
-  it('PreprToolbar mounts createPreprToolbar on effect and destroys it on unmount, returns null', async () => {
+  it('PreprToolbar mounts createPreprPreview on effect and destroys it on unmount, returns null', async () => {
     const destroy = vi.fn();
-    const createPreprToolbar = vi.fn().mockReturnValue({ destroy });
+    const createPreprPreview = vi.fn().mockReturnValue({ destroy });
 
-    vi.doMock('../core/create-toolbar', () => ({ createPreprToolbar }));
+    vi.doMock('../core/create-preview', () => ({ createPreprPreview }));
     vi.doMock('next/navigation', () => ({
       useRouter: () => ({ push: vi.fn() }),
       usePathname: () => '/blog',
@@ -276,8 +276,8 @@ describe('components', () => {
       root.render(React.createElement(PreprToolbar, props));
     });
 
-    expect(createPreprToolbar).toHaveBeenCalledTimes(1);
-    expect(createPreprToolbar).toHaveBeenCalledWith(
+    expect(createPreprPreview).toHaveBeenCalledTimes(1);
+    expect(createPreprPreview).toHaveBeenCalledWith(
       expect.objectContaining({ props })
     );
 

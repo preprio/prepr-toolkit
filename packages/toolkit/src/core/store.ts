@@ -43,7 +43,7 @@ export interface ToolbarStore {
 /**
  * Framework-free store for toolbar state. Deliberately pure: it holds state and
  * notifies subscribers, nothing else. Cookies, postMessage and reloads are side
- * effects owned by the mount controller (create-toolbar.ts).
+ * effects owned by the mount controller (create-preview.ts).
  */
 export function createToolbarStore(
   initial: Partial<ToolbarState> = {}
