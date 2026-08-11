@@ -106,7 +106,13 @@ it publishes to `latest`.
 
 ## Breaking changes
 
-### 0.2.0-beta.1 — one preview runtime
+### 0.2.0-beta.2 — one preview runtime
+
+> `v0.2.0-beta.1` was tagged but never published — its release run failed at
+> `pnpm typecheck` before the publish step. Tag deletion is blocked by a repository
+> ruleset, so that tag remains in the history pointing at a commit that never shipped.
+> `0.2.0-beta.2` is the first release of this change.
+
 
 `createPreprToolbar` and `createPreprScrollSync` were replaced by a single
 `createPreprPreview`. Both old names are **removed**, not deprecated — pre-1.0, and
