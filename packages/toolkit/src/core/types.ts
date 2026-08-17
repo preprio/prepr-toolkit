@@ -69,8 +69,18 @@ export interface PreprPreviewOptions extends PreprToolbarOptions {
 }
 
 export interface PreprToolbarProps {
-  readonly activeSegment: string | null;
-  readonly activeVariant: string | null;
+  /**
+   * Server-resolved active segment. Optional: omit it with `segments`
+   * disabled, where there is nothing to resolve. When enabled and omitted,
+   * the persisted cookie is used.
+   */
+  readonly activeSegment?: string | null;
+  /**
+   * Server-resolved active A/B variant. Optional: omit it with `abTesting`
+   * disabled, where there is nothing to resolve. When enabled and omitted,
+   * the persisted cookie is used.
+   */
+  readonly activeVariant?: string | null;
   /** Available segments to personalize on. */
   readonly segments?: readonly PreprSegment[];
   /** @deprecated Alias for `segments`. */

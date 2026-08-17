@@ -106,6 +106,45 @@ describe('react components', () => {
     container.remove();
   });
 
+  // Preview-only setups (segments and A/B testing both off) have no server-
+  // resolved segment or variant to pass. Requiring them forced consumers to
+  // write `activeSegment={null} activeVariant={null}` as pure noise, so both
+  // are optional — this pins that down at the type level and at runtime.
+  it('PreprPreview mounts with neither activeSegment nor activeVariant', async () => {
+    const destroy = vi.fn();
+    const createPreprPreview = vi.fn(() => ({ destroy }));
+    vi.doMock('../core/create-preview', () => ({ createPreprPreview }));
+
+    const React = await import('react');
+    const { default: ReactDOMClient } = await import('react-dom/client');
+    const { PreprPreview } = await import('./components');
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = ReactDOMClient.createRoot(container);
+
+    await React.act(async () => {
+      root.render(
+        React.createElement(PreprPreview, {
+          options: { features: { segments: false, abTesting: false } },
+        })
+      );
+    });
+
+    expect(createPreprPreview).toHaveBeenCalledTimes(1);
+    const [call] = createPreprPreview.mock.calls as unknown as [
+      [{ props: Record<string, unknown> }],
+    ];
+    expect(call[0].props.activeSegment).toBeUndefined();
+    expect(call[0].props.activeVariant).toBeUndefined();
+
+    await React.act(async () => {
+      root.unmount();
+    });
+    expect(destroy).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
   it('PreprTrackingPixel calls loadTrackingPixel on effect, returns null', async () => {
     const loadTrackingPixel = vi.fn();
     vi.doMock('../core/pixel', () => ({ loadTrackingPixel }));

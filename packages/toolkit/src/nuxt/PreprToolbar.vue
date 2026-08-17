@@ -11,8 +11,8 @@ import { createPreprPreview } from '@preprio/toolkit';
 import type { PreprToolbarComponentProps } from '@preprio/toolkit';
 
 const props = defineProps<{
-  activeSegment: PreprToolbarComponentProps['activeSegment'];
-  activeVariant: PreprToolbarComponentProps['activeVariant'];
+  activeSegment?: PreprToolbarComponentProps['activeSegment'];
+  activeVariant?: PreprToolbarComponentProps['activeVariant'];
   segments?: PreprToolbarComponentProps['segments'];
   data?: PreprToolbarComponentProps['data'];
   options?: PreprToolbarComponentProps['options'];

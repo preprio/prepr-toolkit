@@ -106,6 +106,28 @@ it publishes to `latest`.
 
 ## Breaking changes
 
+### 0.2.0-beta.4 — `activeSegment` / `activeVariant` are optional
+
+Not a break: it widens the type, so existing code that passes both keeps
+compiling. Preview-only apps can now omit them.
+
+```diff
+ <PreprPreview
+-  activeSegment={null}
+-  activeVariant={null}
+   options={{ features: { segments: false, abTesting: false } }}
+ />
+```
+
+Both carry a server-resolved value that only exists when the matching feature
+is on, so a preview/Visual-Editing-only integration had to pass `null` twice as
+pure ceremony. The runtime already tolerated their absence (`props?.activeSegment
+?? cookieSegment ?? null`, gated on the feature being enabled) — only the type
+demanded them. With a feature enabled and the prop omitted, the persisted cookie
+is used, as before.
+
+Affects `PreprToolbarProps`, so every framework wrapper picks it up.
+
 ### 0.2.0-beta.2 — one preview runtime
 
 > `v0.2.0-beta.1` was tagged but never published — its release run failed at
