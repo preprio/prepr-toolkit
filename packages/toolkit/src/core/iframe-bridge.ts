@@ -84,6 +84,8 @@ export interface IframeBridgeOptions {
  *   the editor-saved scroll position and seeds preview + edit mode. `editMode`
  *   defaults to true; the editor may send false for preview-only.
  * - `prepr:getScrollPosition`: replies with the current scroll offset.
+ * - Outbound `loaded` reports the resolved feature flags, so the editor can
+ *   hide controls for features the site disabled.
  * - Ctrl/Cmd+S/P/L are swallowed — the browser save/print dialogs break the
  *   editor overlay.
  */
@@ -130,9 +132,22 @@ export function createIframeBridge(
 
   return {
     start(): void {
-      // The only message sent before the handshake: no payload, and the parent
-      // origin is unknown by definition, so it is the one '*' target allowed.
-      sendPreprEvent('loaded', undefined, { allowUntrustedTarget: true });
+      // The only message sent before the handshake, so the parent origin is
+      // unknown by definition and this is the one '*' target allowed. The
+      // feature flags ride along so the editor can hide UI for features this
+      // site turned off — they are static config, not content data.
+      const features = store?.get().features;
+      sendPreprEvent(
+        'loaded',
+        features
+          ? {
+              segments: features.segments,
+              abTesting: features.abTesting,
+              editMode: features.editMode,
+            }
+          : undefined,
+        { allowUntrustedTarget: true },
+      );
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('message', onMessage);
     },

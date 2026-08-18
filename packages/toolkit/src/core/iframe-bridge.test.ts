@@ -135,3 +135,47 @@ describe('createIframeBridge — editor origin validation', () => {
     spy.mockRestore();
   });
 });
+
+describe('createIframeBridge — loaded payload', () => {
+  /** Capture the same-window `prepr_preview_bar` events `start()` fans out. */
+  function captureLoaded(store: ReturnType<typeof createToolbarStore> | null) {
+    const seen: Array<Record<string, unknown>> = [];
+    const onEvent = (e: Event): void => {
+      seen.push((e as CustomEvent).detail as Record<string, unknown>);
+    };
+    window.addEventListener('prepr_preview_bar', onEvent);
+    const bridge = createIframeBridge(store);
+    bridge.start();
+    bridge.stop();
+    window.removeEventListener('prepr_preview_bar', onEvent);
+    return seen.find(m => m.event === 'loaded');
+  }
+
+  it('reports the resolved feature flags so the editor can hide disabled UI', () => {
+    const store = createToolbarStore({
+      features: { segments: false, abTesting: true, editMode: false },
+    });
+
+    expect(captureLoaded(store)).toMatchObject({
+      event: 'loaded',
+      segments: false,
+      abTesting: true,
+      editMode: false,
+    });
+  });
+
+  it('defaults to every feature enabled', () => {
+    expect(captureLoaded(createToolbarStore())).toMatchObject({
+      segments: true,
+      abTesting: true,
+      editMode: true,
+    });
+  });
+
+  it('omits the flags entirely when there is no store', () => {
+    const loaded = captureLoaded(null);
+
+    expect(loaded).toBeDefined();
+    expect(loaded).not.toHaveProperty('segments');
+  });
+});
