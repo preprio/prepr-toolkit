@@ -137,17 +137,9 @@ export function createIframeBridge(
       // feature flags ride along so the editor can hide UI for features this
       // site turned off — they are static config, not content data.
       const features = store?.get().features;
-      sendPreprEvent(
-        'loaded',
-        features
-          ? {
-              segments: features.segments,
-              abTesting: features.abTesting,
-              editMode: features.editMode,
-            }
-          : undefined,
-        { allowUntrustedTarget: true },
-      );
+      sendPreprEvent('loaded', features ? { features } : undefined, {
+        allowUntrustedTarget: true,
+      });
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('message', onMessage);
     },

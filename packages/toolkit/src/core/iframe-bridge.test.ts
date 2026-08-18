@@ -158,17 +158,13 @@ describe('createIframeBridge — loaded payload', () => {
 
     expect(captureLoaded(store)).toMatchObject({
       event: 'loaded',
-      segments: false,
-      abTesting: true,
-      editMode: false,
+      features: { segments: false, abTesting: true, editMode: false },
     });
   });
 
   it('defaults to every feature enabled', () => {
     expect(captureLoaded(createToolbarStore())).toMatchObject({
-      segments: true,
-      abTesting: true,
-      editMode: true,
+      features: { segments: true, abTesting: true, editMode: true },
     });
   });
 
@@ -176,6 +172,6 @@ describe('createIframeBridge — loaded payload', () => {
     const loaded = captureLoaded(null);
 
     expect(loaded).toBeDefined();
-    expect(loaded).not.toHaveProperty('segments');
+    expect(loaded).not.toHaveProperty('features');
   });
 });
