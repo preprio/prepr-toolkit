@@ -359,7 +359,7 @@ describe('definePreprToolbar', () => {
   });
 
   describe('disabled features', () => {
-    it('omits the rows of disabled features but keeps the preview toggle', () => {
+    it('drops the whole adaptive section when both personalization features are off', () => {
       const store = createToolbarStore({
         segments: SEGMENTS,
         previewMode: true,
@@ -371,6 +371,19 @@ describe('definePreprToolbar', () => {
       expect(root.querySelector('[data-prepr="segment-button"]')).toBeNull();
       expect(root.querySelector('[data-prepr="variant-group"]')).toBeNull();
       expect(root.querySelector('[data-prepr="edit-group"]')).toBeNull();
+      // Preview mode only drives segments/AB, so it has nothing left to toggle.
+      expect(root.querySelector('[data-prepr="preview-group"]')).toBeNull();
+      expect(root.querySelector('[data-prepr="section-adaptive"]')).toBeNull();
+    });
+
+    it('keeps the preview toggle when one personalization feature is on', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        features: { segments: false, abTesting: true, editMode: false },
+      });
+      const root = mount(store).shadowRoot!;
+
       expect(root.querySelector('[data-prepr="preview-group"]')).not.toBeNull();
     });
 

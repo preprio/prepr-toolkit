@@ -467,13 +467,12 @@ export function Panel({
         >
           <Header t={t} onClose={handlers.onClose} />
 
-          {/* Preview mode is the master switch, not a feature, so it stays
-              even when both adaptive features are off. */}
+          {/* ponytail: preview mode only drives segments/AB, so with both off
+              the whole section is dead weight. */}
+          {showAdaptive && (
           <div class="prepr-section" data-prepr="section-adaptive">
             <span class="prepr-section-label" data-prepr="adaptive-label">
-              {showAdaptive
-                ? t('adaptiveContent.adaptiveContent')
-                : t('adaptiveContent.enablePreview')}
+              {t('adaptiveContent.adaptiveContent')}
             </span>
 
             <div class="prepr-row">
@@ -507,6 +506,7 @@ export function Panel({
               </div>
             )}
           </div>
+          )}
 
           {features.editMode && (
             <div class="prepr-section" data-prepr="section-editing">
