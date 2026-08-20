@@ -1,3 +1,7 @@
+// @vitest-environment node
+//
+// Server helpers: these read a standard `Headers` and call `fetch`, never a
+// DOM. See the note in core/middleware.test.ts.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {

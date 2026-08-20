@@ -205,7 +205,7 @@ pnpm test          # run the test suites
 pnpm typecheck     # typecheck the published packages
 ```
 
-These three cover `packages/*` only — they are what CI and the release workflow run, so a release is never blocked by an example. The examples have their own commands:
+These three cover `packages/*` only — they are what the release workflow runs, so a release is never blocked by an example. The examples have their own commands:
 
 ```bash
 pnpm build:examples       # build every example
@@ -223,7 +223,7 @@ pnpm --filter @preprio/toolkit test
 
 The toolbar's CSS is compiled from `.css` sources into `*.generated.ts` files by `scripts/compile-css.mjs`. This runs automatically before build, test, and typecheck — the generated files are gitignored, so a fresh clone has none until you run one of those commands.
 
-Every push to `main` and every pull request runs the same `typecheck`, `test`, and `build` via the `CI` workflow — packages only. Run `pnpm check:all` locally before touching an example.
+There is no CI on pushes or pull requests: checks run only when you push a `v*` tag, as the first half of the `Release` workflow. Nothing verifies a branch for you, so run `pnpm check:all` locally before you push — a mistake that reaches `main` stays invisible until someone cuts a release.
 
 ### Code comments
 
@@ -240,7 +240,7 @@ Public exports get a JSDoc block covering what the function does, when to reach 
 
 ## Releasing
 
-Push a `v*` tag and CI builds and publishes to npm. See [`RELEASING.md`](./RELEASING.md) for the full walkthrough.
+Push a `v*` tag and the `Release` workflow lints, typechecks, tests, builds and publishes to npm. See [`RELEASING.md`](./RELEASING.md) for the full walkthrough.
 
 ## How It Works
 

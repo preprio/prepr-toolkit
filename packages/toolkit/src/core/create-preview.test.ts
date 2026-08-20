@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createPreprPreview, getControllerStore } from './create-preview';
+import { createPreprPreview, getControllerStore, safeEditUrl} from './create-preview';
 import type { PreprNavigationAdapter } from './create-preview';
 import type { PreprPreviewController } from './create-preview';
 import type { ToolbarStore } from './store';
@@ -479,5 +479,35 @@ describe('createPreprPreview', () => {
     const controller = createPreprPreview({ props: PROPS });
     expect(element()).not.toBeNull();
     controller.destroy();
+  });
+});
+
+// Guards the click-to-edit href before it reaches `window.open` or the editor
+// postMessage. The value comes from stega-encoded content via a
+// `data-prepr-href` DOM attribute, so it is attacker-influenceable.
+describe('safeEditUrl', () => {
+  it('allows http and https', () => {
+    expect(safeEditUrl('https://acme.prepr.io/edit/1')).toBe(
+      'https://acme.prepr.io/edit/1'
+    );
+    expect(safeEditUrl('http://localhost:3000/edit/1')).toBe(
+      'http://localhost:3000/edit/1'
+    );
+  });
+
+  it('resolves a relative href against the document', () => {
+    expect(safeEditUrl('/edit/1')).toBe(`${window.location.origin}/edit/1`);
+  });
+
+  it('rejects script-bearing and non-http schemes', () => {
+    expect(safeEditUrl('javascript:alert(1)')).toBeNull();
+    expect(safeEditUrl('JaVaScRiPt:alert(1)')).toBeNull();
+    expect(safeEditUrl('data:text/html,<script>alert(1)</script>')).toBeNull();
+    expect(safeEditUrl('vbscript:msgbox(1)')).toBeNull();
+    expect(safeEditUrl('file:///etc/passwd')).toBeNull();
+  });
+
+  it('rejects a href that does not parse', () => {
+    expect(safeEditUrl('http://')).toBeNull();
   });
 });

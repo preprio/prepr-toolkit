@@ -1,6 +1,6 @@
 {
   "name": "@preprio/toolkit",
-  "version": "0.2.0-beta.5",
+  "version": "0.2.0-beta.6",
   "description": "Prepr personalization, A/B testing and preview toolkit for React, Next.js, Nuxt, Astro, SvelteKit and Express",
   "license": "Apache-2.0",
   "author": "Prepr B.V. (https://prepr.io)",

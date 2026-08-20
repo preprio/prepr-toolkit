@@ -1,7 +1,7 @@
 # Releasing `@preprio/toolkit`
 
 Read this before your first release. You don't publish from your laptop — you push a
-`v*` tag and CI does the rest. Your job is to get the version numbers right and push
+`v*` tag and the `Release` workflow does the rest. Your job is to get the version numbers right and push
 the tag; everything after that is automated.
 
 Current version is in `packages/toolkit/package.json`.
@@ -23,8 +23,10 @@ You only check this once. Skip it after that.
 git checkout main && git pull
 ```
 
-Make sure `git status` is clean and CI is green on `main`. If `main` is red, fix that
-first — the release workflow runs the same checks and will fail in the same place.
+Make sure `git status` is clean, then run `pnpm check:all` locally and confirm it
+passes. Nothing has verified `main` for you — the release workflow is the only thing
+that runs the checks, so anything broken surfaces after you have pushed the tag,
+which is the most annoying time to find out.
 
 ### 2. Bump the version
 
@@ -72,8 +74,9 @@ Once it's green, confirm the version is live:
 npm view @preprio/toolkit version
 ```
 
-Every push to `main` and every PR runs the same typecheck/test/build through the `CI`
-workflow, so a release failing at step 2 is unusual.
+These checks run nowhere else — there is no CI on pushes or PRs — so step 2 is the
+first time anything is verified. Run `pnpm check:all` before tagging and it will not
+surprise you.
 
 ## Beta releases
 

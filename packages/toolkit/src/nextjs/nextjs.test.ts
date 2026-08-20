@@ -5,7 +5,6 @@ import { createPreprMiddleware } from './middleware';
 
 // React 19's act() warns unless the environment opts in explicitly.
 declare global {
-  // eslint-disable-next-line no-var
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

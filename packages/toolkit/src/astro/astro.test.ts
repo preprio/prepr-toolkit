@@ -1,3 +1,7 @@
+// @vitest-environment node
+//
+// `onPreprRequest` is server-side middleware — it touches no DOM and runs on
+// the runtime's own `Headers`. See the note in core/middleware.test.ts.
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { onPreprRequest } from './index';

@@ -37,6 +37,37 @@ export interface CookieSpec {
   secure?: boolean;
 }
 
+/** Hard cap on a forwarded header value, matched to common proxy limits. */
+const MAX_HEADER_VALUE_LENGTH = 2048;
+
+/**
+ * Make a request-derived value safe to hand to `Headers.set()`.
+ *
+ * Every value forwarded to the Prepr API comes from the visitor — query params,
+ * cookies and inbound headers. The runtime `Headers` (undici under Node,
+ * workerd on the edge) rejects CR/LF with a `TypeError` rather than sanitizing,
+ * so passing one through took down the whole request with a 500 that any
+ * visitor could trigger with a crafted URL.
+ *
+ * Control characters are stripped rather than escaped: these are Prepr context
+ * values (UTM tags, segment ids, a referrer), and none has a legitimate reason
+ * to contain one. Over-long values are truncated so an outsized param cannot
+ * push the upstream request past a proxy's header limit.
+ *
+ * Note this is not defence against header injection on its own — an HTTP parser
+ * would never deliver a bare CR/LF inside a single header value. It keeps a
+ * hostile *URL*, which is entirely attacker-controlled, from crashing the
+ * middleware.
+ */
+function sanitizeHeaderValue(value: string): string {
+  // Stripping control characters is the entire point of this function.
+  // eslint-disable-next-line no-control-regex
+  const stripped = value.replace(/[\u0000-\u001f\u007f]/g, '');
+  return stripped.length > MAX_HEADER_VALUE_LENGTH
+    ? stripped.slice(0, MAX_HEADER_VALUE_LENGTH)
+    : stripped;
+}
+
 export interface PreprMiddlewareResult {
   requestHeaders: Headers;
   responseCookies: CookieSpec[];
@@ -108,6 +139,24 @@ export function processPreprRequest(
 ): PreprMiddlewareResult {
   const requestHeaders = new Headers(request.headers);
   const responseCookies: CookieSpec[] = [];
+
+  // The middleware is the only authority on `Prepr-*`. Everything below is
+  // derived from the request's cookies, query params and connection headers, so
+  // anything a client sent under this prefix is dropped first — otherwise a
+  // visitor could spoof `Prepr-Visitor-IP` to poison analytics, or set
+  // `Prepr-Segments` / `Prepr-Preview-Bar` to select personalization behind the
+  // back of the `features` gate the consumer configured.
+  //
+  // Collected before deleting: mutating a `Headers` mid-iteration is not safe.
+  const inboundPreprHeaders: string[] = [];
+  requestHeaders.forEach((_value, key) => {
+    if (key.toLowerCase().startsWith('prepr-')) {
+      inboundPreprHeaders.push(key);
+    }
+  });
+  for (const key of inboundPreprHeaders) {
+    requestHeaders.delete(key);
+  }
   const requestCookies = parseCookies(request);
   const url = new URL(request.url);
   const searchParams = url.searchParams;
@@ -130,19 +179,22 @@ export function processPreprRequest(
   for (const key of UTM_PARAMS) {
     const value = searchParams.get(key);
     if (value !== null) {
-      requestHeaders.set(`Prepr-Context-${key}`, value);
+      requestHeaders.set(`Prepr-Context-${key}`, sanitizeHeaderValue(value));
     }
   }
 
   const referer = request.headers.get('referer');
   if (referer) {
-    requestHeaders.set('Prepr-Context-initial_referral', referer);
+    requestHeaders.set(
+      'Prepr-Context-initial_referral',
+      sanitizeHeaderValue(referer)
+    );
   }
 
   // The API does device detection off this.
   const userAgent = request.headers.get('user-agent');
   if (userAgent) {
-    requestHeaders.set('Prepr-User-Agent', userAgent);
+    requestHeaders.set('Prepr-User-Agent', sanitizeHeaderValue(userAgent));
   }
 
   requestHeaders.set('Prepr-Package', `@preprio/toolkit@${opts?.version ?? VERSION}`);
@@ -150,12 +202,12 @@ export function processPreprRequest(
   // Cf-Connecting-Ip wins over x-real-ip.
   const ip = request.headers.get('Cf-Connecting-Ip') ?? request.headers.get('x-real-ip');
   if (ip) {
-    requestHeaders.set('Prepr-Visitor-IP', ip);
+    requestHeaders.set('Prepr-Visitor-IP', sanitizeHeaderValue(ip));
   }
 
   const hutkCookie = requestCookies.get(COOKIE_HUBSPOT);
   if (hutkCookie) {
-    requestHeaders.set('Prepr-Hubspot-Id', hutkCookie);
+    requestHeaders.set('Prepr-Hubspot-Id', sanitizeHeaderValue(hutkCookie));
   }
 
   let uid = requestCookies.get(COOKIE_UID);
@@ -222,20 +274,20 @@ export function processPreprRequest(
       ? requestCookies.get(COOKIE_SEGMENT)
       : undefined;
     if (segmentCookie) {
-      requestHeaders.set('Prepr-Segments', segmentCookie);
+      requestHeaders.set('Prepr-Segments', sanitizeHeaderValue(segmentCookie));
     }
 
     const abCookie = features.abTesting
       ? requestCookies.get(COOKIE_VARIANT)
       : undefined;
     if (abCookie) {
-      requestHeaders.set('Prepr-ABtesting', abCookie);
+      requestHeaders.set('Prepr-ABtesting', sanitizeHeaderValue(abCookie));
     }
   }
 
   const previewAb = features.abTesting ? searchParams.get(PARAM_VARIANT) : null;
   if (previewAb !== null) {
-    requestHeaders.set('Prepr-ABtesting', previewAb);
+    requestHeaders.set('Prepr-ABtesting', sanitizeHeaderValue(previewAb));
     if (!isLivePreview) {
       responseCookies.push({
         name: COOKIE_VARIANT,
@@ -251,7 +303,7 @@ export function processPreprRequest(
     ? searchParams.get(PARAM_SEGMENT)
     : null;
   if (previewSegment !== null) {
-    requestHeaders.set('Prepr-Segments', previewSegment);
+    requestHeaders.set('Prepr-Segments', sanitizeHeaderValue(previewSegment));
     if (!isLivePreview) {
       responseCookies.push({
         name: COOKIE_SEGMENT,

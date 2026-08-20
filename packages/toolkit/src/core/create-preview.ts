@@ -71,6 +71,31 @@ function defaultNavigation(): PreprNavigationAdapter {
   };
 }
 
+/**
+ * The CMS deep-link to open for a clicked field, or null if it is not safe.
+ *
+ * `href` arrives from stega-encoded page content and is read back off a
+ * `data-prepr-href` DOM attribute, so it is neither trusted nor tamper-proof:
+ * any script on the page can rewrite the attribute before the click. Handing
+ * that to `window.open` unchecked lets a `javascript:` or `data:` URL execute
+ * in the site's own origin.
+ *
+ * Only http(s) is allowed through. Relative hrefs resolve against the current
+ * document, which is why a base is passed — `new URL` throws without one.
+ *
+ * @internal Exported for tests only; not re-exported from the package entry.
+ */
+export function safeEditUrl(href: string): string | null {
+  try {
+    const url = new URL(href, window.location.href);
+    return url.protocol === 'https:' || url.protocol === 'http:'
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 // "all_other_users" is synthetic — the API never returns it.
 function buildSegments(data: readonly PreprSegment[]): PreprSegment[] {
   return [{ _id: 'all_other_users', name: 'All other users' }, ...data];
@@ -190,10 +215,24 @@ export function createPreprPreview(
     // In the editor, ask the parent to focus the field instead of opening a new
     // tab. Standalone previews keep the window.open behaviour.
     onEdit: ({ href, origin, id, field }) => {
+      // Validated on both branches: the editor follows this href too, so a
+      // hostile value must not be laundered through postMessage either.
+      const safeHref = href ? safeEditUrl(href) : null;
+      if (href && !safeHref) {
+        debug.warn('ignored edit request with unsupported href scheme');
+        return;
+      }
       if (isIframe) {
-        sendPreprEvent('field_edit_requested', { href, origin, id, field });
-      } else if (href) {
-        window.open(href);
+        sendPreprEvent('field_edit_requested', {
+          href: safeHref ?? undefined,
+          origin,
+          id,
+          field,
+        });
+      } else if (safeHref) {
+        // `noopener` — without it the opened tab keeps a live `window.opener`
+        // handle back to this page.
+        window.open(safeHref, '_blank', 'noopener,noreferrer');
       }
     },
   });

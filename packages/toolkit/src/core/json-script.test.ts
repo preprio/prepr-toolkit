@@ -1,3 +1,6 @@
+// @vitest-environment node
+//
+// Pure string serialization for SSR output — no DOM involved.
 import { describe, it, expect } from 'vitest';
 import { serializeForScriptTag } from './json-script';
 
