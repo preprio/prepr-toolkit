@@ -414,7 +414,53 @@ describe('definePreprToolbar', () => {
       // Not hidden and not empty — a blank span leaves a dangling "Viewing as:".
       expect(label.hasAttribute('hidden')).toBe(false);
       expect(label.textContent).toBe('T[common.user]');
-      // Nothing to clear, so no X.
+      // Variant B is still clearable even with segments off, so the X shows.
+      expect(
+        root.querySelector('[data-prepr="status-x"]')!.hasAttribute('hidden'),
+      ).toBe(false);
+    });
+
+    it('offers the clear X when only the variant is off-default', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        selectedSegment: null,
+        selectedVariant: 'B',
+        features: { segments: true, abTesting: true, editMode: true },
+      });
+      const root = mount(store).shadowRoot!;
+
+      // Variant B with no segment picked is still a non-default state to revert.
+      expect(
+        root.querySelector('[data-prepr="status-x"]')!.hasAttribute('hidden'),
+      ).toBe(false);
+    });
+
+    it('clears an off-default variant back to A from the status pill', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        selectedSegment: null,
+        selectedVariant: 'B',
+        features: { segments: true, abTesting: true, editMode: true },
+      });
+      const root = mount(store).shadowRoot!;
+
+      (root.querySelector('[data-prepr="status-pill"]') as HTMLElement).click();
+
+      expect(store.get().selectedVariant).toBe('A');
+    });
+
+    it('hides the clear X when nothing is off-default', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        selectedSegment: null,
+        selectedVariant: 'A',
+        features: { segments: true, abTesting: true, editMode: true },
+      });
+      const root = mount(store).shadowRoot!;
+
       expect(
         root.querySelector('[data-prepr="status-x"]')!.hasAttribute('hidden'),
       ).toBe(true);
