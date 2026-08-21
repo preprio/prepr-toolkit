@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 // Helper function to get all the props for the PreprToolbar component (this needs a server component)
 import { getToolbarProps, PreprToolbar } from '@preprio/toolkit/nextjs'
 import { preprGraphqlUrl } from '@/prepr-env'
+import { preprFeatures } from '@/prepr-features'
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
     // The toolkit reads no env vars of its own — you decide what "preview" means.
@@ -18,7 +19,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
     // Wrap in try-catch to handle cases where headers() can't be called during static generation
     if (isPreview && graphqlUrl) {
       try {
-        toolbarProps = await getToolbarProps(graphqlUrl)
+        toolbarProps = await getToolbarProps(graphqlUrl, preprFeatures)
       } catch (error) {
         // During static generation (e.g., for not-found pages), headers() may not be available
         // Silently fail and render without the toolbar
@@ -32,7 +33,10 @@ export default async function Layout({ children }: { children: React.ReactNode }
             {isPreview && toolbarProps ? (
                 <>
                     <Suspense fallback={null}>
-                        <PreprToolbar {...toolbarProps} />
+                        <PreprToolbar
+                            {...toolbarProps}
+                            options={{ features: preprFeatures }}
+                        />
                     </Suspense>
                     {children}
                 </>

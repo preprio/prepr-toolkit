@@ -5,18 +5,94 @@ export interface PreprSegment {
   readonly name: string;
 }
 
+/**
+ * Per-feature config. `false` is shorthand for `{ enabled: false }`; the object
+ * form leaves room for per-feature options later without a breaking change.
+ */
+export type PreprFeatureConfig = boolean | { enabled?: boolean };
+
+/** Toolkit features a consumer can turn off. Omitted keys stay enabled. */
+export interface PreprFeatures {
+  /** Segment picker, `Prepr-Segments` header and its cookie/query param. */
+  segments?: PreprFeatureConfig;
+  /** A/B variant switch, `Prepr-ABtesting` header and its cookie/query param. */
+  abTesting?: PreprFeatureConfig;
+  /**
+   * The site's own click-to-edit: the toolbar's Edit mode control, the stega
+   * tooltip/overlay and the close-edit pill.
+   *
+   * NOT a security control, and NOT the Prepr editor's live preview. When the
+   * site is framed by the editor, `prepr:initVE` still activates edit mode —
+   * that is the CMS operating inside its own iframe, not an affordance offered
+   * to visitors. See iframe-bridge.ts.
+   */
+  editMode?: PreprFeatureConfig;
+}
+
+/** `PreprFeatures` with every key resolved to a boolean. */
+export interface ResolvedPreprFeatures {
+  readonly segments: boolean;
+  readonly abTesting: boolean;
+  readonly editMode: boolean;
+}
+
 export interface PreprToolbarOptions {
   debug?: boolean;
   locale?: Locale;
+  /** Disable features app-wide. Pass the same object to the middleware. */
+  features?: PreprFeatures;
+}
+
+/**
+ * Options for the preview runtime. Two independent axes: `features` decides
+ * *what runs*, `ui` decides *whether the toolbar is visible*.
+ */
+export interface PreprPreviewOptions extends PreprToolbarOptions {
+  /**
+   * Mount the visible `<prepr-toolbar>` element. Default `true`.
+   *
+   * `false` keeps every non-visual side effect wired — click-to-edit, the
+   * editor bridge, scroll restore, cookies and headers — with no chrome of its
+   * own. That is how a site gets live editing, or editor scroll restore, while
+   * rendering its own UI instead of the bar.
+   *
+   * Already implied inside the editor's iframe (the CMS owns the chrome there)
+   * and by `?prepr_hide_bar=true`, so this option is for consumers who want a
+   * headless preview by their own choice.
+   */
+  ui?: boolean;
+  /**
+   * Replace the `*.prepr.io` editor-origin wildcard with an exact list.
+   * Intended for self-hosted editors; when set, the wildcard no longer applies.
+   */
+  allowedEditorOrigins?: string[];
 }
 
 export interface PreprToolbarProps {
-  readonly activeSegment: string | null;
-  readonly activeVariant: string | null;
+  /**
+   * Server-resolved active segment. Optional: omit it with `segments`
+   * disabled, where there is nothing to resolve. When enabled and omitted,
+   * the persisted cookie is used.
+   */
+  readonly activeSegment?: string | null;
+  /**
+   * Server-resolved active A/B variant. Optional: omit it with `abTesting`
+   * disabled, where there is nothing to resolve. When enabled and omitted,
+   * the persisted cookie is used.
+   */
+  readonly activeVariant?: string | null;
   /** Available segments to personalize on. */
   readonly segments?: readonly PreprSegment[];
   /** @deprecated Alias for `segments`. */
   readonly data?: readonly PreprSegment[];
+}
+
+/**
+ * Prop type for the framework `<PreprToolbar>` components: the toolbar data
+ * plus the options bag core `createPreprPreview` accepts.
+ */
+export interface PreprToolbarComponentProps extends PreprToolbarProps {
+  options?: PreprPreviewOptions;
 }
 
 // Header names the Prepr API expects — casing must match exactly.

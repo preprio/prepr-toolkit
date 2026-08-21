@@ -28,6 +28,7 @@ jobs:
           TAG="${GITHUB_REF_NAME#v}"
           [ "$PKG" = "$TAG" ] || { echo "Tag $TAG != package.json $PKG"; exit 1; }
 
+      - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

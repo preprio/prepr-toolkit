@@ -1,3 +1,10 @@
+// @vitest-environment node
+//
+// Server-side code: `processPreprRequest` runs on the runtime's own `Headers`
+// (undici under Node, workerd on the edge), never in a browser. The suite-wide
+// happy-dom default is wrong here — its `Headers` accepts values undici
+// rejects, so header-validation bugs pass silently under it. See
+// vitest.config.ts.
 import { describe, expect, it } from 'vitest';
 
 import { VERSION } from '../index';
@@ -8,9 +15,9 @@ function makeRequest(
   init: { headers?: Record<string, string> } = {}
 ): Request {
   // Headers are set after construction, not passed to it: `Cookie` is a
-  // forbidden request header per the Fetch spec and happy-dom strips it at
-  // construction time. Real runtimes hand middleware the incoming request
-  // directly, so the Cookie header is present there regardless.
+  // forbidden request header per the Fetch spec, so it is dropped when passed
+  // via the constructor's init. Real runtimes hand middleware the incoming
+  // request directly, so the Cookie header is present there regardless.
   const request = new Request(url);
   for (const [key, value] of Object.entries(init.headers ?? {})) {
     request.headers.set(key, value);
@@ -355,6 +362,185 @@ describe('processPreprRequest', () => {
       expect(
         result.responseCookies.find(c => c.name === 'Prepr-ABtesting')
       ).toBeUndefined();
+    });
+  });
+
+  describe('disabled features', () => {
+    it('injects no Prepr-ABtesting from cookie or query param when abTesting is off', () => {
+      const request = makeRequest('https://example.com/?prepr_preview_ab=B', {
+        headers: { cookie: 'Prepr-ABtesting=A; Prepr-Segments=vip' },
+      });
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { abTesting: false },
+      });
+
+      expect(result.requestHeaders.has('Prepr-ABtesting')).toBe(false);
+      expect(
+        result.responseCookies.find(c => c.name === 'Prepr-ABtesting')
+      ).toBeUndefined();
+      // The enabled feature is untouched.
+      expect(result.requestHeaders.get('Prepr-Segments')).toBe('vip');
+    });
+
+    it('injects no Prepr-Segments from cookie or query param when segments are off', () => {
+      const request = makeRequest(
+        'https://example.com/?prepr_preview_segment=new-seg',
+        { headers: { cookie: 'Prepr-Segments=vip; Prepr-ABtesting=A' } }
+      );
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { segments: false },
+      });
+
+      expect(result.requestHeaders.has('Prepr-Segments')).toBe(false);
+      expect(
+        result.responseCookies.find(c => c.name === 'Prepr-Segments')
+      ).toBeUndefined();
+      expect(result.requestHeaders.get('Prepr-ABtesting')).toBe('A');
+    });
+
+    it("a disabled feature's query param does not override the preview-off cookie", () => {
+      const request = makeRequest(
+        'https://example.com/?prepr_preview_segment=new-seg',
+        { headers: { cookie: 'Prepr-Preview-Mode=false' } }
+      );
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { segments: false },
+      });
+
+      expect(result.requestHeaders.has('Prepr-Preview-Bar')).toBe(false);
+    });
+
+    it('leaves preview mode itself alone — it is the master switch, not a feature', () => {
+      const request = makeRequest('https://example.com/');
+      const result = processPreprRequest(request, {
+        preview: true,
+        features: { segments: false, abTesting: false, editMode: false },
+      });
+
+      expect(result.requestHeaders.get('Prepr-Preview-Bar')).toBe('true');
+    });
+  });
+
+  // Regression: every one of these values reaches a `Headers.set()` call. The
+  // runtime `Headers` rejects CR/LF outright (undici throws `TypeError`), so an
+  // unsanitized value took the whole request down with a 500 — reachable by any
+  // visitor via a crafted URL, on every framework wrapper. Values must be
+  // stripped, never forwarded raw and never thrown on.
+  describe('hostile input in forwarded values', () => {
+    const CRLF = 'a\r\nX-Injected: 1';
+
+    it('does not throw on CRLF in any forwarded query param', () => {
+      const params = [
+        'utm_source',
+        'utm_medium',
+        'utm_term',
+        'utm_content',
+        'utm_campaign',
+        'prepr_preview_segment',
+        'prepr_preview_ab',
+      ];
+
+      for (const param of params) {
+        const request = makeRequest(
+          `https://example.com/?${param}=${encodeURIComponent(CRLF)}`
+        );
+        expect(() =>
+          processPreprRequest(request, { preview: true })
+        ).not.toThrow();
+      }
+    });
+
+    it('strips CR/LF out of forwarded UTM values', () => {
+      const request = makeRequest(
+        `https://example.com/?utm_source=${encodeURIComponent(CRLF)}`
+      );
+      const result = processPreprRequest(request);
+
+      const value = result.requestHeaders.get('Prepr-Context-utm_source');
+      expect(value).not.toMatch(/[\r\n]/);
+      expect(result.requestHeaders.get('X-Injected')).toBeNull();
+    });
+
+    it('strips CR/LF out of the preview segment and variant', () => {
+      const request = makeRequest(
+        `https://example.com/?prepr_preview_segment=${encodeURIComponent(CRLF)}`
+      );
+      const result = processPreprRequest(request, { preview: true });
+
+      expect(result.requestHeaders.get('Prepr-Segments')).not.toMatch(/[\r\n]/);
+      expect(result.requestHeaders.get('X-Injected')).toBeNull();
+    });
+
+    it('truncates absurdly long forwarded values', () => {
+      const huge = 'x'.repeat(40_000);
+      const request = makeRequest(`https://example.com/?utm_source=${huge}`);
+      const result = processPreprRequest(request);
+
+      const value = result.requestHeaders.get('Prepr-Context-utm_source');
+      expect(value!.length).toBeLessThanOrEqual(2048);
+    });
+  });
+
+  // The middleware is the sole authority on `Prepr-*`. A client that sends its
+  // own must not have it reach the Prepr API: spoofing Prepr-Visitor-IP poisons
+  // analytics, and spoofing Prepr-Segments / Prepr-Preview-Bar selects
+  // personalization behind the back of the `features` gate the consumer
+  // configured.
+  describe('inbound Prepr-* headers are not trusted', () => {
+    it('drops client-supplied Prepr-* headers', () => {
+      const request = makeRequest('https://example.com/', {
+        headers: {
+          'Prepr-Segments': 'spoofed-segment',
+          'Prepr-ABtesting': 'B',
+          'Prepr-Visitor-IP': '1.2.3.4',
+          'Prepr-Preview-Bar': 'true',
+          'Prepr-Customer-Id': 'attacker-uid',
+          'Prepr-Hubspot-Id': 'spoofed-hutk',
+          'Prepr-Context-utm_source': 'spoofed-source',
+        },
+      });
+      const result = processPreprRequest(request);
+
+      expect(result.requestHeaders.get('Prepr-Segments')).toBeNull();
+      expect(result.requestHeaders.get('Prepr-ABtesting')).toBeNull();
+      expect(result.requestHeaders.get('Prepr-Visitor-IP')).toBeNull();
+      expect(result.requestHeaders.get('Prepr-Preview-Bar')).toBeNull();
+      expect(result.requestHeaders.get('Prepr-Hubspot-Id')).toBeNull();
+      expect(result.requestHeaders.get('Prepr-Context-utm_source')).toBeNull();
+      // Recomputed from the uid cookie, never taken from the client.
+      expect(result.requestHeaders.get('Prepr-Customer-Id')).not.toBe(
+        'attacker-uid'
+      );
+    });
+
+    it('still forwards values the middleware itself derives', () => {
+      const request = makeRequest('https://example.com/?utm_source=real', {
+        headers: {
+          'Prepr-Context-utm_source': 'spoofed',
+          'Cf-Connecting-Ip': '9.9.9.9',
+          referer: 'https://ref.example.com/',
+        },
+      });
+      const result = processPreprRequest(request);
+
+      expect(result.requestHeaders.get('Prepr-Context-utm_source')).toBe('real');
+      expect(result.requestHeaders.get('Prepr-Visitor-IP')).toBe('9.9.9.9');
+      expect(result.requestHeaders.get('Prepr-Context-initial_referral')).toBe(
+        'https://ref.example.com/'
+      );
+    });
+
+    it('does not disturb non-Prepr headers', () => {
+      const request = makeRequest('https://example.com/', {
+        headers: { 'x-custom': 'keep-me', accept: 'text/html' },
+      });
+      const result = processPreprRequest(request);
+
+      expect(result.requestHeaders.get('x-custom')).toBe('keep-me');
+      expect(result.requestHeaders.get('accept')).toBe('text/html');
     });
   });
 });

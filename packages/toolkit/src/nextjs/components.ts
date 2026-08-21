@@ -3,23 +3,35 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { createPreprToolbar } from '../core/create-toolbar';
-import { loadTrackingPixel } from '../core/pixel';
-import type { PreprPixelConfig } from '../core/pixel';
-import type { PreprToolbarProps } from '../core/types';
+import { createPreprPreview } from '../core/create-preview';
+import type { PreprToolbarComponentProps } from '../core/types';
+
+// Nothing Next-specific about the pixel — it lives on the framework-free
+// `@preprio/toolkit/react` entry point and is re-exported here so the
+// long-standing `@preprio/toolkit/nextjs` import keeps resolving.
+export {
+  PreprTrackingPixel,
+  type PreprTrackingPixelProps,
+} from '../react/components';
 
 /**
  * Mounts the Prepr toolbar and wires it to the Next.js router so segment/variant
  * switches navigate. Renders nothing — the toolbar UI is a custom element that
- * `createPreprToolbar` mounts imperatively.
+ * `createPreprPreview` mounts imperatively.
  */
-export function PreprToolbar(props: PreprToolbarProps): null {
+export function PreprToolbar({
+  options,
+  ...props
+}: PreprToolbarComponentProps): null {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Mount-time config: the empty dep array below means changing `options`
+  // after mount has no effect.
   useEffect(() => {
-    const toolbar = createPreprToolbar({
+    const toolbar = createPreprPreview({
       props,
+      options,
       navigation: {
         navigate: url => router.push(url),
         currentPath: () => pathname + window.location.search,
@@ -33,18 +45,3 @@ export function PreprToolbar(props: PreprToolbarProps): null {
   return null;
 }
 
-export interface PreprTrackingPixelProps {
-  /** Prepr tracking/access token. */
-  id: string;
-  config?: PreprPixelConfig;
-}
-
-/** Loads Prepr's CDN tracking pixel on mount. Renders nothing. */
-export function PreprTrackingPixel({ id, config }: PreprTrackingPixelProps): null {
-  useEffect(() => {
-    loadTrackingPixel(id, config);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return null;
-}

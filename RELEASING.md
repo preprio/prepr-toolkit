@@ -1,7 +1,7 @@
 # Releasing `@preprio/toolkit`
 
 Read this before your first release. You don't publish from your laptop — you push a
-`v*` tag and CI does the rest. Your job is to get the version numbers right and push
+`v*` tag and the `Release` workflow does the rest. Your job is to get the version numbers right and push
 the tag; everything after that is automated.
 
 Current version is in `packages/toolkit/package.json`.
@@ -23,8 +23,10 @@ You only check this once. Skip it after that.
 git checkout main && git pull
 ```
 
-Make sure `git status` is clean and CI is green on `main`. If `main` is red, fix that
-first — the release workflow runs the same checks and will fail in the same place.
+Make sure `git status` is clean, then run `pnpm check:all` locally and confirm it
+passes. Nothing has verified `main` for you — the release workflow is the only thing
+that runs the checks, so anything broken surfaces after you have pushed the tag,
+which is the most annoying time to find out.
 
 ### 2. Bump the version
 
@@ -72,8 +74,9 @@ Once it's green, confirm the version is live:
 npm view @preprio/toolkit version
 ```
 
-Every push to `main` and every PR runs the same typecheck/test/build through the `CI`
-workflow, so a release failing at step 2 is unusual.
+These checks run nowhere else — there is no CI on pushes or PRs — so step 2 is the
+first time anything is verified. Run `pnpm check:all` before tagging and it will not
+surprise you.
 
 ## Beta releases
 
@@ -103,6 +106,72 @@ pnpm add @preprio/toolkit@beta
 
 Going stable afterwards is just a normal release: bump to `0.1.0`, tag `v0.1.0`, and
 it publishes to `latest`.
+
+## Breaking changes
+
+### 0.2.0-beta.4 — `activeSegment` / `activeVariant` are optional
+
+Not a break: it widens the type, so existing code that passes both keeps
+compiling. Preview-only apps can now omit them.
+
+```diff
+ <PreprPreview
+-  activeSegment={null}
+-  activeVariant={null}
+   options={{ features: { segments: false, abTesting: false } }}
+ />
+```
+
+Both carry a server-resolved value that only exists when the matching feature
+is on, so a preview/Visual-Editing-only integration had to pass `null` twice as
+pure ceremony. The runtime already tolerated their absence (`props?.activeSegment
+?? cookieSegment ?? null`, gated on the feature being enabled) — only the type
+demanded them. With a feature enabled and the prop omitted, the persisted cookie
+is used, as before.
+
+Affects `PreprToolbarProps`, so every framework wrapper picks it up.
+
+### 0.2.0-beta.2 — one preview runtime
+
+> `v0.2.0-beta.1` was tagged but never published — its release run failed at
+> `pnpm typecheck` before the publish step. Tag deletion is blocked by a repository
+> ruleset, so that tag remains in the history pointing at a commit that never shipped.
+> `0.2.0-beta.2` is the first release of this change.
+
+
+`createPreprToolbar` and `createPreprScrollSync` were replaced by a single
+`createPreprPreview`. Both old names are **removed**, not deprecated — pre-1.0, and
+`createPreprScrollSync` had no known consumers.
+
+```diff
+-import { createPreprToolbar } from '@preprio/toolkit'
+-createPreprToolbar({ props })
++import { createPreprPreview } from '@preprio/toolkit'
++createPreprPreview({ props })
+```
+
+`createPreprScrollSync()` becomes an explicit opt-out of everything else:
+
+```diff
+-createPreprScrollSync()
++createPreprPreview({
++  options: {
++    ui: false,
++    features: { segments: false, abTesting: false, editMode: false },
++  },
++})
+```
+
+Renamed types: `PreprToolbarController` → `PreprPreviewController`,
+`CreatePreprToolbarOptions` → `CreatePreprPreviewOptions`. `PreprScrollSync` is gone.
+`PreprToolbarOptions` still exists; `PreprPreviewOptions` extends it with `ui` and
+`allowedEditorOrigins`.
+
+The `<PreprToolbar>` components are unchanged in every framework — only the core
+function was renamed. Apps using the wrappers need no changes.
+
+The minor bump (rather than another `0.1.0-beta.x`) is deliberate: the break should
+be legible in the version.
 
 ## When something goes wrong
 

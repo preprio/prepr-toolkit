@@ -1,6 +1,6 @@
 # Prepr Toolkit
 
-A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). One vanilla core, with thin wrappers for Next.js, Nuxt, Astro, and SvelteKit.
+A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). One vanilla core, with thin wrappers for React, Next.js, Nuxt, Astro, and SvelteKit.
 
 This is the monorepo. The published package lives in [`packages/toolkit`](./packages/toolkit) and has its own [README](./packages/toolkit/README.md) with the complete API reference.
 
@@ -104,7 +104,8 @@ A pnpm workspace (`packages/*`, `examples/*`) built with Turborepo.
 
 | Entry point | Peer dependencies | What it gives you |
 | --- | --- | --- |
-| `@preprio/toolkit` | none | Vanilla core: `processPreprRequest`, `createPreprToolbar`, `createPreprScrollSync`, the pixel facade, header-based server helpers. |
+| `@preprio/toolkit` | none | Vanilla core: `processPreprRequest`, `createPreprPreview`, the pixel facade, header-based server helpers. |
+| `@preprio/toolkit/react` | `react` >= 17, `react-dom` >= 17 | `PreprPreview` and `PreprTrackingPixel` for React without a framework — Vite, React Router, TanStack Router. |
 | `@preprio/toolkit/nextjs` | `next` >= 13, `react` >= 17, `react-dom` >= 17 | Middleware, `next/headers` server helpers, React components. |
 | `@preprio/toolkit/nextjs/image-loader` | `next` | Custom `next/image` loader for Prepr's stream CDN. |
 | `@preprio/toolkit/astro` | none | Astro middleware and `Headers`-based server helpers. |
@@ -136,6 +137,45 @@ Deciding *when* that is true is yours — the toolkit never inspects the environ
 
 `getToolbarProps` follows the same gate: outside preview mode it returns empty props immediately, with no header read and no API call — which is why it is safe to call unconditionally in a root layout.
 
+### Feature flags
+
+Preview mode is the master switch. Within it, each feature can be turned off individually with a `features` object. Every feature is **on by default** — omit the object entirely and nothing changes.
+
+```ts
+import type { PreprFeatures } from '@preprio/toolkit'
+
+export const preprFeatures: PreprFeatures = {
+  segments: false,               // or { enabled: false }
+  abTesting: true,
+  editMode: { enabled: false },
+}
+```
+
+Pass the **same object to both sides** — the middleware and the toolbar. Each enforces its own half, so a feature disabled in only one place is still half-on:
+
+```ts
+// server
+createPreprMiddleware(request, { preview: true, features: preprFeatures })
+getToolbarProps(graphqlUrl, preprFeatures)
+
+// client
+<PreprToolbar {...toolbarProps} options={{ features: preprFeatures }} />
+```
+
+The examples keep this in one module (`src/prepr-features.ts`, or `shared/prepr-features.ts` in Nuxt) that both sides import.
+
+| Feature | Off means |
+| --- | --- |
+| `segments` | No segment picker. No `Prepr-Segments` header, from cookie **or** `?prepr_preview_segment`. No segment cookie written. The `_Segments` API call is skipped, saving a round-trip per page. |
+| `abTesting` | No A/B control or variant badge. No `Prepr-ABtesting` header, from cookie **or** `?prepr_preview_ab`. No variant cookie written. |
+| `editMode` | No Edit mode control, no click-to-edit overlay, no close-edit pill. |
+
+Disabling a feature also stops its `segment_changed` / `variant_changed` events, and the Reset button ignores it — so state the user cannot see is never rewritten.
+
+**`editMode` does not disable the Prepr visual editor.** It governs your site's own click-to-edit affordance. When the Prepr editor frames your site it drives edit mode over its own `postMessage` handshake, which stays working regardless — that is the CMS operating inside its own iframe, not something offered to your visitors. Treat `editMode: false` as a UI choice, never as a security control.
+
+Feature flags govern the toolbar and the middleware. The scroll-sync entry point below carries no personalization state, so nothing there to disable.
+
 ## Running the Examples
 
 Each example needs its own `.env`. Copy the template and fill in your token:
@@ -160,12 +200,22 @@ The other examples follow the same pattern — `example-astro`, `example-sveltek
 
 ```bash
 pnpm install       # install all workspace dependencies
-pnpm build         # build every package and example, in dependency order
+pnpm build         # build the published packages
 pnpm test          # run the test suites
-pnpm typecheck     # typecheck everything
+pnpm typecheck     # typecheck the published packages
 ```
 
-All three commands run through Turborepo, so they are cached and only re-run what changed. To scope one to a single workspace:
+These three cover `packages/*` only — they are what the release workflow runs, so a release is never blocked by an example. The examples have their own commands:
+
+```bash
+pnpm build:examples       # build every example
+pnpm typecheck:examples    # typecheck every example
+pnpm check:all             # everything, packages and examples
+```
+
+Examples need their own `.env` to typecheck: `examples/sveltekit` reads `PUBLIC_PREPR_GRAPHQL_URL` through SvelteKit's `$env/static/public`, which is only declared when a `.env` supplies it. That is why they are out of the release path.
+
+All commands run through Turborepo, so they are cached and only re-run what changed. To scope one to a single workspace:
 
 ```bash
 pnpm --filter @preprio/toolkit test
@@ -173,7 +223,7 @@ pnpm --filter @preprio/toolkit test
 
 The toolbar's CSS is compiled from `.css` sources into `*.generated.ts` files by `scripts/compile-css.mjs`. This runs automatically before build, test, and typecheck — the generated files are gitignored, so a fresh clone has none until you run one of those commands.
 
-Every push to `main` and every pull request runs the same `typecheck`, `test`, and `build` via the `CI` workflow.
+There is no CI on pushes or pull requests: checks run only when you push a `v*` tag, as the first half of the `Release` workflow. Nothing verifies a branch for you, so run `pnpm check:all` locally before you push — a mistake that reaches `main` stays invisible until someone cuts a release.
 
 ### Code comments
 
@@ -184,13 +234,13 @@ This is a published package: every comment ships to npm and shows up in consumer
 - **No conversational voice.** Not "as we discussed", "for now", "you asked for", or first-person narration. State the fact in the present tense.
 - **No `TODO`/`FIXME`/`HACK`.** Open work belongs in an issue, where it is tracked and searchable, not in a published `.d.ts`.
 - **Describe the code, not its history.** "Batches every param write into a single call" ages well; "changed this to fix the reset bug" is meaningless to a reader who never saw the old version.
-- **Reference public API, not file layout.** Consumers can see `createPreprScrollSync`; they cannot see `src/core/create-toolbar.ts`. Internal cross-references are fine in `.ts` sources but should not leak into exported doc comments.
+- **Reference public API, not file layout.** Consumers can see `createPreprPreview`; they cannot see `src/core/create-preview.ts`. Internal cross-references are fine in `.ts` sources but should not leak into exported doc comments.
 
 Public exports get a JSDoc block covering what the function does, when to reach for it, and any gotcha a caller cannot infer from the signature.
 
 ## Releasing
 
-Push a `v*` tag and CI builds and publishes to npm. See [`RELEASING.md`](./RELEASING.md) for the full walkthrough.
+Push a `v*` tag and the `Release` workflow lints, typechecks, tests, builds and publishes to npm. See [`RELEASING.md`](./RELEASING.md) for the full walkthrough.
 
 ## How It Works
 
@@ -221,36 +271,53 @@ With edit mode enabled the toolkit scans for stega-encoded content, strips the i
 
 Stega cleaning is automatic — no `vercelStegaSplit` calls or hand-managed hidden spans required.
 
-### Scroll position without the toolbar
+### Headless preview (no toolbar UI)
 
-Inside the live-preview iframe the editor saves and restores the reader's scroll position over the same `postMessage` bridge. **This is already included in `createPreprToolbar` — if you mount the toolbar, you get it, with no extra call and no configuration.**
+`createPreprPreview` is the single client entry point, with two independent axes:
 
-`?prepr_hide_bar=true` suppresses the visible bar only; the bridge stays connected, so scroll position is still restored. The same is true inside the editor iframe, where the toolbar renders no chrome of its own.
+- **`features`** — *what runs*: segments, A/B testing, click-to-edit.
+- **`ui`** — *whether the toolbar is visible*. Defaults to `true`.
 
-For previews that want scroll restore but *no* personalization UI — no segments, no A/B variants, no click-to-edit, no `<prepr-toolbar>` element — mount the bridge on its own:
+`ui: false` keeps every non-visual side effect wired — click-to-edit, the editor bridge, scroll restore, cookies and headers — while rendering no chrome of its own. That is how a site gets live editing, or editor scroll restore, alongside its own UI instead of the Prepr bar.
 
 ```js
-import { createPreprScrollSync } from '@preprio/toolkit'
+import { createPreprPreview } from '@preprio/toolkit'
 
-const scrollSync = createPreprScrollSync()
+// Live editing, no bar:
+const preview = createPreprPreview({
+  options: { ui: false, features: { editMode: true } },
+})
 
 // Later, on teardown (SPA route change, component unmount):
-scrollSync.destroy()
+preview.destroy()
+```
+
+`props` is optional — a headless preview that only wants click-to-edit or scroll restore has no segment list to pass.
+
+Scroll restore comes free with any preview, headless or not. Inside the live-preview iframe the editor saves and restores the reader's position over the same `postMessage` bridge, with no extra call and no configuration. For scroll restore and nothing else:
+
+```js
+createPreprPreview({
+  options: {
+    ui: false,
+    features: { segments: false, abTesting: false, editMode: false },
+  },
+})
 ```
 
 Framework-agnostic: it uses only `window`, `document` and `postMessage`, so it works in React, Vue, Svelte, Astro or plain HTML. It lives on the root `@preprio/toolkit` entry point — the framework subpaths are server/middleware-only and do not re-export it.
 
+`?prepr_hide_bar=true` and the editor's own iframe both imply `ui: false`; the bridge stays connected in each case, so scroll position is still restored. Outside an iframe the bridge is a no-op, so mounting unconditionally is safe.
+
 Self-hosted editors can pass an exact origin list, which replaces the `*.prepr.io` wildcard:
 
 ```js
-createPreprScrollSync({ allowedEditorOrigins: ['https://cms.example.com'] })
+createPreprPreview({ options: { allowedEditorOrigins: ['https://cms.example.com'] } })
 ```
 
-Outside an iframe it is a no-op, so mounting it unconditionally is safe.
+**Call it once per page.** Two `createPreprPreview` calls start two bridges and announce the preview twice.
 
-**Use one or the other, not both.** `createPreprToolbar` and `createPreprScrollSync` are separate entry points into the same bridge. Calling both on one page starts two bridges and announces the preview twice; pick `createPreprToolbar` whenever you want the toolbar at all.
-
-Both paths validate the parent origin identically — the handshake is only accepted from `https://<tenant>.prepr.io`, or from `allowedEditorOrigins` when set.
+The handshake is only ever accepted from `https://<tenant>.prepr.io`, or from `allowedEditorOrigins` when set.
 
 ## Troubleshooting
 

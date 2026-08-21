@@ -1,3 +1,7 @@
+// @vitest-environment node
+//
+// `handlePreprRequest` is Nitro server middleware — no DOM, and it runs on the
+// runtime's own `Headers`. See the note in core/middleware.test.ts.
 import { describe, expect, it } from 'vitest';
 
 import {

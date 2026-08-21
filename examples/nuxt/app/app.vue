@@ -2,6 +2,7 @@
 import { extractAccessToken, getToolbarProps } from '@preprio/toolkit/nuxt';
 import PreprToolbar from '@preprio/toolkit/nuxt/components/PreprToolbar';
 import PreprTrackingPixel from '@preprio/toolkit/nuxt/components/PreprTrackingPixel';
+import { preprFeatures } from '#shared/prepr-features';
 
 const config = useRuntimeConfig();
 const accessToken = extractAccessToken(config.public.preprGraphqlUrl);
@@ -17,7 +18,8 @@ const { data: toolbarProps } = await useAsyncData('prepr-toolbar', async () => {
   try {
     return await getToolbarProps(
       new Headers(requestHeaders as Record<string, string>),
-      config.public.preprGraphqlUrl
+      config.public.preprGraphqlUrl,
+      preprFeatures
     );
   } catch (error) {
     console.error('Failed to fetch toolbar props:', error);
@@ -30,5 +32,9 @@ const { data: toolbarProps } = await useAsyncData('prepr-toolbar', async () => {
   <NavBar />
   <NuxtPage />
   <PreprTrackingPixel v-if="accessToken" :id="accessToken" />
-  <PreprToolbar v-if="toolbarProps" v-bind="toolbarProps" />
+  <PreprToolbar
+    v-if="toolbarProps"
+    v-bind="toolbarProps"
+    :options="{ features: preprFeatures }"
+  />
 </template>

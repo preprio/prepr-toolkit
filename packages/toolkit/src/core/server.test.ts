@@ -1,3 +1,7 @@
+// @vitest-environment node
+//
+// Server helpers: these read a standard `Headers` and call `fetch`, never a
+// DOM. See the note in core/middleware.test.ts.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -276,6 +280,46 @@ describe('getToolbarPropsFromHeaders', () => {
       segments: [{ _id: 's1', name: 'VIP' }],
       data: [{ _id: 's1', name: 'VIP' }],
     });
+  });
+
+  it('skips the segments fetch entirely when segments are disabled', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const headers = makeHeaders({
+      'Prepr-Segments': 'vip',
+      'Prepr-ABtesting': 'A',
+    });
+
+    const props = await getToolbarPropsFromHeaders(
+      headers,
+      'https://graphql.prepr.io/abc123',
+      { segments: false }
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(props).toEqual({
+      activeSegment: null,
+      activeVariant: 'A',
+      segments: [],
+      data: [],
+    });
+  });
+
+  it('reports no active variant when abTesting is disabled', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { _Segments: [] } }), { status: 200 })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const props = await getToolbarPropsFromHeaders(
+      makeHeaders({ 'Prepr-Segments': 'vip', 'Prepr-ABtesting': 'B' }),
+      'https://graphql.prepr.io/abc123',
+      { abTesting: false }
+    );
+
+    expect(props.activeVariant).toBeNull();
+    expect(props.activeSegment).toBe('vip');
   });
 
   it('returns empty data (without throwing) when the segments fetch fails', async () => {

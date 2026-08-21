@@ -6,6 +6,7 @@ import PreprTrackingPixel from '@preprio/toolkit/astro/components/PreprTrackingP
 import { getToolbarProps } from '@preprio/toolkit/astro';
 import { extractAccessToken } from '@preprio/toolkit';
 import { PREPR_GRAPHQL_URL } from '../lib/prepr';
+import { preprFeatures } from '../lib/prepr-features';
 
 interface Props {
   title?: string;
@@ -19,7 +20,11 @@ const isPreview = import.meta.env.DEV;
 let toolbarProps = null;
 if (isPreview) {
   try {
-    toolbarProps = await getToolbarProps(Astro.request.headers, PREPR_GRAPHQL_URL);
+    toolbarProps = await getToolbarProps(
+      Astro.request.headers,
+      PREPR_GRAPHQL_URL,
+      preprFeatures
+    );
   } catch (error) {
     console.error('Failed to fetch toolbar props:', error);
   }
@@ -38,7 +43,7 @@ const accessToken = extractAccessToken(PREPR_GRAPHQL_URL);
     <NavBar />
     <slot />
     {isPreview && toolbarProps && (
-      <PreprToolbar {...toolbarProps} />
+      <PreprToolbar {...toolbarProps} options={{ features: preprFeatures }} />
     )}
   </body>
 </html>

@@ -29,10 +29,11 @@ function toWebRequest(req) {
  * resulting cookies on the response, and exposes the forward-headers to
  * downstream handlers as `res.locals.preprHeaders`.
  */
-export function preprMiddleware({ preview } = {}) {
+export function preprMiddleware({ preview, features } = {}) {
   return (req, res, next) => {
     const { requestHeaders, responseCookies } = processPreprRequest(toWebRequest(req), {
       preview,
+      features,
     });
     for (const cookie of responseCookies) {
       res.cookie(cookie.name, cookie.value, { maxAge: cookie.maxAge * 1000, path: cookie.path });
@@ -57,9 +58,9 @@ export async function fetchPage(slug, preprHeaders, graphqlUrl) {
 }
 
 /** Preview-only: resolve the toolbar props, or null (logged) on failure. */
-export async function getToolbarProps(preprHeaders, graphqlUrl) {
+export async function getToolbarProps(preprHeaders, graphqlUrl, features) {
   try {
-    return await getToolbarPropsFromHeaders(preprHeaders, graphqlUrl);
+    return await getToolbarPropsFromHeaders(preprHeaders, graphqlUrl, features);
   } catch (err) {
     console.error('toolbar props failed:', err);
     return null;

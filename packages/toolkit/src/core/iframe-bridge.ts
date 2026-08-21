@@ -75,14 +75,17 @@ export interface IframeBridgeOptions {
  * editor-driven activation.
  *
  * `store` may be null: scroll restore and the origin handshake work on their
- * own, without a toolbar or any personalization state. See
- * `createPreprScrollSync` for that entry point.
+ * own, without a toolbar or any personalization state. The preview runtime
+ * always passes a real store — a headless preview (`ui: false`) still carries
+ * edit state — so the null case is for direct callers and tests.
  *
  * - `prepr:initVE`: accepted only from `https://<tenant>.prepr.io`, or from an
  *   exact origin in `allowedEditorOrigins` when that option is set. Restores
  *   the editor-saved scroll position and seeds preview + edit mode. `editMode`
  *   defaults to true; the editor may send false for preview-only.
  * - `prepr:getScrollPosition`: replies with the current scroll offset.
+ * - Outbound `loaded` reports the resolved feature flags, so the editor can
+ *   hide controls for features the site disabled.
  * - Ctrl/Cmd+S/P/L are swallowed — the browser save/print dialogs break the
  *   editor overlay.
  */
@@ -113,6 +116,10 @@ export function createIframeBridge(
         const top = data.scrollPosition;
         setTimeout(() => window.scrollTo(0, top), 1);
       }
+      // Deliberately ignores `features.editMode`: that option gates the site's
+      // own click-to-edit affordance, not the CMS driving its own preview
+      // iframe. A consumer who disabled edit mode still gets a working visual
+      // editor. See the JSDoc on PreprFeatures.editMode.
       store?.set({ previewMode: true, editMode: data.editMode ?? true });
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;
@@ -125,9 +132,14 @@ export function createIframeBridge(
 
   return {
     start(): void {
-      // The only message sent before the handshake: no payload, and the parent
-      // origin is unknown by definition, so it is the one '*' target allowed.
-      sendPreprEvent('loaded', undefined, { allowUntrustedTarget: true });
+      // The only message sent before the handshake, so the parent origin is
+      // unknown by definition and this is the one '*' target allowed. The
+      // feature flags ride along so the editor can hide UI for features this
+      // site turned off — they are static config, not content data.
+      const features = store?.get().features;
+      sendPreprEvent('loaded', features ? { features } : undefined, {
+        allowUntrustedTarget: true,
+      });
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('message', onMessage);
     },

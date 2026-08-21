@@ -1,10 +1,17 @@
-import type { PreprEventType } from './types';
+import type { PreprEventType, ResolvedPreprFeatures } from './types';
 
 export interface PreprEventData {
   readonly segment?: string;
   readonly variant?: string;
   readonly editMode?: boolean;
-  readonly [key: string]: string | boolean | number | undefined;
+  /** Which toolkit features this site has enabled. Sent with `loaded`. */
+  readonly features?: ResolvedPreprFeatures;
+  readonly [key: string]:
+    | string
+    | boolean
+    | number
+    | ResolvedPreprFeatures
+    | undefined;
 }
 
 /**

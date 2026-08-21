@@ -358,6 +358,115 @@ describe('definePreprToolbar', () => {
     expect(tooltip.hasAttribute('hidden')).toBe(true);
   });
 
+  describe('disabled features', () => {
+    it('drops the whole adaptive section when both personalization features are off', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        features: { segments: false, abTesting: false, editMode: false },
+      });
+      const el = mount(store);
+      const root = el.shadowRoot!;
+
+      expect(root.querySelector('[data-prepr="segment-button"]')).toBeNull();
+      expect(root.querySelector('[data-prepr="variant-group"]')).toBeNull();
+      expect(root.querySelector('[data-prepr="edit-group"]')).toBeNull();
+      // Preview mode only drives segments/AB, so it has nothing left to toggle.
+      expect(root.querySelector('[data-prepr="preview-group"]')).toBeNull();
+      expect(root.querySelector('[data-prepr="section-adaptive"]')).toBeNull();
+    });
+
+    it('keeps the preview toggle when one personalization feature is on', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        features: { segments: false, abTesting: true, editMode: false },
+      });
+      const root = mount(store).shadowRoot!;
+
+      expect(root.querySelector('[data-prepr="preview-group"]')).not.toBeNull();
+    });
+
+    it('keeps the enabled feature rendered', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        features: { segments: false, abTesting: true, editMode: false },
+      });
+      const root = mount(store).shadowRoot!;
+
+      expect(root.querySelector('[data-prepr="segment-button"]')).toBeNull();
+      expect(root.querySelector('[data-prepr="variant-group"]')).not.toBeNull();
+    });
+
+    it('falls back to the generic user label when segments are off', () => {
+      const store = createToolbarStore({
+        previewMode: true,
+        selectedVariant: 'B',
+        features: { segments: false, abTesting: true, editMode: true },
+      });
+      const root = mount(store).shadowRoot!;
+      const label = root.querySelector('[data-prepr="status-segment"]')!;
+
+      // Not hidden and not empty — a blank span leaves a dangling "Viewing as:".
+      expect(label.hasAttribute('hidden')).toBe(false);
+      expect(label.textContent).toBe('T[common.user]');
+      // Nothing to clear, so no X.
+      expect(
+        root.querySelector('[data-prepr="status-x"]')!.hasAttribute('hidden')
+      ).toBe(true);
+    });
+
+    it('still names the segment when segments are enabled', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        selectedSegment: 'seg-1',
+      });
+      const root = mount(store).shadowRoot!;
+
+      expect(
+        root.querySelector('[data-prepr="status-segment"]')!.textContent
+      ).toBe('Cat lovers');
+    });
+
+    it('does not write variant state when abTesting is disabled', () => {
+      const store = createToolbarStore({
+        previewMode: true,
+        selectedVariant: 'A',
+        features: { segments: true, abTesting: false, editMode: true },
+      });
+      const el = mount(store);
+
+      // The control is not rendered, so drive the handler the way the iframe
+      // bridge or a programmatic caller would.
+      el.shadowRoot!
+        .querySelector<HTMLElement>('[data-prepr="variant"][data-value="B"]')
+        ?.click();
+
+      expect(store.get().selectedVariant).toBe('A');
+    });
+
+    it('resets only the enabled features', () => {
+      const store = createToolbarStore({
+        segments: SEGMENTS,
+        previewMode: true,
+        selectedSegment: 'seg-1',
+        selectedVariant: 'B',
+        features: { segments: true, abTesting: false, editMode: true },
+      });
+      const el = mount(store);
+
+      el.shadowRoot!
+        .querySelector<HTMLButtonElement>('[data-prepr="reset"]')!
+        .click();
+
+      expect(store.get().selectedSegment).toBeNull();
+      // Untouched: abTesting is off, so its state must not be rewritten.
+      expect(store.get().selectedVariant).toBe('B');
+    });
+  });
+
   it('unsubscribes from the store when disconnected', () => {
     const store = createToolbarStore({});
     const el = mount(store);

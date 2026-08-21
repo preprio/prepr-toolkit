@@ -7,14 +7,21 @@
    * our tsup build. See the `./sveltekit/components/*` export in package.json.
    */
   import { onMount } from 'svelte';
-  import { createPreprToolbar } from '@preprio/toolkit';
-  import type { PreprToolbarProps } from '@preprio/toolkit';
+  import { createPreprPreview } from '@preprio/toolkit';
+  import type { PreprToolbarComponentProps } from '@preprio/toolkit';
 
-  let { activeSegment, activeVariant, data, segments }: PreprToolbarProps = $props();
+  let {
+    activeSegment,
+    activeVariant,
+    data,
+    segments,
+    options,
+  }: PreprToolbarComponentProps = $props();
 
   onMount(() => {
-    const controller = createPreprToolbar({
+    const controller = createPreprPreview({
       props: { activeSegment, activeVariant, data, segments },
+      options,
     });
     return () => controller.destroy();
   });

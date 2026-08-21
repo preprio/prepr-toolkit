@@ -4,7 +4,7 @@
   import PreprToolbar from '@preprio/toolkit/sveltekit/components/PreprToolbar';
   import PreprTrackingPixel from '@preprio/toolkit/sveltekit/components/PreprTrackingPixel';
   import { extractAccessToken } from '@preprio/toolkit/sveltekit';
-  import { preprGraphqlUrl } from '$lib/prepr';
+  import { preprFeatures, preprGraphqlUrl } from '$lib/prepr';
   import type { Snippet } from 'svelte';
   import type { LayoutData } from './$types';
 
@@ -28,5 +28,5 @@
   <PreprTrackingPixel id={accessToken} />
 {/if}
 {#if data.toolbarProps}
-  <PreprToolbar {...data.toolbarProps} />
+  <PreprToolbar {...data.toolbarProps} options={{ features: preprFeatures }} />
 {/if}

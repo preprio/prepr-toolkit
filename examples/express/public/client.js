@@ -55,7 +55,23 @@ function P(e2) {
   return { cleaned: e2.replace(x, ""), encoded: ((r2 = e2.match(x)) == null ? void 0 : r2[0]) || "" };
 }
 
-// ../../packages/toolkit/dist/chunk-NLQIRN5O.js
+// ../../packages/toolkit/dist/chunk-6OOGNVJ4.js
+function isEnabled(config) {
+  if (typeof config === "boolean") return config;
+  return config?.enabled ?? true;
+}
+function resolveFeatures(features) {
+  return {
+    segments: isEnabled(features?.segments),
+    abTesting: isEnabled(features?.abTesting),
+    editMode: isEnabled(features?.editMode)
+  };
+}
+var ALL_FEATURES_ENABLED = Object.freeze({
+  segments: true,
+  abTesting: true,
+  editMode: true
+});
 var trustedParentOrigin = null;
 function setTrustedParentOrigin(origin) {
   trustedParentOrigin = origin;
@@ -735,7 +751,8 @@ var DEFAULT_STATE = {
   editMode: false,
   previewMode: false,
   toolbarOpen: false,
-  isIframe: false
+  isIframe: false,
+  features: ALL_FEATURES_ENABLED
 };
 function createToolbarStore(initial = {}) {
   let state = { ...DEFAULT_STATE, ...initial };
@@ -1278,9 +1295,10 @@ function StatusPill({
   t: t3,
   handlers
 }) {
+  const { features } = state;
   const defaultSegmentName = state.segments.find((s2) => s2._id === "all_other_users")?.name ?? t3("adaptiveContent.allOtherUsers");
   let segmentLabel;
-  if (!state.previewMode) {
+  if (!state.previewMode || !features.segments) {
     segmentLabel = t3("common.user");
   } else if (state.selectedSegment !== null) {
     const seg = state.segments.find((s2) => s2._id === state.selectedSegment);
@@ -1304,7 +1322,7 @@ function StatusPill({
           {
             class: "prepr-status-variant",
             "data-prepr": "status-variant",
-            hidden: !state.previewMode,
+            hidden: !features.abTesting || !state.previewMode,
             children: state.selectedVariant === "B" ? "B" : "A"
           }
         ),
@@ -1313,7 +1331,7 @@ function StatusPill({
           {
             class: "prepr-status-x",
             "data-prepr": "status-x",
-            hidden: !state.previewMode || state.selectedSegment === null,
+            hidden: !features.segments || !state.previewMode || state.selectedSegment === null,
             children: /* @__PURE__ */ u22(RawSvg, { svg: XMARK_ICON_SVG })
           }
         )
@@ -1333,7 +1351,7 @@ function CloseEditPill({
       class: "prepr-close-edit-pill",
       "data-prepr": "close-edit-pill",
       "aria-label": t3("editingTools.ariaCloseEditMode"),
-      hidden: !state.editMode || state.isIframe,
+      hidden: !state.features.editMode || !state.editMode || state.isIframe,
       onClick: () => handlers.onCloseEditPill(),
       children: [
         /* @__PURE__ */ u22("span", { "data-prepr": "close-edit-label", children: t3("editingTools.editMode") }),
@@ -1349,7 +1367,9 @@ function Panel({
   segmentFilter,
   handlers
 }) {
-  const hasPersonalization = state.selectedSegment !== null || state.selectedVariant !== null;
+  const { features } = state;
+  const hasPersonalization = features.segments && state.selectedSegment !== null || features.abTesting && state.selectedVariant !== null;
+  const showAdaptive = features.segments || features.abTesting;
   return /* @__PURE__ */ u22(S, { children: [
     /* @__PURE__ */ u22(
       "style",
@@ -1392,12 +1412,12 @@ function Panel({
             children: [
               /* @__PURE__ */ u22(Header, { t: t3, onClose: handlers.onClose }),
               /* @__PURE__ */ u22("div", { class: "prepr-section", "data-prepr": "section-adaptive", children: [
-                /* @__PURE__ */ u22("span", { class: "prepr-section-label", "data-prepr": "adaptive-label", children: t3("adaptiveContent.adaptiveContent") }),
+                /* @__PURE__ */ u22("span", { class: "prepr-section-label", "data-prepr": "adaptive-label", children: showAdaptive ? t3("adaptiveContent.adaptiveContent") : t3("adaptiveContent.enablePreview") }),
                 /* @__PURE__ */ u22("div", { class: "prepr-row", children: [
                   /* @__PURE__ */ u22("h2", { class: "prepr-row-title", "data-prepr": "preview-label", children: t3("adaptiveContent.enablePreview") }),
                   /* @__PURE__ */ u22(PreviewSelector, { state, t: t3, handlers })
                 ] }),
-                /* @__PURE__ */ u22("div", { class: "prepr-row", children: [
+                features.segments && /* @__PURE__ */ u22("div", { class: "prepr-row", children: [
                   /* @__PURE__ */ u22("h2", { class: "prepr-row-title", "data-prepr": "segment-label", children: t3("adaptiveContent.segment") }),
                   /* @__PURE__ */ u22(
                     SegmentListbox,
@@ -1410,12 +1430,12 @@ function Panel({
                     }
                   )
                 ] }),
-                /* @__PURE__ */ u22("div", { class: "prepr-row", children: [
+                features.abTesting && /* @__PURE__ */ u22("div", { class: "prepr-row", children: [
                   /* @__PURE__ */ u22("h2", { class: "prepr-row-title", "data-prepr": "variant-label", children: t3("adaptiveContent.ABVariant") }),
                   /* @__PURE__ */ u22(VariantSelector, { state, handlers })
                 ] })
               ] }),
-              /* @__PURE__ */ u22("div", { class: "prepr-section", "data-prepr": "section-editing", children: [
+              features.editMode && /* @__PURE__ */ u22("div", { class: "prepr-section", "data-prepr": "section-editing", children: [
                 /* @__PURE__ */ u22("span", { class: "prepr-section-label", "data-prepr": "editing-label", children: t3("editingTools.editingTools") }),
                 /* @__PURE__ */ u22("div", { class: "prepr-row", children: [
                   /* @__PURE__ */ u22("h2", { class: "prepr-row-title", "data-prepr": "edit-label", children: t3("editingTools.editMode") }),
@@ -1466,26 +1486,28 @@ var PreprToolbarElement = class extends HTMLElementBase {
       onToggle: () => this.set({ toolbarOpen: !this.state.toolbarOpen }),
       onClose: () => this.set({ toolbarOpen: false }),
       onPreviewMode: (value) => this.set({ previewMode: value }),
-      onEditMode: (value) => this.set({ editMode: value }),
+      onEditMode: (value) => {
+        if (!this.state.features.editMode) return;
+        this.set({ editMode: value });
+      },
       onVariant: (value) => {
+        if (!this.state.features.abTesting) return;
         if (!this.state.previewMode) return;
         this.set({ selectedVariant: value });
       },
       // Reset contract: segment to none, variant to 'A' — NOT null, since the
       // resulting `variant_changed` must carry 'A' on the wire — edit mode off.
-      onReset: () => this.set({
-        selectedSegment: null,
-        selectedVariant: "A",
-        editMode: false
-      }),
+      // Disabled features are left untouched: their state is already inert and
+      // writing it would emit events for a feature the consumer turned off.
+      onReset: () => this.set(this.resetPatch({ editMode: false })),
       onStatusPill: () => {
         if (!this.state.previewMode) {
           this.set({ previewMode: true });
           return;
         }
-        if (this.state.selectedSegment !== null || this.state.selectedVariant !== "A") {
-          this.set({ selectedSegment: null, selectedVariant: "A" });
-        }
+        const patch = this.resetPatch();
+        const dirty = "selectedSegment" in patch && this.state.selectedSegment !== null || "selectedVariant" in patch && this.state.selectedVariant !== "A";
+        if (dirty) this.set(patch);
       },
       onCloseEditPill: () => this.set({ editMode: false }),
       onSegmentButtonClick: () => this.toggleListbox(!this.listboxOpen),
@@ -1534,6 +1556,14 @@ var PreprToolbarElement = class extends HTMLElementBase {
   }
   set(patch) {
     this.store?.set(patch);
+  }
+  /** Reset patch covering only the enabled personalization features. */
+  resetPatch(base = {}) {
+    const { features } = this.state;
+    const patch = { ...base };
+    if (features.segments) patch.selectedSegment = null;
+    if (features.abTesting) patch.selectedVariant = "A";
+    return patch;
   }
   // Synchronous: Preact's top-level render() mutates the DOM before returning.
   renderPanel(state) {
@@ -1693,6 +1723,7 @@ var PreprToolbarElement = class extends HTMLElementBase {
     ) ?? null;
   }
   chooseSegment(id) {
+    if (!this.state.features.segments) return;
     this.listboxOpen = false;
     this.segmentFilter = "";
     this.set({ selectedSegment: id });
@@ -1869,7 +1900,7 @@ function createIframeBridge(store, options = {}) {
         const top = data.scrollPosition;
         setTimeout(() => window.scrollTo(0, top), 1);
       }
-      store.set({ previewMode: true, editMode: data.editMode ?? true });
+      store?.set({ previewMode: true, editMode: data.editMode ?? true });
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;
     if (data?.event === "prepr:getScrollPosition") {
@@ -1899,7 +1930,7 @@ function cookieOpts() {
   };
 }
 function createChangeHandler(deps) {
-  const { store, stega, syncAutoClean } = deps;
+  const { store, stega, syncAutoClean, features, editingEnabled } = deps;
   function updateParams(patch) {
     const [path, existing] = splitPath(deps.currentPath());
     const params = new URLSearchParams(existing);
@@ -1915,7 +1946,7 @@ function createChangeHandler(deps) {
   }
   return function handleChange(before, after) {
     const paramPatch = {};
-    if (before.selectedSegment !== after.selectedSegment) {
+    if (features.segments && before.selectedSegment !== after.selectedSegment) {
       if (after.selectedSegment === null) {
         removeCookie(COOKIE_SEGMENT, "/", crossSiteCookieOptions());
       } else {
@@ -1926,7 +1957,7 @@ function createChangeHandler(deps) {
         segment: after.selectedSegment ?? void 0
       });
     }
-    if (before.selectedVariant !== after.selectedVariant) {
+    if (features.abTesting && before.selectedVariant !== after.selectedVariant) {
       if (after.selectedVariant === null) {
         removeCookie(COOKIE_VARIANT, "/", crossSiteCookieOptions());
       } else {
@@ -1941,7 +1972,7 @@ function createChangeHandler(deps) {
       updateParams(paramPatch);
     }
     if (before.editMode !== after.editMode) {
-      if (after.editMode) {
+      if (after.editMode && editingEnabled) {
         stega.start();
       } else {
         stega.stop();
@@ -1984,7 +2015,7 @@ function splitPath(full) {
   if (index === -1) return [full, ""];
   return [full.slice(0, index), full.slice(index + 1)];
 }
-var debug7 = createScopedLogger("create-toolbar");
+var debug7 = createScopedLogger("create-preview");
 var controllerStores = /* @__PURE__ */ new WeakMap();
 function defaultNavigation() {
   return {
@@ -2005,7 +2036,7 @@ function resolveLocale(options) {
   }
   return "en";
 }
-function createPreprToolbar(opts) {
+function createPreprPreview(opts = {}) {
   const { props, options } = opts;
   const navigation = opts.navigation ?? defaultNavigation();
   initDebugLogger(options?.debug ?? false);
@@ -2018,36 +2049,40 @@ function createPreprToolbar(opts) {
   const search = new URLSearchParams(window.location.search);
   const hideBar = search.get(PARAM_HIDE_BAR) === "true";
   if (hideBar) {
-    debug7.log(`${PARAM_HIDE_BAR}=true \u2014 skipping mount`);
-    return noop();
+    debug7.log(`${PARAM_HIDE_BAR}=true \u2014 no visible toolbar`);
   }
+  const mountUi = (options?.ui ?? true) && !isIframe && !hideBar;
   const locale = resolveLocale(options);
+  const features = resolveFeatures(options?.features);
   const previewMode = getCookie(COOKIE_PREVIEW_MODE) === "true";
   const toolbarOpen = getCookie(COOKIE_TOOLBAR_OPEN) === "true";
-  const cookieSegment = getCookie(COOKIE_SEGMENT);
-  const cookieVariant = getCookie(COOKIE_VARIANT);
-  const rawVariant = props.activeVariant ?? cookieVariant;
+  const cookieSegment = features.segments ? getCookie(COOKIE_SEGMENT) : null;
+  const cookieVariant = features.abTesting ? getCookie(COOKIE_VARIANT) : null;
+  const rawVariant = features.abTesting ? props?.activeVariant ?? cookieVariant : null;
   const selectedVariant = rawVariant === "A" || rawVariant === "B" ? rawVariant : null;
   const store = createToolbarStore({
     locale,
-    segments: buildSegments(props.segments ?? props.data ?? []),
-    selectedSegment: props.activeSegment ?? cookieSegment ?? null,
+    features,
+    segments: features.segments ? buildSegments(props?.segments ?? props?.data ?? []) : [],
+    selectedSegment: features.segments ? props?.activeSegment ?? cookieSegment ?? null : null,
     selectedVariant,
     previewMode,
     toolbarOpen,
     isIframe
   });
   let el = null;
-  if (!isIframe) {
+  if (mountUi) {
     definePreprToolbar();
     el = document.createElement("prepr-toolbar");
     document.body.appendChild(el);
     el.connect(store, (key) => t2(key, locale));
   }
+  const editingEnabled = features.editMode || isIframe;
   const stega = createStegaController({
-    // The CMS deep-link tooltip is noise inside the editor; clicking the
-    // element itself requests the edit there.
-    tooltip: !isIframe,
+    // The CMS deep-link tooltip is chrome, so it follows the same decision as
+    // the bar: noise inside the editor (clicking the element itself requests
+    // the edit there), and unwanted in a headless preview that asked for no UI.
+    tooltip: mountUi,
     // In the editor, ask the parent to focus the field instead of opening a new
     // tab. Standalone previews keep the window.open behaviour.
     onEdit: ({ href, origin, id, field }) => {
@@ -2071,6 +2106,8 @@ function createPreprToolbar(opts) {
   }
   const handleChange = createChangeHandler({
     store,
+    features,
+    editingEnabled,
     navigate: (url) => navigation.navigate(url),
     currentPath: () => navigation.currentPath(),
     reload: navigation.reload ?? (() => window.location.reload()),
@@ -2084,7 +2121,9 @@ function createPreprToolbar(opts) {
     handleChange(before, state);
   });
   syncAutoClean(store.get().previewMode);
-  const bridge = createIframeBridge(store);
+  const bridge = createIframeBridge(store, {
+    allowedEditorOrigins: options?.allowedEditorOrigins
+  });
   sendPreprEvent("getScrollPosition", { value: 0 }, {
     allowUntrustedTarget: true
   });
@@ -2099,7 +2138,7 @@ function createPreprToolbar(opts) {
       bridge.stop();
     }
     el?.remove();
-    debug7.log("toolbar destroyed");
+    debug7.log("preview destroyed");
   }
   const controller = { destroy };
   controllerStores.set(controller, store);
@@ -2155,4 +2194,7 @@ function readJSON(selector) {
 var pixel = readJSON("script[data-prepr-pixel-props]");
 if (pixel?.id) loadTrackingPixel(pixel.id);
 var toolbarProps = readJSON("script[data-prepr-toolbar-props]");
-if (toolbarProps) createPreprToolbar({ props: toolbarProps });
+var toolbarOptions = readJSON("script[data-prepr-toolbar-options]");
+if (toolbarProps) {
+  createPreprPreview({ props: toolbarProps, options: toolbarOptions ?? void 0 });
+}

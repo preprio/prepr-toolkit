@@ -20,6 +20,30 @@
       "port": 3001
     },
     {
+      "name": "nextjs-dev-3005",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-nextjs", "dev", "--port", "3005"],
+      "port": 3005
+    },
+    {
+      "name": "astro-dev-4325",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-astro", "dev", "--port", "4325"],
+      "port": 4325
+    },
+    {
+      "name": "sveltekit-dev-5175",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-sveltekit", "dev", "--port", "5175"],
+      "port": 5175
+    },
+    {
+      "name": "nuxt-dev-3006",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-nuxt", "dev", "--port", "3006"],
+      "port": 3006
+    },
+    {
       "name": "editor-demo",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "--no-clipboard", "-l", "4400", "examples/editor-demo"],

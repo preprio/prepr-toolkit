@@ -14,6 +14,7 @@ describe('createToolbarStore', () => {
       previewMode: false,
       toolbarOpen: false,
       isIframe: false,
+      features: { segments: true, abTesting: true, editMode: true },
     });
   });
 
@@ -28,6 +29,7 @@ describe('createToolbarStore', () => {
       previewMode: false,
       toolbarOpen: false,
       isIframe: false,
+      features: { segments: true, abTesting: true, editMode: true },
     });
   });
 

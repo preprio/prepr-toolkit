@@ -80,6 +80,7 @@ Per-framework requirements:
 | Entry point | Peer dependencies |
 | --- | --- |
 | `@preprio/toolkit` (vanilla core) | none |
+| `@preprio/toolkit/react` | `react` >= 17, `react-dom` >= 17 |
 | `@preprio/toolkit/nextjs` | `next` >= 13, `react` >= 17, `react-dom` >= 17 |
 | `@preprio/toolkit/astro` | none (`.astro` components compile in your own pipeline) |
 | `@preprio/toolkit/sveltekit` | `svelte` (only for the `.svelte` components) |
@@ -535,6 +536,81 @@ const preprHeaders = getPreprHeadersFromEvent(event);
 
 See the runnable example at `examples/nuxt` for the full source of truth.
 
+## React (no framework)
+
+`@preprio/toolkit/react` carries the two components that need nothing but React — for Vite + React Router, TanStack Router, Remix SPA mode, or Create React App. Next.js users want the [Next.js section](#nextjs) instead; its `PreprToolbar` binds the App Router for you.
+
+```tsx
+import { PreprPreview, PreprTrackingPixel } from '@preprio/toolkit/react';
+
+export function App() {
+  return (
+    <>
+      <YourRoutes />
+      {import.meta.env.DEV && <PreprPreview />}
+      <PreprTrackingPixel id={import.meta.env.VITE_PREPR_TRACKING_ID} />
+    </>
+  );
+}
+```
+
+Mount `PreprPreview` once per page — two copies start two editor bridges.
+
+### Without personalization
+
+A client-rendered app with no segments and no A/B testing needs **no middleware and no server helpers at all**. The middleware exists to resolve segment and variant cookies into request headers; with both features off there are no headers to resolve. What remains is click-to-edit and the editor's scroll restore, which are pure client concerns:
+
+```tsx
+<PreprPreview options={{ features: { segments: false, abTesting: false } }} />
+```
+
+No `navigation` prop is needed here. The default adapter drives `window.location`, and with both features off the only reachable path is the preview-mode refresh — a full reload either way. `PreprPreview` also needs no router context in this configuration, so it can mount anywhere in the tree.
+
+### With personalization
+
+Segments and A/B testing need request headers, which need a server. A static SPA has none — so this requires either a framework with a server (React Router in framework mode, Next.js) or your own backend using the [vanilla core](#any-other-framework).
+
+Once there is a server, pass a `navigation` adapter so segment and variant switches route softly instead of reloading:
+
+```tsx
+import { useNavigate, useLocation } from 'react-router';
+
+const navigate = useNavigate();
+const location = useLocation();
+
+<PreprPreview
+  {...toolbarProps}
+  navigation={{
+    navigate: url => navigate(url),
+    currentPath: () => location.pathname + location.search,
+  }}
+/>;
+```
+
+`navigation.reload` is optional and defaults to `window.location.reload()`. React Router has no soft-refresh equivalent, so leaving it unset is usually right.
+
+### Tracking pageviews
+
+`loadTrackingPixel` queues one `pageload` event when it installs. Client-side route changes emit nothing on their own, so a SPA records a single pageview per session unless you fire them yourself:
+
+```tsx
+import { useEffect } from 'react';
+import { useLocation } from 'react-router';
+import { trackEvent } from '@preprio/toolkit';
+
+function usePreprPageviews() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    trackEvent('pageload');
+  }, [pathname]);
+}
+```
+
+This double-counts the first pageview, since the pixel's own install event fires too. Skip the initial run with a ref if the exact count matters.
+
+The `id` is your access token, and in a client-rendered app it is public — bundled into JS and visible in devtools. Use a tracking-only token; do not derive it from a browser-exposed GraphQL URL, which would also expose content read access.
+
 ## Any other framework
 
 The core is runtime-neutral: it works off a WHATWG `Request` and hands back the headers to forward to Prepr plus the cookies to persist. Adapting it to Express, Hono, Fastify, or a plain server is roughly twenty lines.
@@ -570,11 +646,11 @@ Forward the headers on your GraphQL fetch with `getPreprHeadersFromHeaders(reque
 **Client** — mount the toolbar imperatively:
 
 ```javascript
-import { createPreprToolbar, loadTrackingPixel } from '@preprio/toolkit';
+import { createPreprPreview, loadTrackingPixel } from '@preprio/toolkit';
 
 loadTrackingPixel('YOUR_ACCESS_TOKEN');
 
-const controller = createPreprToolbar({ props: toolbarProps });
+const controller = createPreprPreview({ props: toolbarProps });
 // later: controller.destroy()
 ```
 
@@ -680,9 +756,25 @@ The toolbar. Takes the props returned by `getToolbarProps`, and renders nothing 
 
 There is no provider to wrap your tree in; state lives in the toolbar's own store.
 
+#### `PreprPreview`
+
+From `@preprio/toolkit/react`. The framework-free equivalent of `PreprToolbar`: same preview runtime, with the router binding left to you. Renders nothing.
+
+```tsx
+<PreprPreview {...toolbarProps} navigation={adapter} />
+```
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `activeSegment` / `activeVariant` / `segments` | — | Toolbar data, as returned by `getToolbarProps`. Optional for a headless preview. |
+| `options` | `PreprPreviewOptions` | Feature flags, `ui`, locale, debug (see [Preview Options](#preview-options)). |
+| `navigation` | `PreprNavigationAdapter` | Optional router binding. Defaults to `window.location`, which is correct for any router that keeps the URL bar in sync. |
+
+Every prop is read once on mount; changing one afterwards has no effect, since a live update would have to tear down the editor bridge and re-announce the preview. Remount to change configuration.
+
 #### `PreprTrackingPixel`
 
-Loads Prepr's CDN tracking pixel on mount. Renders nothing.
+Loads Prepr's CDN tracking pixel on mount. Renders nothing. Exported from both `@preprio/toolkit/react` and `@preprio/toolkit/nextjs` — the same component, with nothing Next-specific about it.
 
 ```tsx
 <PreprTrackingPixel id={accessToken} config={{ destinations: { googleTagManager: true } }} />
@@ -707,12 +799,12 @@ const { requestHeaders, responseCookies } = processPreprRequest(request, { previ
 // responseCookies: CookieSpec[]  — { name, value, maxAge, path }
 ```
 
-#### `createPreprToolbar(options)`
+#### `createPreprPreview(options)`
 
-Mounts the toolbar and returns a controller.
+Starts the preview runtime — optionally mounting the toolbar — and returns a controller.
 
 ```typescript
-const controller = createPreprToolbar({
+const controller = createPreprPreview({
   props: toolbarProps,
   options: { debug: true, locale: 'nl' },
   navigation: {
@@ -727,13 +819,15 @@ controller.destroy();
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `props` | `PreprToolbarProps` | Required. From `getToolbarProps`. |
-| `options` | `PreprToolbarOptions` | `{ debug?, locale? }`. |
+| `props` | `PreprToolbarProps` | From `getToolbarProps`. Optional — a headless preview has no segment list to pass. |
+| `options` | `PreprPreviewOptions` | `{ debug?, locale?, features?, ui?, allowedEditorOrigins? }`. |
 | `navigation` | `PreprNavigationAdapter` | How segment/variant switches navigate. |
 
 The navigation adapter is optional. Omit it and the toolbar uses `window.location.assign` — a full page load. Supply one to integrate with a client-side router; its `reload` member is optional too, and runs after a preview-mode toggle (defaulting to `window.location.reload()`). The Next.js and SvelteKit wrappers wire all of this up for you.
 
-`createPreprToolbar` is a no-op outside a browser (no `window`/`document`) and returns a controller whose `destroy()` does nothing, so it is safe to call during SSR. It also skips mounting when `prepr_hide_bar=true` is present, which is how the Prepr live-preview iframe suppresses the bar.
+`createPreprPreview` is a no-op outside a browser (no `window`/`document`) and returns a controller whose `destroy()` does nothing, so it is safe to call during SSR.
+
+Chrome is skipped — while every side effect stays wired — when any of these hold: `ui: false`, `?prepr_hide_bar=true` (how the Prepr live-preview iframe suppresses the bar), or running inside the editor's iframe. See [Headless preview](#headless-preview-no-toolbar-ui).
 
 #### `loadTrackingPixel(id, config?)`
 
@@ -810,18 +904,89 @@ createPreprMiddleware(request, response, { preview: true });
 | Option | Type | Description |
 | --- | --- | --- |
 | `preview` | `boolean` | Enables preview mode. The only gate — resolve it from your own environment signal. |
+| `features` | `PreprFeatures` | Disable features app-wide. See [Feature flags](#feature-flags). |
 | `version` | `string` | Override the version reported in the `Prepr-Package` header. Mainly for tests. |
 
-### Toolbar Options
+### Preview Options
 
 ```typescript
-createPreprToolbar({ props, options: { debug: true, locale: 'nl' } });
+createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 ```
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `debug` | `boolean` | `false` | Enable debug logging. |
 | `locale` | `'en' \| 'nl'` | auto-detected | UI language. Falls back to the first supported browser language, then `en`. |
+| `features` | `PreprFeatures` | all enabled | Which features run. See [Feature flags](#feature-flags). |
+| `ui` | `boolean` | `true` | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui). |
+| `allowedEditorOrigins` | `string[]` | `*.prepr.io` | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard. |
+
+`features` and `ui` are independent: `features` decides *what runs*, `ui` decides *whether the toolbar is visible*.
+
+### Headless preview (no toolbar UI)
+
+`ui: false` keeps every non-visual side effect wired — click-to-edit, the editor bridge, scroll restore, cookies and headers — while rendering no chrome of its own. That is how a site gets live editing, or editor scroll restore, alongside its own UI instead of the Prepr bar.
+
+```typescript
+// Live editing, no bar:
+const preview = createPreprPreview({
+  options: { ui: false, features: { editMode: true } },
+});
+
+preview.destroy();
+```
+
+`props` is optional here — a headless preview that only wants click-to-edit or scroll restore has no segment list to pass. For scroll restore and nothing else:
+
+```typescript
+createPreprPreview({
+  options: {
+    ui: false,
+    features: { segments: false, abTesting: false, editMode: false },
+  },
+});
+```
+
+`?prepr_hide_bar=true` and the editor's own iframe both imply `ui: false`. Outside an iframe the bridge is a no-op, so mounting unconditionally is safe. Call `createPreprPreview` **once per page** — two calls start two bridges and announce the preview twice.
+
+### Feature flags
+
+Preview mode is the master switch. Within it, each feature can be turned off with a `features` object. Everything is **on by default** — omit it and nothing changes.
+
+```typescript
+import type { PreprFeatures } from '@preprio/toolkit';
+
+export const preprFeatures: PreprFeatures = {
+  segments: false,               // or { enabled: false }
+  abTesting: true,
+  editMode: { enabled: false },
+};
+```
+
+| Feature | Off means |
+| --- | --- |
+| `segments` | No segment picker. No `Prepr-Segments` header, from cookie **or** `?prepr_preview_segment`. No segment cookie written. The `_Segments` API call is skipped, saving a round-trip per page. |
+| `abTesting` | No A/B control or variant badge. No `Prepr-ABtesting` header, from cookie **or** `?prepr_preview_ab`. No variant cookie written. |
+| `editMode` | No Edit mode control, no click-to-edit overlay, no close-edit pill. |
+
+Pass the **same object to both sides**. Each enforces its own half, so a feature disabled in only one place is still half-on — the UI would hide a control the middleware still honours:
+
+```typescript
+// server
+createPreprMiddleware(request, { preview: true, features: preprFeatures });
+const props = await getToolbarProps(graphqlUrl, preprFeatures);
+
+// client
+<PreprToolbar {...props} options={{ features: preprFeatures }} />
+```
+
+Every framework's `getToolbarProps` takes `features` as its last argument, and every `<PreprToolbar>` accepts an `options` prop. Keeping the object in one module both sides import is the simplest way to stay in sync.
+
+Disabling a feature also stops its `segment_changed` / `variant_changed` events, and the Reset button ignores it — state the user cannot see is never rewritten.
+
+**`editMode` does not disable the Prepr visual editor.** It governs your site's own click-to-edit affordance. When the Prepr editor frames your site it drives edit mode over its own `postMessage` handshake, which keeps working regardless — that is the CMS operating inside its own iframe, not an affordance offered to your visitors. Treat `editMode: false` as a UI choice, never as a security control.
+
+Feature flags govern the toolbar and the middleware. The toolbar-free scroll-sync entry point carries no personalization state, so there is nothing there to disable.
 
 ### Pixel Options
 
@@ -864,7 +1029,7 @@ Because the toolbar renders inside a shadow root, none of your own page CSS — 
 The toolbar UI ships with English and Dutch. Pass `locale` explicitly, or omit it to auto-detect from the browser and fall back to `en`:
 
 ```typescript
-createPreprToolbar({ props, options: { locale: 'nl' } });
+createPreprPreview({ props, options: { locale: 'nl' } });
 ```
 
 ## Troubleshooting
@@ -916,7 +1081,7 @@ Codes: `INVALID_TOKEN`, `MISSING_TOKEN`, `HTTP_ERROR`, `FETCH_ERROR`, `INVALID_R
 ### Debug Mode
 
 ```typescript
-createPreprToolbar({ props, options: { debug: true } });
+createPreprPreview({ props, options: { debug: true } });
 ```
 
 ## How It Works

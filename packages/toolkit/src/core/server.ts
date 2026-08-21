@@ -1,6 +1,8 @@
 import { VERSION } from '../version';
+import { resolveFeatures } from './features';
 import type {
   PreprErrorCode,
+  PreprFeatures,
   PreprHeaders,
   PreprSegment,
   PreprToolbarProps,
@@ -199,22 +201,34 @@ export async function getPreprEnvironmentSegments(
  * Never throws: a failed segments fetch yields an empty list so the toolbar
  * still renders. The list is returned under both `segments` and the deprecated
  * `data` alias.
+ *
+ * Pass the same `features` object you give the toolbar and the middleware: with
+ * segments disabled the `_Segments` request is skipped entirely, saving a
+ * round-trip per page.
  */
 export async function getToolbarPropsFromHeaders(
   headers: Headers,
-  token: string
+  token: string,
+  features?: PreprFeatures
 ): Promise<PreprToolbarProps> {
+  const resolved = resolveFeatures(features);
   let segments: PreprSegment[] = [];
 
-  try {
-    segments = await getPreprEnvironmentSegments(token);
-  } catch {
-    segments = [];
+  if (resolved.segments) {
+    try {
+      segments = await getPreprEnvironmentSegments(token);
+    } catch {
+      segments = [];
+    }
   }
 
   return {
-    activeSegment: getActiveSegmentFromHeaders(headers),
-    activeVariant: getActiveVariantFromHeaders(headers),
+    activeSegment: resolved.segments
+      ? getActiveSegmentFromHeaders(headers)
+      : null,
+    activeVariant: resolved.abTesting
+      ? getActiveVariantFromHeaders(headers)
+      : null,
     segments,
     data: segments,
   };

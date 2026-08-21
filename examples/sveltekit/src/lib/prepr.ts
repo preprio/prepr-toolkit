@@ -7,6 +7,19 @@
 // or typecheck without a local `.env` fails to compile. The dynamic form reads
 // at runtime and always typechecks, which is what CI needs.
 import { env } from '$env/dynamic/public';
+import type { PreprFeatures } from '@preprio/toolkit';
+
+/**
+ * One config, passed to both `hooks.server.ts` and the toolbar component, so a
+ * disabled feature is off everywhere: no UI, no cookies, no headers.
+ *
+ * Everything is on by default. Turn a feature off to remove it app-wide:
+ *
+ *   segments: false,
+ *   abTesting: false,
+ *   editMode: { enabled: false },
+ */
+export const preprFeatures: PreprFeatures = {};
 
 /**
  * Prepr GraphQL endpoint. Throws when unset — lazily, so importing this module
