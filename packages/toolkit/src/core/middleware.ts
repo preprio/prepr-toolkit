@@ -122,7 +122,14 @@ function parseCookies(request: Request): Map<string, string> {
     const name = part.slice(0, eq).trim();
     const value = part.slice(eq + 1).trim();
     if (!name) continue;
-    cookies.set(name, decodeURIComponent(value));
+    // Malformed percent-encoding (e.g. `%zz` from another vendor's cookie on
+    // the same domain) must not turn into a visitor-triggerable 500 — same
+    // crash class `sanitizeHeaderValue` guards for header values.
+    try {
+      cookies.set(name, decodeURIComponent(value));
+    } catch {
+      cookies.set(name, value);
+    }
   }
 
   return cookies;
@@ -210,7 +217,9 @@ export function processPreprRequest(
     requestHeaders.set('Prepr-Hubspot-Id', sanitizeHeaderValue(hutkCookie));
   }
 
-  let uid = requestCookies.get(COOKIE_UID);
+  // Cookie-sourced, so visitor-controlled: without sanitizing, a CR/LF smuggled
+  // into the cookie value makes `Headers.set` throw and 500s the request.
+  let uid = sanitizeHeaderValue(requestCookies.get(COOKIE_UID) ?? '');
   if (!uid) {
     uid = crypto.randomUUID();
     responseCookies.push({

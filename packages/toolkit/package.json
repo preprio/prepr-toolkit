@@ -1,6 +1,6 @@
 {
   "name": "@preprio/toolkit",
-  "version": "0.2.0-beta.7",
+  "version": "0.2.0-beta.8",
   "description": "Prepr personalization, A/B testing and preview toolkit for React, Next.js, Nuxt, Astro, SvelteKit and Express",
   "license": "Apache-2.0",
   "author": "Prepr B.V. (https://prepr.io)",
@@ -112,8 +112,8 @@
     "next": ">=13",
     "react": ">=17",
     "react-dom": ">=17",
-    "svelte": ">=4",
-    "vue": ">=3"
+    "svelte": ">=5",
+    "vue": ">=3.3"
   },
   "peerDependenciesMeta": {
     "next": {
