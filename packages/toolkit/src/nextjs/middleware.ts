@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { processPreprRequest, type PreprMiddlewareOptions } from '../core/middleware';
+import {
+  processPreprRequest,
+  type PreprMiddlewareOptions,
+} from '../core/middleware';
 
 export type { PreprMiddlewareOptions };
 
@@ -11,19 +14,19 @@ export type { PreprMiddlewareOptions };
  */
 export function createPreprMiddleware(
   request: NextRequest,
-  options?: PreprMiddlewareOptions
+  options?: PreprMiddlewareOptions,
 ): NextResponse;
 
 export function createPreprMiddleware(
   request: NextRequest,
   response: NextResponse,
-  options?: PreprMiddlewareOptions
+  options?: PreprMiddlewareOptions,
 ): NextResponse;
 
 export function createPreprMiddleware(
   request: NextRequest,
   responseOrOptions?: NextResponse | PreprMiddlewareOptions,
-  maybeOptions?: PreprMiddlewareOptions
+  maybeOptions?: PreprMiddlewareOptions,
 ): NextResponse {
   let chainedResponse: NextResponse | undefined;
   let options: PreprMiddlewareOptions | undefined;
@@ -35,13 +38,17 @@ export function createPreprMiddleware(
     options = responseOrOptions;
   }
 
-  const { requestHeaders, responseCookies } = processPreprRequest(request, options);
+  const { requestHeaders, responseCookies } = processPreprRequest(
+    request,
+    options,
+  );
 
   // NextResponse.next({ request: { headers } }) is the only way to make
   // middleware-set request headers visible to downstream Server Components and
   // Route Handlers via `headers()`.
   const response =
-    chainedResponse ?? NextResponse.next({ request: { headers: requestHeaders } });
+    chainedResponse ??
+    NextResponse.next({ request: { headers: requestHeaders } });
 
   if (chainedResponse) {
     // A chained response skipped the next() constructor above. Writing
@@ -53,7 +60,12 @@ export function createPreprMiddleware(
     // overrides a prior middleware in the chain already set.
     const existing = response.headers.get('x-middleware-override-headers');
     const names = new Set(
-      existing ? existing.split(',').map((name) => name.trim()).filter(Boolean) : []
+      existing
+        ? existing
+            .split(',')
+            .map((name) => name.trim())
+            .filter(Boolean)
+        : [],
     );
     requestHeaders.forEach((value, key) => {
       names.add(key);
@@ -68,7 +80,10 @@ export function createPreprMiddleware(
       path: cookie.path,
       // Lower-cased: Next's cookie API expects 'none' | 'lax' | 'strict'.
       ...(cookie.sameSite
-        ? { sameSite: cookie.sameSite.toLowerCase() as 'none' | 'lax' | 'strict' }
+        ? {
+            sameSite: cookie.sameSite.toLowerCase() as
+              'none' | 'lax' | 'strict',
+          }
         : {}),
       ...(cookie.secure ? { secure: true } : {}),
     });

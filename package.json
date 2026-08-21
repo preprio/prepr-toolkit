@@ -9,13 +9,17 @@
     "lint": "eslint .",
     "build:examples": "turbo build --filter='./examples/*'",
     "typecheck:examples": "turbo typecheck --filter='./examples/*'",
-    "check:all": "turbo build test typecheck && pnpm lint"
+    "check:all": "turbo build test typecheck && pnpm lint && pnpm format:check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^9",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7",
     "eslint-plugin-react-hooks": "^5",
+    "prettier": "^3.9.6",
     "turbo": "^2.10.7",
     "typescript-eslint": "^8"
   },

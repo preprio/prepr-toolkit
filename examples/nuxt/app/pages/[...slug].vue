@@ -5,7 +5,7 @@ import { GetPageBySlugDocument } from '~/gql/graphql';
 import type { GetPageBySlugQuery } from '~/gql/graphql';
 
 // Remount per path so the catch-all refetches on client-side navigation.
-definePageMeta({ key: route => route.fullPath });
+definePageMeta({ key: (route) => route.fullPath });
 
 const route = useRoute();
 const slugParts = route.params.slug;
@@ -26,11 +26,11 @@ const { data } = await useAsyncData(`page-${slug}`, async () => {
       headers: {
         'Content-Type': 'application/json',
         ...(getPreprHeaders(
-          new Headers(requestHeaders as Record<string, string>)
+          new Headers(requestHeaders as Record<string, string>),
         ) as Record<string, string>),
       },
       body: { query: print(GetPageBySlugDocument), variables: { slug } },
-    }
+    },
   );
   return response.data;
 });

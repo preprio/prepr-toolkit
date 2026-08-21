@@ -13,7 +13,7 @@ export function isIgnoredTextNode(node: Node): boolean {
 
 export function walkTextNodes(root: Node, visit: (node: Text) => void): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: node =>
+    acceptNode: (node) =>
       isIgnoredTextNode(node)
         ? NodeFilter.FILTER_REJECT
         : NodeFilter.FILTER_ACCEPT,
@@ -31,7 +31,7 @@ export function walkTextNodes(root: Node, visit: (node: Text) => void): void {
  */
 export function tagEncodedElement(
   element: Element,
-  decoded: StegaDecodedData
+  decoded: StegaDecodedData,
 ): void {
   element.setAttribute('data-prepr-encoded', '');
   element.setAttribute('data-prepr-href', decoded.href);

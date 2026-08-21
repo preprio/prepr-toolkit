@@ -6,7 +6,10 @@ defineProps<{ item: HeroFragment }>();
 
 <!-- data-prepr-variant-key on the section collects impressions for the A/B variant -->
 <template>
-  <section class="bg-primary-50" :data-prepr-variant-key="item._context?.variant_key">
+  <section
+    class="bg-primary-50"
+    :data-prepr-variant-key="item._context?.variant_key"
+  >
     <div
       class="mx-auto max-w-8xl p-spacing flex flex-col items-center md:flex-row gap-8 py-10 lg:py-20"
     >
@@ -16,13 +19,17 @@ defineProps<{ item: HeroFragment }>();
         >
           {{ item.heading }}
         </h1>
-        <p class="text-mb-lg text-secondary-500 lg:text-lg mt-4 lg:mt-6 text-balance">
+        <p
+          class="text-mb-lg text-secondary-500 lg:text-lg mt-4 lg:mt-6 text-balance"
+        >
           {{ item.sub_heading }}
         </p>
         <div class="flex gap-4 mt-8 xl:mt-10">
           <div>
             <!-- data-prepr-variant-event collects click events on the CTA -->
-            <a href="#" data-prepr-variant-event><Button>Find your car</Button></a>
+            <a href="#" data-prepr-variant-event
+              ><Button>Find your car</Button></a
+            >
           </div>
         </div>
       </div>
@@ -38,7 +45,9 @@ defineProps<{ item: HeroFragment }>();
             class="object-cover rounded-2xl"
           />
         </div>
-        <div class="w-9/12 aspect-[20/17] bg-primary-100 rounded-3xl right-0 top-0 z-0"></div>
+        <div
+          class="w-9/12 aspect-[20/17] bg-primary-100 rounded-3xl right-0 top-0 z-0"
+        ></div>
       </div>
     </div>
   </section>

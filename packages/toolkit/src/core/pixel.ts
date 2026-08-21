@@ -47,7 +47,7 @@ function warnNoPixelOnce(): void {
   warnedNoPixel = true;
   console.warn(
     '[Prepr] Tracking pixel is not installed. Call loadTrackingPixel() first, ' +
-      'or ensure the legacy Prepr snippet is present on the page.'
+      'or ensure the legacy Prepr snippet is present on the page.',
   );
 }
 
@@ -64,7 +64,7 @@ export function __resetPixelWarningForTests(): void {
  */
 export function loadTrackingPixel(
   trackingId: string,
-  config?: PreprPixelConfig
+  config?: PreprPixelConfig,
 ): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return;
@@ -115,7 +115,7 @@ export function loadTrackingPixel(
  */
 export function trackEvent(
   name: string,
-  data?: string | Record<string, unknown>
+  data?: string | Record<string, unknown>,
 ): void {
   if (typeof window === 'undefined' || !window.prepr) {
     warnNoPixelOnce();

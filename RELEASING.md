@@ -42,7 +42,7 @@ Open `packages/toolkit/src/version.ts` and set it to the exact version you just
 bumped to. Two places, same number.
 
 If you forget, `scripts/check-version.mjs` fails the build during `prebuild`. That's
-the safety net — but it fires in CI *after* you've pushed the tag, and cleaning up a
+the safety net — but it fires in CI _after_ you've pushed the tag, and cleaning up a
 pushed bad tag is annoying, so get it right here.
 
 ### 4. Commit, tag, push
@@ -137,7 +137,6 @@ Affects `PreprToolbarProps`, so every framework wrapper picks it up.
 > `pnpm typecheck` before the publish step. Tag deletion is blocked by a repository
 > ruleset, so that tag remains in the history pointing at a commit that never shipped.
 > `0.2.0-beta.2` is the first release of this change.
-
 
 `createPreprToolbar` and `createPreprScrollSync` were replaced by a single
 `createPreprPreview`. Both old names are **removed**, not deprecated — pre-1.0, and

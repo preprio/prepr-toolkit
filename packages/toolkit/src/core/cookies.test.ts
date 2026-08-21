@@ -8,7 +8,7 @@ import {
 } from './cookies';
 
 function clearAllCookies() {
-  document.cookie.split(';').forEach(part => {
+  document.cookie.split(';').forEach((part) => {
     const name = part.split('=')[0]?.trim();
     if (name) {
       document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
@@ -81,7 +81,7 @@ describe('cookies', () => {
         maxAge: 60,
         sameSite: 'None',
         secure: true,
-      })
+      }),
     );
 
     expect(written).toContain('samesite=None');
@@ -99,7 +99,7 @@ describe('cookies', () => {
     // A browser ignores a delete whose attributes differ from the original
     // write, which would strand a SameSite=None cookie forever.
     const written = captureWrite(() =>
-      removeCookie('Prepr-Segments', '/', { sameSite: 'None', secure: true })
+      removeCookie('Prepr-Segments', '/', { sameSite: 'None', secure: true }),
     );
 
     expect(written).toContain('samesite=None');
@@ -114,7 +114,10 @@ describe('cookies', () => {
       value: true,
       configurable: true,
     });
-    expect(crossSiteCookieOptions()).toEqual({ sameSite: 'None', secure: true });
+    expect(crossSiteCookieOptions()).toEqual({
+      sameSite: 'None',
+      secure: true,
+    });
 
     // Browsers reject `Secure` off HTTPS, so plain-HTTP dev must stay default.
     Object.defineProperty(window, 'isSecureContext', {

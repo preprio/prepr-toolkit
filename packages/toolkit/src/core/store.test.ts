@@ -51,7 +51,7 @@ describe('createToolbarStore', () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(
-      expect.objectContaining({ toolbarOpen: true })
+      expect.objectContaining({ toolbarOpen: true }),
     );
   });
 
@@ -95,7 +95,7 @@ describe('createToolbarStore', () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(
-      expect.objectContaining({ editMode: true, locale: 'nl' })
+      expect.objectContaining({ editMode: true, locale: 'nl' }),
     );
   });
 

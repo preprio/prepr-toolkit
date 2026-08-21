@@ -14,14 +14,14 @@ Then follow the [Quick Start](./packages/toolkit/README.md#quick-start-nextjs) f
 
 ## What's In Here
 
-| Path | Description |
-| --- | --- |
-| `packages/toolkit` | The published `@preprio/toolkit` package — vanilla core plus the Next.js, Nuxt, Astro, and SvelteKit wrappers. |
-| `examples/nextjs` | App Router, middleware, Apollo Client, custom image loader. |
-| `examples/astro` | Astro middleware and the `.astro` components. |
-| `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, the `.svelte` components. |
-| `examples/nuxt` | Nitro middleware, `runtimeConfig`, the `.vue` components. |
-| `examples/express` | Vanilla core — a hand-written adapter for an unsupported framework. |
+| Path                 | Description                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `packages/toolkit`   | The published `@preprio/toolkit` package — vanilla core plus the Next.js, Nuxt, Astro, and SvelteKit wrappers. |
+| `examples/nextjs`    | App Router, middleware, Apollo Client, custom image loader.                                                    |
+| `examples/astro`     | Astro middleware and the `.astro` components.                                                                  |
+| `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, the `.svelte` components.                                              |
+| `examples/nuxt`      | Nitro middleware, `runtimeConfig`, the `.vue` components.                                                      |
+| `examples/express`   | Vanilla core — a hand-written adapter for an unsupported framework.                                            |
 
 A pnpm workspace (`packages/*`, `examples/*`) built with Turborepo.
 
@@ -71,19 +71,6 @@ pnpm --filter @preprio/toolkit test
 The toolbar's CSS is compiled from `.css` sources into `*.generated.ts` files by `scripts/compile-css.mjs`. This runs automatically before build, test, and typecheck — the generated files are gitignored, so a fresh clone has none until you run one of those commands.
 
 There is no CI on pushes or pull requests: checks run only when you push a `v*` tag, as the first half of the `Release` workflow. Nothing verifies a branch for you, so run `pnpm check:all` locally before you push — a mistake that reaches `main` stays invisible until someone cuts a release.
-
-### Code comments
-
-This is a published package: every comment ships to npm and shows up in consumers' editors through the `.d.ts` files. Write them for an external developer who has never seen this repo and has no access to the discussion that produced the code.
-
-- **Explain why, not what.** The code says what it does. A comment earns its place by recording the constraint, browser quirk, or bug that forced the shape — like the `navigate` race in [`toolbar-change-handler.ts`](./packages/toolkit/src/core/toolbar-change-handler.ts).
-- **No internal shorthand or process labels.** No tool names, ticket IDs, agent or workflow markers, or personal conventions as comment prefixes.
-- **No conversational voice.** Not "as we discussed", "for now", "you asked for", or first-person narration. State the fact in the present tense.
-- **No `TODO`/`FIXME`/`HACK`.** Open work belongs in an issue, where it is tracked and searchable, not in a published `.d.ts`.
-- **Describe the code, not its history.** "Batches every param write into a single call" ages well; "changed this to fix the reset bug" is meaningless to a reader who never saw the old version.
-- **Reference public API, not file layout.** Consumers can see `createPreprPreview`; they cannot see `src/core/create-preview.ts`. Internal cross-references are fine in `.ts` sources but should not leak into exported doc comments.
-
-Public exports get a JSDoc block covering what the function does, when to reach for it, and any gotcha a caller cannot infer from the signature.
 
 ## Releasing
 

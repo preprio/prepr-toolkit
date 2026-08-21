@@ -42,7 +42,7 @@ export class StegaElements {
       if (isIgnoredTextNode(node)) return;
       this.tagFromTextNode(node as Text);
     } else if (node.nodeType === Node.ELEMENT_NODE) {
-      node.childNodes.forEach(child => this.scanNode(child));
+      node.childNodes.forEach((child) => this.scanNode(child));
     }
   }
 
@@ -60,7 +60,7 @@ export class StegaElements {
     }
 
     let encodedCount = 0;
-    walkTextNodes(document.body, textNode => {
+    walkTextNodes(document.body, (textNode) => {
       if (this.tagFromTextNode(textNode)) encodedCount++;
     });
 
@@ -79,19 +79,19 @@ export class StegaElements {
 
     const processMutations = () => {
       const addedNodes = new Set<Node>();
-      pending.forEach(mutation => {
-        mutation.addedNodes.forEach(node => addedNodes.add(node));
+      pending.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => addedNodes.add(node));
         if (mutation.type === 'characterData') {
           addedNodes.add(mutation.target);
         }
       });
-      addedNodes.forEach(node => this.scanNode(node));
+      addedNodes.forEach((node) => this.scanNode(node));
       pending = [];
       this.elements = document.querySelectorAll('[data-prepr-encoded]');
       onUpdate?.();
     };
 
-    this.observer = new MutationObserver(mutations => {
+    this.observer = new MutationObserver((mutations) => {
       pending.push(...mutations);
       if (debounceTimeout) clearTimeout(debounceTimeout);
       debounceTimeout = setTimeout(processMutations, 100);
@@ -107,7 +107,7 @@ export class StegaElements {
   cleanupVisuals(): void {
     document
       .querySelectorAll('.prepr-overlay-active')
-      .forEach(element => element.classList.remove('prepr-overlay-active'));
+      .forEach((element) => element.classList.remove('prepr-overlay-active'));
   }
 
   cleanup(): void {
@@ -115,7 +115,7 @@ export class StegaElements {
       this.observer.disconnect();
       this.observer = null;
     }
-    document.querySelectorAll('[data-prepr-encoded]').forEach(element => {
+    document.querySelectorAll('[data-prepr-encoded]').forEach((element) => {
       element.removeAttribute('data-prepr-encoded');
       element.removeAttribute('data-prepr-href');
       element.removeAttribute('data-prepr-origin');

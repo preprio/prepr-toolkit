@@ -12,7 +12,8 @@ for (const [subpath, entry] of Object.entries(pkg.exports)) {
   const targets = typeof entry === 'string' ? [entry] : Object.values(entry);
   for (const target of targets) {
     if (target.includes('*')) continue; // glob subpaths ship as source, not built
-    if (!existsSync(new URL(target, root))) missing.push(`${subpath} -> ${target}`);
+    if (!existsSync(new URL(target, root)))
+      missing.push(`${subpath} -> ${target}`);
   }
 }
 

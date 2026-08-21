@@ -21,7 +21,7 @@ afterEach(() => {
  */
 function makeRequest(
   url: string,
-  init: { headers?: Record<string, string> } = {}
+  init: { headers?: Record<string, string> } = {},
 ): Request {
   const request = new Request(url);
   for (const [key, value] of Object.entries(init.headers ?? {})) {
@@ -48,11 +48,11 @@ describe('onPreprRequest', () => {
     await onPreprRequest(context, next);
 
     expect(seenDuringNext).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     // The mutation persists after the call too.
     expect(context.request.headers.get('Prepr-Package')).toMatch(
-      /^@preprio\/toolkit@/
+      /^@preprio\/toolkit@/,
     );
   });
 
@@ -75,7 +75,7 @@ describe('onPreprRequest', () => {
     // `.append` mechanism keeps them as separate Set-Cookie headers rather
     // than collapsing them into one (which `.set` would have done).
     const request = makeRequest(
-      'https://example.com/?prepr_preview_segment=seg-1&prepr_preview_ab=B'
+      'https://example.com/?prepr_preview_segment=seg-1&prepr_preview_ab=B',
     );
     const next = async (): Promise<Response> => new Response('ok');
 
@@ -83,24 +83,34 @@ describe('onPreprRequest', () => {
 
     const setCookies = response.headers.getSetCookie();
     expect(setCookies).toHaveLength(4);
-    expect(setCookies.some(c => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(true);
-    expect(setCookies.some(c => c.startsWith('Prepr-Segments=seg-1'))).toBe(true);
-    expect(setCookies.some(c => c.startsWith('Prepr-ABtesting=B'))).toBe(true);
-    expect(setCookies.some(c => c.startsWith('Prepr-Preview-Mode=true'))).toBe(true);
+    expect(setCookies.some((c) => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(
+      true,
+    );
+    expect(setCookies.some((c) => c.startsWith('Prepr-Segments=seg-1'))).toBe(
+      true,
+    );
+    expect(setCookies.some((c) => c.startsWith('Prepr-ABtesting=B'))).toBe(
+      true,
+    );
+    expect(
+      setCookies.some((c) => c.startsWith('Prepr-Preview-Mode=true')),
+    ).toBe(true);
     // Every cookie carries the standard attributes independently.
     for (const cookie of setCookies) {
       expect(cookie).toMatch(/Max-Age=31536000/);
       expect(cookie).toMatch(/Path=\//);
     }
     // Preview cookies must survive the editor's cross-site iframe.
-    for (const cookie of setCookies.filter(c => c.startsWith('Prepr-'))) {
+    for (const cookie of setCookies.filter((c) => c.startsWith('Prepr-'))) {
       expect(cookie).toMatch(/SameSite=None/);
       expect(cookie).toMatch(/Secure/);
     }
   });
 
   it('omits SameSite=None/Secure over plain HTTP, which browsers would reject', async () => {
-    const request = makeRequest('http://localhost:3000/?prepr_preview_segment=seg-1');
+    const request = makeRequest(
+      'http://localhost:3000/?prepr_preview_segment=seg-1',
+    );
     const next = async (): Promise<Response> => new Response('ok');
 
     const response = await onPreprRequest({ request }, next, { preview: true });
@@ -112,30 +122,40 @@ describe('onPreprRequest', () => {
   });
 
   it('trusts x-forwarded-proto so cookies stay cross-site behind a TLS proxy', async () => {
-    const request = makeRequest('http://internal:3000/?prepr_preview_segment=seg-1', {
-      headers: { 'x-forwarded-proto': 'https' },
-    });
+    const request = makeRequest(
+      'http://internal:3000/?prepr_preview_segment=seg-1',
+      {
+        headers: { 'x-forwarded-proto': 'https' },
+      },
+    );
     const next = async (): Promise<Response> => new Response('ok');
 
     const response = await onPreprRequest({ request }, next, { preview: true });
 
     const segment = response.headers
       .getSetCookie()
-      .find(c => c.startsWith('Prepr-Segments='));
+      .find((c) => c.startsWith('Prepr-Segments='));
     expect(segment).toMatch(/SameSite=None/);
     expect(segment).toMatch(/Secure/);
   });
 
   it('does not re-seed Prepr-Preview-Mode when the request already carries it', async () => {
-    const request = makeRequest('https://example.com/?prepr_preview_segment=seg-1', {
-      headers: { cookie: '__prepr_uid=existing-uuid; Prepr-Preview-Mode=false' },
-    });
+    const request = makeRequest(
+      'https://example.com/?prepr_preview_segment=seg-1',
+      {
+        headers: {
+          cookie: '__prepr_uid=existing-uuid; Prepr-Preview-Mode=false',
+        },
+      },
+    );
     const next = async (): Promise<Response> => new Response('ok');
 
     const response = await onPreprRequest({ request }, next, { preview: true });
 
     expect(
-      response.headers.getSetCookie().some(c => c.startsWith('Prepr-Preview-Mode='))
+      response.headers
+        .getSetCookie()
+        .some((c) => c.startsWith('Prepr-Preview-Mode=')),
     ).toBe(false);
   });
 
@@ -231,13 +251,16 @@ describe('server helpers (Astro-friendly re-exports)', () => {
     const fetchMock = async (): Promise<Response> =>
       new Response(
         JSON.stringify({ data: { _Segments: [{ _id: 's1', name: 'VIP' }] } }),
-        { status: 200 }
+        { status: 200 },
       );
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as typeof fetch;
 
     try {
-      const props = await getToolbarProps(headers, 'https://graphql.prepr.io/abc123');
+      const props = await getToolbarProps(
+        headers,
+        'https://graphql.prepr.io/abc123',
+      );
       expect(props).toEqual({
         activeSegment: 'vip',
         activeVariant: null,
@@ -249,7 +272,7 @@ describe('server helpers (Astro-friendly re-exports)', () => {
     }
   });
 
-  it('getToolbarProps is ungated — gating is the consumer\'s job', async () => {
+  it("getToolbarProps is ungated — gating is the consumer's job", async () => {
     // getToolbarProps reads no env vars: it fetches whenever called. The
     // consumer decides when that is (import.meta.env.DEV in the layout, etc.).
     process.env.PREPR_ENV = 'production';
@@ -259,13 +282,16 @@ describe('server helpers (Astro-friendly re-exports)', () => {
     const fetchMock = async (): Promise<Response> =>
       new Response(
         JSON.stringify({ data: { _Segments: [{ _id: 's1', name: 'VIP' }] } }),
-        { status: 200 }
+        { status: 200 },
       );
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as typeof fetch;
 
     try {
-      const props = await getToolbarProps(headers, 'https://graphql.prepr.io/abc123');
+      const props = await getToolbarProps(
+        headers,
+        'https://graphql.prepr.io/abc123',
+      );
       expect(props).toEqual({
         activeSegment: 'vip',
         activeVariant: null,

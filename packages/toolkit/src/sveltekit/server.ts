@@ -39,7 +39,7 @@ export function getPreprHeaders(headers: Headers): PreprHeaders {
 export async function getToolbarProps(
   headers: Headers,
   token: string,
-  features?: PreprFeatures
+  features?: PreprFeatures,
 ): Promise<PreprToolbarProps> {
   return getToolbarPropsFromHeaders(headers, token, features);
 }

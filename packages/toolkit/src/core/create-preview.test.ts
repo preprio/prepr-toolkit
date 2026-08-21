@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createPreprPreview, getControllerStore, safeEditUrl} from './create-preview';
+import {
+  createPreprPreview,
+  getControllerStore,
+  safeEditUrl,
+} from './create-preview';
 import type { PreprNavigationAdapter } from './create-preview';
 import type { PreprPreviewController } from './create-preview';
 import type { ToolbarStore } from './store';
@@ -29,7 +33,7 @@ function fakeNavigation(): PreprNavigationAdapter & { navigated: string[] } {
 }
 
 function clearCookies(): void {
-  document.cookie.split('; ').forEach(row => {
+  document.cookie.split('; ').forEach((row) => {
     const name = row.split('=')[0];
     if (name) document.cookie = `${name}=;max-age=0;path=/`;
   });
@@ -86,7 +90,7 @@ describe('createPreprPreview', () => {
     });
     // Still capture postMessage sent to the (self) parent.
     vi.spyOn(window, 'postMessage').mockImplementation(
-      postMessageSpy as unknown as typeof window.postMessage
+      postMessageSpy as unknown as typeof window.postMessage,
     );
   }
 
@@ -174,7 +178,7 @@ describe('createPreprPreview', () => {
     createPreprPreview({ props: PROPS });
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'prepr_preview_bar', event: 'loaded' }),
-      '*'
+      '*',
     );
     expect(element()).toBeNull();
   });
@@ -185,7 +189,7 @@ describe('createPreprPreview', () => {
     // broadcasts like `loaded` because the payload is a constant zero.
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'getScrollPosition', value: 0 }),
-      '*'
+      '*',
     );
   });
 
@@ -205,7 +209,7 @@ describe('createPreprPreview', () => {
         event: 'segment_changed',
         segment: 'seg-2',
       }),
-      PARENT_ORIGIN
+      PARENT_ORIGIN,
     );
     expect(document.cookie).toContain('Prepr-Segments=seg-2');
     controller.destroy();
@@ -226,7 +230,7 @@ describe('createPreprPreview', () => {
         event: 'variant_changed',
         variant: 'B',
       }),
-      PARENT_ORIGIN
+      PARENT_ORIGIN,
     );
     expect(document.cookie).toContain('Prepr-ABtesting=B');
     controller.destroy();
@@ -244,7 +248,7 @@ describe('createPreprPreview', () => {
     expect(reloadSpy).not.toHaveBeenCalled();
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'preview_mode_toggled' }),
-      PARENT_ORIGIN
+      PARENT_ORIGIN,
     );
     controller.destroy();
   });
@@ -332,15 +336,15 @@ describe('createPreprPreview', () => {
     // A reset is two ordinary change events...
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'segment_changed' }),
-      PARENT_ORIGIN
+      PARENT_ORIGIN,
     );
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'variant_changed', variant: 'A' }),
-      PARENT_ORIGIN
+      PARENT_ORIGIN,
     );
     // ...never a dedicated personalization_reset.
     const resetCalls = postMessageSpy.mock.calls.filter(
-      ([msg]) => (msg as { event?: string }).event === 'personalization_reset'
+      ([msg]) => (msg as { event?: string }).event === 'personalization_reset',
     );
     expect(resetCalls).toHaveLength(0);
 
@@ -362,7 +366,7 @@ describe('createPreprPreview', () => {
     storeOf(controller).set({ previewMode: false });
 
     const previewEvents = postMessageSpy.mock.calls.filter(
-      ([msg]) => (msg as { event?: string }).event === 'preview_mode_toggled'
+      ([msg]) => (msg as { event?: string }).event === 'preview_mode_toggled',
     );
     expect(previewEvents).toHaveLength(1);
     // Framed context: the reload is suppressed to avoid the initVE loop.
@@ -386,7 +390,7 @@ describe('createPreprPreview', () => {
 
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'edit_mode_toggled', editMode: true }),
-      PARENT_ORIGIN
+      PARENT_ORIGIN,
     );
     controller.destroy();
   });
@@ -471,7 +475,9 @@ describe('createPreprPreview', () => {
     });
 
     it('restores editor scroll position with no props at all', () => {
-      const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+      const scrollTo = vi
+        .spyOn(window, 'scrollTo')
+        .mockImplementation(() => {});
       vi.useFakeTimers();
 
       // The old createPreprScrollSync case, expressed through the one entry
@@ -487,7 +493,10 @@ describe('createPreprPreview', () => {
 
     it('honours allowedEditorOrigins, which the toolbar path could not reach', () => {
       const controller = createPreprPreview({
-        options: { ui: false, allowedEditorOrigins: ['https://cms.example.com'] },
+        options: {
+          ui: false,
+          allowedEditorOrigins: ['https://cms.example.com'],
+        },
       });
 
       // An origin the *.prepr.io wildcard would accept is now rejected.
@@ -514,10 +523,10 @@ describe('createPreprPreview', () => {
 describe('safeEditUrl', () => {
   it('allows http and https', () => {
     expect(safeEditUrl('https://acme.prepr.io/edit/1')).toBe(
-      'https://acme.prepr.io/edit/1'
+      'https://acme.prepr.io/edit/1',
     );
     expect(safeEditUrl('http://localhost:3000/edit/1')).toBe(
-      'http://localhost:3000/edit/1'
+      'http://localhost:3000/edit/1',
     );
   });
 

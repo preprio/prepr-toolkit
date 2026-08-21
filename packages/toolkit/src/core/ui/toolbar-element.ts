@@ -14,7 +14,9 @@ const TAG_NAME = 'prepr-toolbar';
 // definePreprToolbar()'s own guard runs. The no-op base keeps the declaration
 // side-effect-free; nothing instantiates the element server-side anyway.
 const HTMLElementBase: typeof HTMLElement =
-  typeof HTMLElement === 'undefined' ? (class {} as typeof HTMLElement) : HTMLElement;
+  typeof HTMLElement === 'undefined'
+    ? (class {} as typeof HTMLElement)
+    : HTMLElement;
 
 /**
  * `<prepr-toolbar>` — the toolbar UI, in a shadow root so its CSS neither leaks
@@ -30,7 +32,7 @@ const HTMLElementBase: typeof HTMLElement =
  */
 export class PreprToolbarElement extends HTMLElementBase {
   private store: ToolbarStore | null = null;
-  private t: Translate = key => key;
+  private t: Translate = (key) => key;
   private unsubscribe: (() => void) | null = null;
   private listboxOpen = false;
   private segmentFilter = '';
@@ -38,12 +40,12 @@ export class PreprToolbarElement extends HTMLElementBase {
   private readonly handlers: PanelHandlers = {
     onToggle: () => this.set({ toolbarOpen: !this.state.toolbarOpen }),
     onClose: () => this.set({ toolbarOpen: false }),
-    onPreviewMode: value => this.set({ previewMode: value }),
-    onEditMode: value => {
+    onPreviewMode: (value) => this.set({ previewMode: value }),
+    onEditMode: (value) => {
       if (!this.state.features.editMode) return;
       this.set({ editMode: value });
     },
-    onVariant: value => {
+    onVariant: (value) => {
       if (!this.state.features.abTesting) return;
       if (!this.state.previewMode) return;
       this.set({ selectedVariant: value });
@@ -67,14 +69,14 @@ export class PreprToolbarElement extends HTMLElementBase {
     },
     onCloseEditPill: () => this.set({ editMode: false }),
     onSegmentButtonClick: () => this.toggleListbox(!this.listboxOpen),
-    onSegmentButtonKeydown: e => this.onListboxKeydown(e),
-    onOptionsKeydown: e => this.onListboxKeydown(e),
-    onChooseSegment: id => this.chooseSegment(id),
-    onSegmentFilterInput: value => {
+    onSegmentButtonKeydown: (e) => this.onListboxKeydown(e),
+    onOptionsKeydown: (e) => this.onListboxKeydown(e),
+    onChooseSegment: (id) => this.chooseSegment(id),
+    onSegmentFilterInput: (value) => {
       this.segmentFilter = value;
       this.renderPanel(this.state);
     },
-    onPreviewTooltipEnter: el => this.showTooltip(el),
+    onPreviewTooltipEnter: (el) => this.showTooltip(el),
     onPreviewTooltipLeave: () => this.hideTooltip(),
   };
 
@@ -88,7 +90,7 @@ export class PreprToolbarElement extends HTMLElementBase {
     }
 
     this.unsubscribe?.();
-    this.unsubscribe = store.subscribe(state => this.renderPanel(state));
+    this.unsubscribe = store.subscribe((state) => this.renderPanel(state));
 
     // Idempotent: removing a not-added listener is a no-op.
     document.removeEventListener('mousedown', this.onDocumentMouseDown);
@@ -134,7 +136,7 @@ export class PreprToolbarElement extends HTMLElementBase {
         segmentFilter: this.segmentFilter,
         handlers: this.handlers,
       }),
-      root
+      root,
     );
   }
 
@@ -155,10 +157,10 @@ export class PreprToolbarElement extends HTMLElementBase {
     const tooltip = this.tip();
     if (!tooltip) return;
     const textEl = tooltip.querySelector<HTMLElement>(
-      '[data-prepr="tooltip-text"]'
+      '[data-prepr="tooltip-text"]',
     );
     const arrowEl = tooltip.querySelector<HTMLElement>(
-      '[data-prepr="tooltip-arrow"]'
+      '[data-prepr="tooltip-arrow"]',
     );
     const key = trigger.getAttribute('data-tooltip-key');
     if (!key || !textEl || !arrowEl) return;
@@ -197,15 +199,16 @@ export class PreprToolbarElement extends HTMLElementBase {
   private segmentButton(): HTMLButtonElement | null {
     return (
       this.shadowRoot?.querySelector<HTMLButtonElement>(
-        '[data-prepr="segment-button"]'
+        '[data-prepr="segment-button"]',
       ) ?? null
     );
   }
 
   private optionsList(): HTMLElement | null {
-    return this.shadowRoot?.querySelector<HTMLElement>(
-      '[data-prepr="options"]'
-    ) ?? null;
+    return (
+      this.shadowRoot?.querySelector<HTMLElement>('[data-prepr="options"]') ??
+      null
+    );
   }
 
   private onDocumentMouseDown = (event: MouseEvent): void => {
@@ -272,7 +275,7 @@ export class PreprToolbarElement extends HTMLElementBase {
 
   private activeOptionIndex(): number {
     return this.optionEls().findIndex(
-      el => el.getAttribute('data-active') === 'true'
+      (el) => el.getAttribute('data-active') === 'true',
     );
   }
 
@@ -282,7 +285,7 @@ export class PreprToolbarElement extends HTMLElementBase {
     let index = this.activeOptionIndex();
     index = index < 0 ? 0 : (index + delta + options.length) % options.length;
     options.forEach((el, i) =>
-      el.setAttribute('data-active', String(i === index))
+      el.setAttribute('data-active', String(i === index)),
     );
     options[index].focus();
   }
@@ -298,11 +301,11 @@ export class PreprToolbarElement extends HTMLElementBase {
     if (open) {
       const options = this.optionEls();
       const selectedIndex = options.findIndex(
-        el => el.getAttribute('aria-selected') === 'true'
+        (el) => el.getAttribute('aria-selected') === 'true',
       );
       const activeIndex = selectedIndex >= 0 ? selectedIndex : 0;
       options.forEach((el, i) =>
-        el.setAttribute('data-active', String(i === activeIndex))
+        el.setAttribute('data-active', String(i === activeIndex)),
       );
       // Focus the search input so users can type to filter right away;
       // ArrowDown/ArrowUp still moves through the options.
@@ -313,7 +316,7 @@ export class PreprToolbarElement extends HTMLElementBase {
   private searchInput(): HTMLInputElement | null {
     return (
       this.shadowRoot?.querySelector<HTMLInputElement>(
-        '[data-prepr="segment-search"]'
+        '[data-prepr="segment-search"]',
       ) ?? null
     );
   }

@@ -10,7 +10,9 @@ const navItems = [
 <template>
   <header class="bg-primary-100 py-4">
     <nav aria-label="Global">
-      <div class="mx-auto max-w-8xl p-spacing flex items-center justify-between">
+      <div
+        class="mx-auto max-w-8xl p-spacing flex items-center justify-between"
+      >
         <a href="/">
           <span class="flex md:hidden"><Logo :text="false" /></span>
           <span class="hidden md:flex"><Logo /></span>

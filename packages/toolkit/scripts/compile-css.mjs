@@ -22,7 +22,7 @@ const src = join(here, '..', 'src');
 // rather than a host app's browserslist. browserslistToTargets needs the
 // resolved list, so run the query through browserslist() first.
 const targets = browserslistToTargets(
-  browserslist('>0.2%, last 2 versions, Safari >= 14, not dead')
+  browserslist('>0.2%, last 2 versions, Safari >= 14, not dead'),
 );
 
 /** @type {Array<{ css: string; out: string; name: string }>} */
@@ -53,7 +53,7 @@ for (const { css, out, name } of files) {
     `// Run \`pnpm gen:css\` after editing the source .css file.\n`;
   writeFileSync(
     out,
-    `${banner}export const ${name} = ${JSON.stringify(code.toString())};\n`
+    `${banner}export const ${name} = ${JSON.stringify(code.toString())};\n`,
   );
   process.stdout.write(`compiled ${css.split('/src/').pop()} -> ${name}\n`);
 }

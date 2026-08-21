@@ -14,7 +14,7 @@ export class StegaProximity {
   private observer: IntersectionObserver | null = null;
   private getEncodedElements = createElementCache<HTMLElement>(
     '[data-prepr-encoded]',
-    200
+    200,
   );
 
   /** Call after the encoded element set changes — rebuilds the observer. */
@@ -30,8 +30,8 @@ export class StegaProximity {
       this.visible = new Set<HTMLElement>();
 
       this.observer = new IntersectionObserver(
-        entries => {
-          entries.forEach(entry => {
+        (entries) => {
+          entries.forEach((entry) => {
             const el = entry.target as HTMLElement;
             if (entry.isIntersecting) {
               this.visible.add(el);
@@ -40,11 +40,11 @@ export class StegaProximity {
             }
           });
         },
-        { root: null, rootMargin: '0px', threshold: 0 }
+        { root: null, rootMargin: '0px', threshold: 0 },
       );
 
       const nodes = this.getEncodedElements();
-      nodes.forEach(el => this.observer!.observe(el));
+      nodes.forEach((el) => this.observer!.observe(el));
       debug.log('observing', nodes.length, 'encoded elements');
     } catch (error) {
       debug.log('error setting up IntersectionObserver', error as object);
@@ -67,14 +67,14 @@ export class StegaProximity {
 
     const newHighlighted = new Set<HTMLElement>();
 
-    candidates.forEach(element => {
+    candidates.forEach((element) => {
       const rect = element.getBoundingClientRect();
 
       const distance = Math.min(
         Math.abs(cursorX - rect.left),
         Math.abs(cursorX - rect.right),
         Math.abs(cursorY - rect.top),
-        Math.abs(cursorY - rect.bottom)
+        Math.abs(cursorY - rect.bottom),
       );
 
       if (distance < 150) {
@@ -86,7 +86,7 @@ export class StegaProximity {
 
         const baseGradientSize = Math.max(
           150,
-          Math.max(rect.width, rect.height) * 1.1
+          Math.max(rect.width, rect.height) * 1.1,
         );
         const distanceScale = Math.max(0, (400 - distance) / 400);
         const gradientSize = baseGradientSize * distanceScale;
@@ -103,8 +103,8 @@ export class StegaProximity {
   }
 
   clearAllHighlights(): void {
-    this.highlighted.forEach(element =>
-      element.classList.remove('prepr-proximity-highlight')
+    this.highlighted.forEach((element) =>
+      element.classList.remove('prepr-proximity-highlight'),
     );
     this.highlighted.clear();
   }

@@ -30,7 +30,7 @@ function getFromPath(obj: unknown, path: string): unknown {
         acc && typeof acc === 'object'
           ? (acc as Record<string, unknown>)[key]
           : undefined,
-      obj
+      obj,
     );
 }
 
@@ -38,7 +38,7 @@ function format(message: string, vars?: Record<string, string | number>) {
   if (!vars) return message;
   return Object.keys(vars).reduce(
     (acc, k) => acc.replace(new RegExp(`\\{${k}\\}`, 'g'), String(vars[k])),
-    message
+    message,
   );
 }
 
@@ -49,7 +49,7 @@ function format(message: string, vars?: Record<string, string | number>) {
 export function t(
   key: string,
   locale: Locale,
-  vars?: Record<string, string | number>
+  vars?: Record<string, string | number>,
 ): string {
   const dict = getDict(locale);
   const msg = getFromPath(dict, key);

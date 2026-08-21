@@ -25,7 +25,7 @@ export interface StegaController {
 
 /** Framework-agnostic orchestrator for the click-to-edit overlay system. */
 export function createStegaController(
-  opts: StegaControllerOptions
+  opts: StegaControllerOptions,
 ): StegaController {
   const tooltipEnabled = opts.tooltip ?? true;
   const overlay = new StegaOverlay(opts.onEdit);
@@ -54,7 +54,7 @@ export function createStegaController(
   const handleClick = (e: MouseEvent): void => {
     const target = e.target as HTMLElement | null;
     const encoded = target?.closest(
-      '[data-prepr-encoded]'
+      '[data-prepr-encoded]',
     ) as HTMLElement | null;
     if (!encoded) return;
     e.preventDefault();
@@ -110,8 +110,15 @@ export function createStegaController(
       }
     }, 16);
 
-    document.addEventListener('mousemove', throttledMouseMove);
-    window.addEventListener('scroll', handleScroll, { capture: true });
+    // Neither handler calls preventDefault, and these fire continuously on
+    // consumer pages — passive keeps them off the compositor's critical path.
+    document.addEventListener('mousemove', throttledMouseMove, {
+      passive: true,
+    });
+    window.addEventListener('scroll', handleScroll, {
+      capture: true,
+      passive: true,
+    });
 
     initialized = true;
     debug.log('stega controller started');

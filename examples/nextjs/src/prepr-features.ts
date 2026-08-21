@@ -1,4 +1,4 @@
-import type { PreprFeatures } from '@preprio/toolkit'
+import type { PreprFeatures } from '@preprio/toolkit';
 
 /**
  * One config, passed to both the middleware (server) and the toolbar (client),
@@ -12,4 +12,4 @@ export const preprFeatures: PreprFeatures = {
   //   segments: false,
   //   abTesting: false,
   //   editMode: { enabled: false },
-}
+};

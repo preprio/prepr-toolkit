@@ -31,9 +31,8 @@ export function decodeStega(str: string | null): StegaDecodedData | null {
     const match = str.match(/{"origin.*?}/);
     if (match) {
       try {
-        const decodedMatch = vercelStegaDecode(
-          match[0]
-        ) as StegaDecodedData | undefined;
+        const decodedMatch = vercelStegaDecode(match[0]) as
+          StegaDecodedData | undefined;
         if (decodedMatch?.href) {
           return decodedMatch;
         }

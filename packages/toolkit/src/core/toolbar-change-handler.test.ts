@@ -43,12 +43,12 @@ const base: ToolbarState = {
 describe('createChangeHandler', () => {
   it('clears segment and variant params in a single navigate', () => {
     const { handle, navigate } = setup(
-      `/blog?${PARAM_SEGMENT}=cats&${PARAM_VARIANT}=B&keep=1`
+      `/blog?${PARAM_SEGMENT}=cats&${PARAM_VARIANT}=B&keep=1`,
     );
 
     handle(
       { ...base, selectedSegment: 'cats', selectedVariant: 'B' },
-      { ...base, selectedSegment: null, selectedVariant: 'A' }
+      { ...base, selectedSegment: null, selectedVariant: 'A' },
     );
 
     expect(navigate).toHaveBeenCalledTimes(1);
