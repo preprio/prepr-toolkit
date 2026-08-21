@@ -1,23 +1,59 @@
 # Releasing `@preprio/toolkit`
 
+> **For Prepr maintainers.** Publishing requires write access to this repository.
+> If you are contributing a change, see [CONTRIBUTING.md](./CONTRIBUTING.md) — your
+> work reaches npm through a maintainer cutting a release.
+
 Read this before your first release. You don't publish from your laptop — you push a
-`v*` tag and the `Release` workflow does the rest. Your job is to get the version numbers right and push
-the tag; everything after that is automated.
+`v*` tag and the `Release` workflow does the rest. Your job is to get the version
+numbers right and push the tag; everything after that is automated.
 
 Current version is in `packages/toolkit/package.json`.
 
-## Before your first release
+## How the publish authenticates
 
-Check that `NPM_TOKEN` exists in the repo secrets (Settings → Secrets and variables
-→ Actions). It needs to be an npm **automation** token with publish rights. If it's
-missing, ask someone with npm org access — you'll need it before any release can
-work.
+There is **no npm token anywhere** — not in repository secrets, not on a laptop. npm
+Trusted Publishing (OIDC) establishes the trust instead: npm accepts publishes of
+`@preprio/toolkit` that come from `preprio/prepr-toolkit` via `release.yml`, and from
+nothing else.
 
-You only check this once. Skip it after that.
+At publish time the workflow's `id-token: write` permission mints a short-lived
+credential that npm verifies against that configuration. Nothing long-lived exists to
+leak or rotate, and a fork cannot publish — the identity npm checks is the repository
+_and_ the workflow file.
+
+Trusted Publishing is configured on npmjs.com under the package's Settings → Trusted
+Publisher. It is already set up; you should not need to touch it.
+
+The publish step uses `npm publish`, not `pnpm publish`. Trusted Publishing is
+implemented in the npm CLI and requires npm >= 11.5.1; `pnpm@9.15.0`, which this repo
+pins, has no OIDC support in its own publish path. The runner's Node 22 ships npm
+10.x, still below the threshold, so the workflow installs a current npm for that step
+alone.
+
+If this repo moves to a newer pnpm, check whether that version publishes via OIDC on
+its own — if it does, the `npm install -g npm@latest` step can go and the publish can
+go back to `pnpm publish --filter @preprio/toolkit`.
+
+After a release, confirm what landed — the registry is the only source of truth for
+what consumers get:
+
+```bash
+npm view @preprio/toolkit versions --json
+npm view @preprio/toolkit dist-tags --json
+```
 
 ## Cutting a release
 
-### 1. Start clean, on `main`
+### 1. Get the changes onto `main`
+
+Work accumulates on `develop`. A release starts by merging it into `main`:
+
+```bash
+gh pr create --base main --head develop --title "release: vX.Y.Z"
+```
+
+Merge that, then start clean from `main`:
 
 ```bash
 git checkout main && git pull
@@ -68,11 +104,18 @@ Open the Actions tab and follow the `Release` run. In order, it:
 3. publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements),
 4. creates a GitHub release with notes generated from the commits since the last tag.
 
-Once it's green, confirm the version is live:
+Green is not proof. Confirm the version is actually live — and that it landed on the
+dist-tag you expected:
 
 ```bash
-npm view @preprio/toolkit version
+npm view @preprio/toolkit versions --json
+npm view @preprio/toolkit dist-tags --json
 ```
+
+If your version is missing, the run should have failed — read the `Publish` step's
+log. `ENEEDAUTH` means OIDC did not authenticate (check that Trusted Publishing on
+npmjs.com still points at `release.yml`, and that the workflow kept its
+`id-token: write` permission).
 
 These checks run nowhere else — there is no CI on pushes or PRs — so step 2 is the
 first time anything is verified. Run `pnpm check:all` before tagging and it will not
