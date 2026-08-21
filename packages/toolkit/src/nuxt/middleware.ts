@@ -47,12 +47,16 @@ export const PREPR_CONTEXT_KEY = 'prepr';
  * `event.context.prepr` for callers who prefer an explicit read
  * (`getPreprHeadersFromEvent`). Cookies are appended to the response.
  */
-export function handlePreprRequest(event: H3EventLike, options?: PreprMiddlewareOptions): void {
+export function handlePreprRequest(
+  event: H3EventLike,
+  options?: PreprMiddlewareOptions,
+): void {
   const req = event.node.req;
 
   // Rebuild a standard Request so the framework-free core can run unchanged.
   // Host/protocol only matter for parsing the query string out of the URL.
-  const host = typeof req.headers.host === 'string' ? req.headers.host : 'localhost';
+  const host =
+    typeof req.headers.host === 'string' ? req.headers.host : 'localhost';
   const request = new Request(`http://${host}${req.url ?? '/'}`);
   // Set after construction — the Request constructor drops `Cookie` (forbidden
   // header per Fetch) when passed via init.
@@ -64,7 +68,10 @@ export function handlePreprRequest(event: H3EventLike, options?: PreprMiddleware
     }
   }
 
-  const { requestHeaders, responseCookies } = processPreprRequest(request, options);
+  const { requestHeaders, responseCookies } = processPreprRequest(
+    request,
+    options,
+  );
 
   requestHeaders.forEach((value, key) => {
     req.headers[key.toLowerCase()] = value;
@@ -82,7 +89,9 @@ export function handlePreprRequest(event: H3EventLike, options?: PreprMiddleware
  * Empty `Headers` if `handlePreprRequest` did not run, so the result is always
  * safe to spread.
  */
-export function getPreprHeadersFromEvent(event: Pick<H3EventLike, 'context'>): Headers {
+export function getPreprHeadersFromEvent(
+  event: Pick<H3EventLike, 'context'>,
+): Headers {
   const headers = event.context[PREPR_CONTEXT_KEY];
   return headers instanceof Headers ? headers : new Headers();
 }

@@ -1,0 +1,21 @@
+# Build output and caches
+dist/
+.next/
+.nuxt/
+.svelte-kit/
+.astro/
+.output/
+.turbo/
+node_modules/
+
+# Generated
+*.generated.ts
+pnpm-lock.yaml
+**/gql/
+**/graphql.schema.json
+next-env.d.ts
+examples/express/public/client.js
+
+# Local tooling
+.claude/
+.idea/

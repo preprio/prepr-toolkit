@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
 import type { PreprToolbarComponentProps } from '../core/types';
@@ -26,6 +26,17 @@ export function PreprToolbar({
   const router = useRouter();
   const pathname = usePathname();
 
+  // The toolbar usually lives in the root layout and survives client-side
+  // navigations, while the mount effect below runs once. A ref keeps
+  // `currentPath` reading the *current* pathname instead of the mount-time
+  // closure — without it, switching a segment after navigating sends the
+  // visitor back to the page where the toolbar first mounted.
+  //
+  // `usePathname` rather than `window.location.pathname`: the latter includes
+  // `basePath`, which `router.push` would prepend a second time.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
   // Mount-time config: the empty dep array below means changing `options`
   // after mount has no effect.
   useEffect(() => {
@@ -33,8 +44,8 @@ export function PreprToolbar({
       props,
       options,
       navigation: {
-        navigate: url => router.push(url),
-        currentPath: () => pathname + window.location.search,
+        navigate: (url) => router.push(url),
+        currentPath: () => pathnameRef.current + window.location.search,
       },
     });
 
@@ -44,4 +55,3 @@ export function PreprToolbar({
 
   return null;
 }
-

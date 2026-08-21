@@ -58,7 +58,7 @@ export async function getPreprHeaders(): Promise<PreprHeaders> {
  */
 export async function getToolbarProps(
   token: string,
-  features?: PreprFeatures
+  features?: PreprFeatures,
 ): Promise<PreprToolbarProps> {
   const h = await readHeaders();
   return getToolbarPropsFromHeaders(h, token, features);

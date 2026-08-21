@@ -12,7 +12,7 @@ import { processPreprRequest } from './middleware';
 
 function makeRequest(
   url: string,
-  init: { headers?: Record<string, string> } = {}
+  init: { headers?: Record<string, string> } = {},
 ): Request {
   // Headers are set after construction, not passed to it: `Cookie` is a
   // forbidden request header per the Fetch spec, so it is dropped when passed
@@ -33,10 +33,10 @@ describe('processPreprRequest', () => {
 
       const customerId = result.requestHeaders.get('Prepr-Customer-Id');
       expect(customerId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       );
       expect(result.requestHeaders.get('Prepr-Customer-Id-Created')).toBe(
-        'true'
+        'true',
       );
     });
 
@@ -45,13 +45,13 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       const uidCookie = result.responseCookies.find(
-        c => c.name === '__prepr_uid'
+        (c) => c.name === '__prepr_uid',
       );
       expect(uidCookie).toBeDefined();
       expect(uidCookie?.maxAge).toBe(60 * 60 * 24 * 365);
       expect(uidCookie?.path).toBe('/');
       expect(uidCookie?.value).toBe(
-        result.requestHeaders.get('Prepr-Customer-Id')
+        result.requestHeaders.get('Prepr-Customer-Id'),
       );
     });
 
@@ -62,13 +62,13 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-Customer-Id')).toBe(
-        'existing-uuid-value'
+        'existing-uuid-value',
       );
       expect(result.requestHeaders.has('Prepr-Customer-Id-Created')).toBe(
-        false
+        false,
       );
       expect(
-        result.responseCookies.find(c => c.name === '__prepr_uid')
+        result.responseCookies.find((c) => c.name === '__prepr_uid'),
       ).toBeUndefined();
     });
   });
@@ -76,24 +76,20 @@ describe('processPreprRequest', () => {
   describe('UTM params', () => {
     it('maps utm_* query params to Prepr-Context-utm_* headers', () => {
       const request = makeRequest(
-        'https://example.com/?utm_source=google&utm_medium=cpc&utm_term=shoes&utm_content=ad1&utm_campaign=summer'
+        'https://example.com/?utm_source=google&utm_medium=cpc&utm_term=shoes&utm_content=ad1&utm_campaign=summer',
       );
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-Context-utm_source')).toBe(
-        'google'
+        'google',
       );
-      expect(result.requestHeaders.get('Prepr-Context-utm_medium')).toBe(
-        'cpc'
-      );
-      expect(result.requestHeaders.get('Prepr-Context-utm_term')).toBe(
-        'shoes'
-      );
+      expect(result.requestHeaders.get('Prepr-Context-utm_medium')).toBe('cpc');
+      expect(result.requestHeaders.get('Prepr-Context-utm_term')).toBe('shoes');
       expect(result.requestHeaders.get('Prepr-Context-utm_content')).toBe(
-        'ad1'
+        'ad1',
       );
       expect(result.requestHeaders.get('Prepr-Context-utm_campaign')).toBe(
-        'summer'
+        'summer',
       );
     });
 
@@ -101,9 +97,7 @@ describe('processPreprRequest', () => {
       const request = makeRequest('https://example.com/');
       const result = processPreprRequest(request);
 
-      expect(result.requestHeaders.has('Prepr-Context-utm_source')).toBe(
-        false
-      );
+      expect(result.requestHeaders.has('Prepr-Context-utm_source')).toBe(false);
     });
   });
 
@@ -115,7 +109,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-Context-initial_referral')).toBe(
-        'https://google.com/search'
+        'https://google.com/search',
       );
     });
 
@@ -126,7 +120,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-User-Agent')).toBe(
-        'Mozilla/5.0 Test'
+        'Mozilla/5.0 Test',
       );
     });
 
@@ -135,7 +129,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-Package')).toBe(
-        `@preprio/toolkit@${VERSION}`
+        `@preprio/toolkit@${VERSION}`,
       );
     });
 
@@ -144,7 +138,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request, { version: '9.9.9' });
 
       expect(result.requestHeaders.get('Prepr-Package')).toBe(
-        '@preprio/toolkit@9.9.9'
+        '@preprio/toolkit@9.9.9',
       );
     });
 
@@ -180,7 +174,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-Hubspot-Id')).toBe(
-        'hutk-value-123'
+        'hutk-value-123',
       );
     });
 
@@ -195,7 +189,7 @@ describe('processPreprRequest', () => {
   describe('preview mode', () => {
     it('does not set Prepr-Preview-Bar when preview option is not set', () => {
       const request = makeRequest(
-        'https://example.com/?prepr_preview_segment=vip'
+        'https://example.com/?prepr_preview_segment=vip',
       );
       const result = processPreprRequest(request);
 
@@ -228,7 +222,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request, { preview: true });
 
       const cookie = result.responseCookies.find(
-        c => c.name === 'Prepr-Preview-Mode'
+        (c) => c.name === 'Prepr-Preview-Mode',
       );
       expect(cookie?.value).toBe('true');
       expect(cookie?.sameSite).toBe('None');
@@ -242,7 +236,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request, { preview: true });
 
       expect(
-        result.responseCookies.some(c => c.name === 'Prepr-Preview-Mode')
+        result.responseCookies.some((c) => c.name === 'Prepr-Preview-Mode'),
       ).toBe(false);
     });
 
@@ -253,7 +247,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request, { preview: true });
 
       expect(
-        result.responseCookies.some(c => c.name === 'Prepr-Preview-Mode')
+        result.responseCookies.some((c) => c.name === 'Prepr-Preview-Mode'),
       ).toBe(false);
     });
 
@@ -261,7 +255,7 @@ describe('processPreprRequest', () => {
       // Browsers reject `Secure` off HTTPS, so setting it would drop the
       // cookie entirely and break plain-HTTP local dev.
       const request = makeRequest(
-        'http://localhost:3000/?prepr_preview_segment=vip'
+        'http://localhost:3000/?prepr_preview_segment=vip',
       );
       const result = processPreprRequest(request, { preview: true });
 
@@ -274,12 +268,12 @@ describe('processPreprRequest', () => {
     it('treats x-forwarded-proto=https as secure behind a TLS proxy', () => {
       const request = makeRequest(
         'http://internal:3000/?prepr_preview_segment=vip',
-        { headers: { 'x-forwarded-proto': 'https, http' } }
+        { headers: { 'x-forwarded-proto': 'https, http' } },
       );
       const result = processPreprRequest(request, { preview: true });
 
       const cookie = result.responseCookies.find(
-        c => c.name === 'Prepr-Segments'
+        (c) => c.name === 'Prepr-Segments',
       );
       expect(cookie?.sameSite).toBe('None');
       expect(cookie?.secure).toBe(true);
@@ -288,7 +282,7 @@ describe('processPreprRequest', () => {
     it('query params take priority over the Prepr-Preview-Mode=false cookie', () => {
       const request = makeRequest(
         'https://example.com/?prepr_preview_segment=vip',
-        { headers: { cookie: 'Prepr-Preview-Mode=false' } }
+        { headers: { cookie: 'Prepr-Preview-Mode=false' } },
       );
       const result = processPreprRequest(request, { preview: true });
 
@@ -298,7 +292,7 @@ describe('processPreprRequest', () => {
 
     it('sets Prepr-Segments/Prepr-ABtesting from query params and writes cookies back', () => {
       const request = makeRequest(
-        'https://example.com/?prepr_preview_segment=vip&prepr_preview_ab=B'
+        'https://example.com/?prepr_preview_segment=vip&prepr_preview_ab=B',
       );
       const result = processPreprRequest(request, { preview: true });
 
@@ -306,10 +300,10 @@ describe('processPreprRequest', () => {
       expect(result.requestHeaders.get('Prepr-ABtesting')).toBe('B');
 
       const segCookie = result.responseCookies.find(
-        c => c.name === 'Prepr-Segments'
+        (c) => c.name === 'Prepr-Segments',
       );
       const abCookie = result.responseCookies.find(
-        c => c.name === 'Prepr-ABtesting'
+        (c) => c.name === 'Prepr-ABtesting',
       );
       expect(segCookie).toMatchObject({
         value: 'vip',
@@ -334,14 +328,14 @@ describe('processPreprRequest', () => {
       expect(result.requestHeaders.get('Prepr-Segments')).toBe('vip');
       expect(result.requestHeaders.get('Prepr-ABtesting')).toBe('A');
       expect(
-        result.responseCookies.find(c => c.name === 'Prepr-Segments')
+        result.responseCookies.find((c) => c.name === 'Prepr-Segments'),
       ).toBeUndefined();
     });
 
     it('query params override cookies for segment/ab', () => {
       const request = makeRequest(
         'https://example.com/?prepr_preview_segment=new-seg',
-        { headers: { cookie: 'Prepr-Segments=old-seg' } }
+        { headers: { cookie: 'Prepr-Segments=old-seg' } },
       );
       const result = processPreprRequest(request, { preview: true });
 
@@ -351,7 +345,7 @@ describe('processPreprRequest', () => {
     it('ignores cookies and does not write them back in live preview (prepr_hide_bar=true)', () => {
       const request = makeRequest(
         'https://example.com/?prepr_hide_bar=true&prepr_preview_ab=B',
-        { headers: { cookie: 'Prepr-Segments=vip; Prepr-ABtesting=A' } }
+        { headers: { cookie: 'Prepr-Segments=vip; Prepr-ABtesting=A' } },
       );
       const result = processPreprRequest(request, { preview: true });
 
@@ -360,7 +354,7 @@ describe('processPreprRequest', () => {
       // the query param still applies, but must not be written back to cookies
       expect(result.requestHeaders.get('Prepr-ABtesting')).toBe('B');
       expect(
-        result.responseCookies.find(c => c.name === 'Prepr-ABtesting')
+        result.responseCookies.find((c) => c.name === 'Prepr-ABtesting'),
       ).toBeUndefined();
     });
   });
@@ -377,7 +371,7 @@ describe('processPreprRequest', () => {
 
       expect(result.requestHeaders.has('Prepr-ABtesting')).toBe(false);
       expect(
-        result.responseCookies.find(c => c.name === 'Prepr-ABtesting')
+        result.responseCookies.find((c) => c.name === 'Prepr-ABtesting'),
       ).toBeUndefined();
       // The enabled feature is untouched.
       expect(result.requestHeaders.get('Prepr-Segments')).toBe('vip');
@@ -386,7 +380,7 @@ describe('processPreprRequest', () => {
     it('injects no Prepr-Segments from cookie or query param when segments are off', () => {
       const request = makeRequest(
         'https://example.com/?prepr_preview_segment=new-seg',
-        { headers: { cookie: 'Prepr-Segments=vip; Prepr-ABtesting=A' } }
+        { headers: { cookie: 'Prepr-Segments=vip; Prepr-ABtesting=A' } },
       );
       const result = processPreprRequest(request, {
         preview: true,
@@ -395,7 +389,7 @@ describe('processPreprRequest', () => {
 
       expect(result.requestHeaders.has('Prepr-Segments')).toBe(false);
       expect(
-        result.responseCookies.find(c => c.name === 'Prepr-Segments')
+        result.responseCookies.find((c) => c.name === 'Prepr-Segments'),
       ).toBeUndefined();
       expect(result.requestHeaders.get('Prepr-ABtesting')).toBe('A');
     });
@@ -403,7 +397,7 @@ describe('processPreprRequest', () => {
     it("a disabled feature's query param does not override the preview-off cookie", () => {
       const request = makeRequest(
         'https://example.com/?prepr_preview_segment=new-seg',
-        { headers: { cookie: 'Prepr-Preview-Mode=false' } }
+        { headers: { cookie: 'Prepr-Preview-Mode=false' } },
       );
       const result = processPreprRequest(request, {
         preview: true,
@@ -445,17 +439,17 @@ describe('processPreprRequest', () => {
 
       for (const param of params) {
         const request = makeRequest(
-          `https://example.com/?${param}=${encodeURIComponent(CRLF)}`
+          `https://example.com/?${param}=${encodeURIComponent(CRLF)}`,
         );
         expect(() =>
-          processPreprRequest(request, { preview: true })
+          processPreprRequest(request, { preview: true }),
         ).not.toThrow();
       }
     });
 
     it('strips CR/LF out of forwarded UTM values', () => {
       const request = makeRequest(
-        `https://example.com/?utm_source=${encodeURIComponent(CRLF)}`
+        `https://example.com/?utm_source=${encodeURIComponent(CRLF)}`,
       );
       const result = processPreprRequest(request);
 
@@ -466,7 +460,7 @@ describe('processPreprRequest', () => {
 
     it('strips CR/LF out of the preview segment and variant', () => {
       const request = makeRequest(
-        `https://example.com/?prepr_preview_segment=${encodeURIComponent(CRLF)}`
+        `https://example.com/?prepr_preview_segment=${encodeURIComponent(CRLF)}`,
       );
       const result = processPreprRequest(request, { preview: true });
 
@@ -505,7 +499,9 @@ describe('processPreprRequest', () => {
       expect(() => {
         result = processPreprRequest(request);
       }).not.toThrow();
-      expect(result.requestHeaders.get('Prepr-Customer-Id')).not.toMatch(/[\r\n]/);
+      expect(result.requestHeaders.get('Prepr-Customer-Id')).not.toMatch(
+        /[\r\n]/,
+      );
       expect(result.requestHeaders.get('X-Injected')).toBeNull();
     });
 
@@ -516,9 +512,11 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-Customer-Id')).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       );
-      expect(result.requestHeaders.get('Prepr-Customer-Id-Created')).toBe('true');
+      expect(result.requestHeaders.get('Prepr-Customer-Id-Created')).toBe(
+        'true',
+      );
     });
   });
 
@@ -550,7 +548,7 @@ describe('processPreprRequest', () => {
       expect(result.requestHeaders.get('Prepr-Context-utm_source')).toBeNull();
       // Recomputed from the uid cookie, never taken from the client.
       expect(result.requestHeaders.get('Prepr-Customer-Id')).not.toBe(
-        'attacker-uid'
+        'attacker-uid',
       );
     });
 
@@ -564,10 +562,12 @@ describe('processPreprRequest', () => {
       });
       const result = processPreprRequest(request);
 
-      expect(result.requestHeaders.get('Prepr-Context-utm_source')).toBe('real');
+      expect(result.requestHeaders.get('Prepr-Context-utm_source')).toBe(
+        'real',
+      );
       expect(result.requestHeaders.get('Prepr-Visitor-IP')).toBe('9.9.9.9');
       expect(result.requestHeaders.get('Prepr-Context-initial_referral')).toBe(
-        'https://ref.example.com/'
+        'https://ref.example.com/',
       );
     });
 

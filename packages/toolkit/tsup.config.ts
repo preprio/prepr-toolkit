@@ -55,7 +55,10 @@ export default defineConfig([
     // Its own config, not an added entry above: `'use client'` is only
     // preserved on a config's own entry file, and these components need the
     // directive on the module where the hooks actually run.
-    entry: { index: 'src/react/index.ts', components: 'src/react/components.ts' },
+    entry: {
+      index: 'src/react/index.ts',
+      components: 'src/react/components.ts',
+    },
     outDir: 'dist/react',
     clean: false,
     // `./components.js` stays a real import into the sibling built above rather

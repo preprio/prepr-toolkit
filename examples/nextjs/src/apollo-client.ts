@@ -1,8 +1,12 @@
-import {HttpLink} from "@apollo/client";
-import { ApolloClient,InMemoryCache, registerApolloClient, } from "@apollo/client-integration-nextjs";
-import { preprGraphqlUrl } from "./prepr-env";
+import { HttpLink } from '@apollo/client';
+import {
+  ApolloClient,
+  InMemoryCache,
+  registerApolloClient,
+} from '@apollo/client-integration-nextjs';
+import { preprGraphqlUrl } from './prepr-env';
 
-export const {getClient, query, PreloadQuery} = registerApolloClient(() => {
+export const { getClient, query, PreloadQuery } = registerApolloClient(() => {
   return new ApolloClient({
     cache: new InMemoryCache(),
     link: new HttpLink({

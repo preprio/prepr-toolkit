@@ -46,7 +46,7 @@ export interface ToolbarStore {
  * effects owned by the mount controller (create-preview.ts).
  */
 export function createToolbarStore(
-  initial: Partial<ToolbarState> = {}
+  initial: Partial<ToolbarState> = {},
 ): ToolbarStore {
   let state: ToolbarState = { ...DEFAULT_STATE, ...initial };
   const listeners = new Set<(s: ToolbarState) => void>();
@@ -57,7 +57,7 @@ export function createToolbarStore(
 
   function set(patch: Partial<ToolbarState>): void {
     const keys = Object.keys(patch) as Array<keyof ToolbarState>;
-    const hasChange = keys.some(key => patch[key] !== state[key]);
+    const hasChange = keys.some((key) => patch[key] !== state[key]);
     if (!hasChange) return;
 
     state = { ...state, ...patch };

@@ -142,7 +142,7 @@ function parseCookies(request: Request): Map<string, string> {
  */
 export function processPreprRequest(
   request: Request,
-  opts?: PreprMiddlewareOptions
+  opts?: PreprMiddlewareOptions,
 ): PreprMiddlewareResult {
   const requestHeaders = new Headers(request.headers);
   const responseCookies: CookieSpec[] = [];
@@ -194,7 +194,7 @@ export function processPreprRequest(
   if (referer) {
     requestHeaders.set(
       'Prepr-Context-initial_referral',
-      sanitizeHeaderValue(referer)
+      sanitizeHeaderValue(referer),
     );
   }
 
@@ -204,10 +204,14 @@ export function processPreprRequest(
     requestHeaders.set('Prepr-User-Agent', sanitizeHeaderValue(userAgent));
   }
 
-  requestHeaders.set('Prepr-Package', `@preprio/toolkit@${opts?.version ?? VERSION}`);
+  requestHeaders.set(
+    'Prepr-Package',
+    `@preprio/toolkit@${opts?.version ?? VERSION}`,
+  );
 
   // Cf-Connecting-Ip wins over x-real-ip.
-  const ip = request.headers.get('Cf-Connecting-Ip') ?? request.headers.get('x-real-ip');
+  const ip =
+    request.headers.get('Cf-Connecting-Ip') ?? request.headers.get('x-real-ip');
   if (ip) {
     requestHeaders.set('Prepr-Visitor-IP', sanitizeHeaderValue(ip));
   }

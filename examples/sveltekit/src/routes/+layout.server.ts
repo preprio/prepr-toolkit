@@ -14,7 +14,7 @@ export const load: LayoutServerLoad = async ({ request }) => {
     const toolbarProps = await getToolbarProps(
       request.headers,
       graphqlUrl(),
-      preprFeatures
+      preprFeatures,
     );
     return { toolbarProps };
   } catch (error) {

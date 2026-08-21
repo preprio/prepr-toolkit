@@ -53,7 +53,11 @@ import {
   PreprTrackingPixel,
 } from '@preprio/toolkit/nextjs';
 
-export default async function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const preview = process.env.VERCEL_ENV !== 'production';
   const toolbarProps = preview
     ? await getToolbarProps(process.env.PREPR_GRAPHQL_URL!)
@@ -101,14 +105,14 @@ No CSS import is needed. The toolbar renders into a shadow-DOM custom element (`
 
 Per-framework peer dependencies — all optional; installing without them is fine as long as you only import the entry points you have dependencies for:
 
-| Entry point | Peer dependencies |
-| --- | --- |
-| `@preprio/toolkit` (vanilla core) | none |
-| `@preprio/toolkit/react` | `react` >= 17, `react-dom` >= 17 |
-| `@preprio/toolkit/nextjs` | `next` >= 13, `react` >= 17, `react-dom` >= 17 |
-| `@preprio/toolkit/astro` | none (`.astro` components compile in your own pipeline) |
-| `@preprio/toolkit/sveltekit` | `svelte` (only for the `.svelte` components) |
-| `@preprio/toolkit/nuxt` | `vue` (only for the `.vue` components) |
+| Entry point                       | Peer dependencies                                       |
+| --------------------------------- | ------------------------------------------------------- |
+| `@preprio/toolkit` (vanilla core) | none                                                    |
+| `@preprio/toolkit/react`          | `react` >= 17, `react-dom` >= 17                        |
+| `@preprio/toolkit/nextjs`         | `next` >= 13, `react` >= 17, `react-dom` >= 17          |
+| `@preprio/toolkit/astro`          | none (`.astro` components compile in your own pipeline) |
+| `@preprio/toolkit/sveltekit`      | `svelte` (only for the `.svelte` components)            |
+| `@preprio/toolkit/nuxt`           | `vue` (only for the `.vue` components)                  |
 
 ## The preview gate
 
@@ -243,7 +247,7 @@ import { onPreprRequest } from '@preprio/toolkit/astro';
 import { defineMiddleware } from 'astro:middleware';
 
 export const onRequest = defineMiddleware((context, next) =>
-  onPreprRequest(context, next, { preview: import.meta.env.DEV })
+  onPreprRequest(context, next, { preview: import.meta.env.DEV }),
 );
 ```
 
@@ -307,7 +311,10 @@ import type { LayoutServerLoad } from './$types';
 export const load: LayoutServerLoad = async ({ request }) => {
   if (!dev) return { toolbarProps: null };
 
-  const toolbarProps = await getToolbarProps(request.headers, env.PREPR_GRAPHQL_URL!);
+  const toolbarProps = await getToolbarProps(
+    request.headers,
+    env.PREPR_GRAPHQL_URL!,
+  );
   return { toolbarProps };
 };
 ```
@@ -351,7 +358,7 @@ Requires Nitro's Node.js preset (the Nuxt default).
 ```typescript
 import { handlePreprRequest } from '@preprio/toolkit/nuxt';
 
-export default defineEventHandler(event => {
+export default defineEventHandler((event) => {
   handlePreprRequest(event, { preview: import.meta.dev });
 });
 ```
@@ -369,7 +376,7 @@ const { data: toolbarProps } = await useAsyncData('prepr-toolbar', async () => {
   if (!import.meta.dev) return null;
   return getToolbarProps(
     new Headers(requestHeaders as Record<string, string>),
-    useRuntimeConfig().public.preprGraphqlUrl
+    useRuntimeConfig().public.preprGraphqlUrl,
   );
 });
 </script>
@@ -438,7 +445,7 @@ const location = useLocation();
 <PreprPreview
   {...toolbarProps}
   navigation={{
-    navigate: url => navigate(url),
+    navigate: (url) => navigate(url),
     currentPath: () => location.pathname + location.search,
   }}
 />;
@@ -479,9 +486,12 @@ import { processPreprRequest } from '@preprio/toolkit';
 
 export function preprMiddleware({ preview } = {}) {
   return (req, res, next) => {
-    const { requestHeaders, responseCookies } = processPreprRequest(toWebRequest(req), {
-      preview,
-    });
+    const { requestHeaders, responseCookies } = processPreprRequest(
+      toWebRequest(req),
+      {
+        preview,
+      },
+    );
 
     for (const cookie of responseCookies) {
       res.cookie(cookie.name, cookie.value, {
@@ -517,13 +527,13 @@ Serialize the server-computed props into the page — a `<script type="applicati
 
 Each wrapper exposes the same five helpers, differing only in how they reach the request headers. The Next.js versions read `next/headers` and are async; the Astro, SvelteKit, and Nuxt versions take a standard `Headers` (`Astro.request.headers`, `event.request.headers`, or one built from `useRequestHeaders()`) and are sync, except `getToolbarProps`.
 
-| Helper | Next.js | Astro / SvelteKit / Nuxt | Returns |
-| --- | --- | --- | --- |
-| `getPreprUUID` | `await getPreprUUID()` | `getPreprUUID(headers)` | Visitor's Prepr Customer ID, or `null` when the middleware did not run for this request. |
-| `getActiveSegment` | `await getActiveSegment()` | `getActiveSegment(headers)` | Active segment ID, or `null`. |
-| `getActiveVariant` | `await getActiveVariant()` | `getActiveVariant(headers)` | `'A'`, `'B'`, or `null`. |
-| `getPreprHeaders` | `await getPreprHeaders()` | `getPreprHeaders(headers)` | All Prepr headers as an object, ready to spread into a fetch. |
-| `getToolbarProps` | `await getToolbarProps(token)` | `await getToolbarProps(headers, token)` | `{ activeSegment, activeVariant, segments }`. Never throws — failures degrade to an empty segment list. |
+| Helper             | Next.js                        | Astro / SvelteKit / Nuxt                | Returns                                                                                                 |
+| ------------------ | ------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `getPreprUUID`     | `await getPreprUUID()`         | `getPreprUUID(headers)`                 | Visitor's Prepr Customer ID, or `null` when the middleware did not run for this request.                |
+| `getActiveSegment` | `await getActiveSegment()`     | `getActiveSegment(headers)`             | Active segment ID, or `null`.                                                                           |
+| `getActiveVariant` | `await getActiveVariant()`     | `getActiveVariant(headers)`             | `'A'`, `'B'`, or `null`.                                                                                |
+| `getPreprHeaders`  | `await getPreprHeaders()`      | `getPreprHeaders(headers)`              | All Prepr headers as an object, ready to spread into a fetch.                                           |
+| `getToolbarProps`  | `await getToolbarProps(token)` | `await getToolbarProps(headers, token)` | `{ activeSegment, activeVariant, segments }`. Never throws — failures degrade to an empty segment list. |
 
 `getPreprUUID()` returning `null` is a useful check when headers seem to be missing — it means the middleware did not cover the route.
 
@@ -553,11 +563,11 @@ The toolbar. Takes the props returned by `getToolbarProps`, and renders nothing 
 
 From `@preprio/toolkit/react`. The framework-free equivalent of `PreprToolbar`: same preview runtime, with the router binding left to you. Renders nothing.
 
-| Prop | Type | Description |
-| --- | --- | --- |
-| `activeSegment` / `activeVariant` / `segments` | — | Toolbar data, as returned by `getToolbarProps`. Optional for a headless preview. |
-| `options` | `PreprPreviewOptions` | Feature flags, `ui`, locale, debug (see [Preview options](#preview-options)). |
-| `navigation` | `PreprNavigationAdapter` | Optional router binding. Defaults to `window.location`, which is correct for any router that keeps the URL bar in sync. |
+| Prop                                           | Type                     | Description                                                                                                             |
+| ---------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `activeSegment` / `activeVariant` / `segments` | —                        | Toolbar data, as returned by `getToolbarProps`. Optional for a headless preview.                                        |
+| `options`                                      | `PreprPreviewOptions`    | Feature flags, `ui`, locale, debug (see [Preview options](#preview-options)).                                           |
+| `navigation`                                   | `PreprNavigationAdapter` | Optional router binding. Defaults to `window.location`, which is correct for any router that keeps the URL bar in sync. |
 
 Every prop is read once on mount; changing one afterwards has no effect, since a live update would have to tear down the editor bridge and re-announce the preview. Remount to change configuration.
 
@@ -566,12 +576,15 @@ Every prop is read once on mount; changing one afterwards has no effect, since a
 Loads Prepr's CDN tracking pixel on mount. Renders nothing. Exported from both `@preprio/toolkit/react` and `@preprio/toolkit/nextjs` — the same component, with nothing Next-specific about it.
 
 ```tsx
-<PreprTrackingPixel id={accessToken} config={{ destinations: { googleTagManager: true } }} />
+<PreprTrackingPixel
+  id={accessToken}
+  config={{ destinations: { googleTagManager: true } }}
+/>
 ```
 
-| Prop | Type | Description |
-| --- | --- | --- |
-| `id` | `string` | Prepr tracking/access token. Required. |
+| Prop     | Type               | Description                                                         |
+| -------- | ------------------ | ------------------------------------------------------------------- |
+| `id`     | `string`           | Prepr tracking/access token. Required.                              |
 | `config` | `PreprPixelConfig` | Optional pixel configuration (see [Pixel options](#pixel-options)). |
 
 ### Core exports
@@ -583,7 +596,9 @@ Available from `@preprio/toolkit` for apps outside the supported frameworks.
 Computes the Prepr headers and cookies for a WHATWG `Request`.
 
 ```typescript
-const { requestHeaders, responseCookies } = processPreprRequest(request, { preview: true });
+const { requestHeaders, responseCookies } = processPreprRequest(request, {
+  preview: true,
+});
 // requestHeaders: Headers        — forward downstream and on to Prepr
 // responseCookies: CookieSpec[]  — { name, value, maxAge, path }
 ```
@@ -597,7 +612,7 @@ const controller = createPreprPreview({
   props: toolbarProps,
   options: { debug: true, locale: 'nl' },
   navigation: {
-    navigate: url => router.push(url),
+    navigate: (url) => router.push(url),
     currentPath: () => window.location.pathname + window.location.search,
     reload: () => router.refresh(),
   },
@@ -606,10 +621,10 @@ const controller = createPreprPreview({
 controller.destroy();
 ```
 
-| Option | Type | Description |
-| --- | --- | --- |
-| `props` | `PreprToolbarProps` | From `getToolbarProps`. Optional — a headless preview has no segment list to pass. |
-| `options` | `PreprPreviewOptions` | `{ debug?, locale?, features?, ui?, allowedEditorOrigins? }`. See [Preview options](#preview-options). |
+| Option       | Type                     | Description                                                                                                                                                                                                                                                                                      |
+| ------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `props`      | `PreprToolbarProps`      | From `getToolbarProps`. Optional — a headless preview has no segment list to pass.                                                                                                                                                                                                               |
+| `options`    | `PreprPreviewOptions`    | `{ debug?, locale?, features?, ui?, allowedEditorOrigins? }`. See [Preview options](#preview-options).                                                                                                                                                                                           |
 | `navigation` | `PreprNavigationAdapter` | How segment/variant switches navigate. Optional — omitted, the toolbar uses `window.location.assign` (a full page load). `reload` is optional too, runs after a preview-mode toggle, and defaults to `window.location.reload()`. The Next.js and SvelteKit wrappers wire all of this up for you. |
 
 `createPreprPreview` is a no-op outside a browser (no `window`/`document`) and returns a controller whose `destroy()` does nothing, so it is safe to call during SSR. Call it **once per page** — two calls start two bridges and announce the preview twice.
@@ -655,11 +670,11 @@ createPreprMiddleware(request, { preview });
 createPreprMiddleware(request, response, { preview });
 ```
 
-| Option | Type | Description |
-| --- | --- | --- |
-| `preview` | `boolean` | Enables preview mode. The only gate — resolve it from your own environment signal. |
-| `features` | `PreprFeatures` | Disable features app-wide. See [Feature flags](#feature-flags). |
-| `version` | `string` | Override the version reported in the `Prepr-Package` header. Mainly for tests. |
+| Option     | Type            | Description                                                                        |
+| ---------- | --------------- | ---------------------------------------------------------------------------------- |
+| `preview`  | `boolean`       | Enables preview mode. The only gate — resolve it from your own environment signal. |
+| `features` | `PreprFeatures` | Disable features app-wide. See [Feature flags](#feature-flags).                    |
+| `version`  | `string`        | Override the version reported in the `Prepr-Package` header. Mainly for tests.     |
 
 ### Preview options
 
@@ -667,15 +682,15 @@ createPreprMiddleware(request, response, { preview });
 createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 ```
 
-| Option | Type | Default | Description |
-| --- | --- | --- | --- |
-| `debug` | `boolean` | `false` | Enable debug logging. |
-| `locale` | `'en' \| 'nl'` | auto-detected | UI language. Falls back to the first supported browser language, then `en`. |
-| `features` | `PreprFeatures` | all enabled | Which features run. See [Feature flags](#feature-flags). |
-| `ui` | `boolean` | `true` | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui). |
-| `allowedEditorOrigins` | `string[]` | `*.prepr.io` | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard. |
+| Option                 | Type            | Default       | Description                                                                                         |
+| ---------------------- | --------------- | ------------- | --------------------------------------------------------------------------------------------------- |
+| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                               |
+| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                         |
+| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                            |
+| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                 |
+| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard. |
 
-`features` and `ui` are independent: `features` decides *what runs*, `ui` decides *whether the toolbar is visible*.
+`features` and `ui` are independent: `features` decides _what runs_, `ui` decides _whether the toolbar is visible_.
 
 ### Feature flags
 
@@ -685,17 +700,17 @@ Preview mode is the master switch. Within it, each feature can be turned off wit
 import type { PreprFeatures } from '@preprio/toolkit';
 
 export const preprFeatures: PreprFeatures = {
-  segments: false,               // or { enabled: false }
+  segments: false, // or { enabled: false }
   abTesting: true,
   editMode: { enabled: false },
 };
 ```
 
-| Feature | Off means |
-| --- | --- |
-| `segments` | No segment picker. No `Prepr-Segments` header, from cookie **or** `?prepr_preview_segment`. No segment cookie written. The `_Segments` API call is skipped, saving a round-trip per page. |
-| `abTesting` | No A/B control or variant badge. No `Prepr-ABtesting` header, from cookie **or** `?prepr_preview_ab`. No variant cookie written. |
-| `editMode` | No Edit mode control, no click-to-edit overlay, no close-edit pill. |
+| Feature     | Off means                                                                                                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `segments`  | No segment picker. No `Prepr-Segments` header, from cookie **or** `?prepr_preview_segment`. No segment cookie written. The `_Segments` API call is skipped, saving a round-trip per page. |
+| `abTesting` | No A/B control or variant badge. No `Prepr-ABtesting` header, from cookie **or** `?prepr_preview_ab`. No variant cookie written.                                                          |
+| `editMode`  | No Edit mode control, no click-to-edit overlay, no close-edit pill.                                                                                                                       |
 
 Pass the **same object to both sides**. Each enforces its own half, so a feature disabled in only one place is still half-on — the UI would hide a control the middleware still honours:
 
@@ -752,23 +767,23 @@ loadTrackingPixel(id, {
 });
 ```
 
-| Option | Type | Description |
-| --- | --- | --- |
-| `destinations.googleTagManager` | `boolean` | Forward events to Google Tag Manager. |
-| `variantImpressionThreshold` | `number` | Visibility ratio required before an A/B variant impression is counted. |
+| Option                          | Type      | Description                                                            |
+| ------------------------------- | --------- | ---------------------------------------------------------------------- |
+| `destinations.googleTagManager` | `boolean` | Forward events to Google Tag Manager.                                  |
+| `variantImpressionThreshold`    | `number`  | Visibility ratio required before an A/B variant impression is counted. |
 
 ### Theming
 
 The toolbar's shadow DOM reads its look from CSS custom properties set on the `prepr-toolbar` host element, or any ancestor — custom properties inherit through the shadow boundary. All have fallbacks, so theming is entirely optional.
 
-| Custom property | Purpose | Default |
-| --- | --- | --- |
-| `--prepr-primary` | Toggle button, badges, status pill color | `#4338ca` |
-| `--prepr-bg` | Panel background | `#eef2ff` |
-| `--prepr-text` | Reserved for future text theming | `#1f2937` |
-| `--prepr-radius` | Corner radius (panel, radio group, inputs) | `8px` |
-| `--prepr-shadow` | Panel drop shadow | `0px 0px 40px 0px rgba(31, 41, 55, 0.24)` |
-| `--prepr-z-index` | Base stacking order (backdrop/panel/pills) | `10000` |
+| Custom property   | Purpose                                    | Default                                   |
+| ----------------- | ------------------------------------------ | ----------------------------------------- |
+| `--prepr-primary` | Toggle button, badges, status pill color   | `#4338ca`                                 |
+| `--prepr-bg`      | Panel background                           | `#eef2ff`                                 |
+| `--prepr-text`    | Reserved for future text theming           | `#1f2937`                                 |
+| `--prepr-radius`  | Corner radius (panel, radio group, inputs) | `8px`                                     |
+| `--prepr-shadow`  | Panel drop shadow                          | `0px 0px 40px 0px rgba(31, 41, 55, 0.24)` |
+| `--prepr-z-index` | Base stacking order (backdrop/panel/pills) | `10000`                                   |
 
 ```css
 prepr-toolbar {
@@ -820,7 +835,9 @@ Fetch and token failures throw `PreprError`, which carries a machine-readable co
 import { PreprError, getPreprEnvironmentSegments } from '@preprio/toolkit';
 
 try {
-  const segments = await getPreprEnvironmentSegments(process.env.PREPR_GRAPHQL_URL!);
+  const segments = await getPreprEnvironmentSegments(
+    process.env.PREPR_GRAPHQL_URL!,
+  );
 } catch (error) {
   if (error instanceof PreprError) {
     console.log('Error code:', error.code);
@@ -872,13 +889,13 @@ Stega cleaning is automatic. There is no need to call `vercelStegaSplit` or hand
 
 Runnable examples live in the repository root:
 
-| Example | What it shows |
-| --- | --- |
-| `examples/nextjs` | App Router, middleware, Apollo, custom image loader |
-| `examples/astro` | Astro middleware and `.astro` components |
-| `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components |
-| `examples/nuxt` | `server/middleware`, `useAsyncData`, `.vue` components |
-| `examples/express` | Vanilla core — a hand-written adapter for an unsupported framework |
+| Example              | What it shows                                                      |
+| -------------------- | ------------------------------------------------------------------ |
+| `examples/nextjs`    | App Router, middleware, Apollo, custom image loader                |
+| `examples/astro`     | Astro middleware and `.astro` components                           |
+| `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components       |
+| `examples/nuxt`      | `server/middleware`, `useAsyncData`, `.vue` components             |
+| `examples/express`   | Vanilla core — a hand-written adapter for an unsupported framework |
 
 ## Support
 

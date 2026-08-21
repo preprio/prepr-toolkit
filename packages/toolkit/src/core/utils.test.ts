@@ -40,7 +40,7 @@ describe('sendPreprEvent', () => {
         event: 'segment_changed',
         segment: 'abc',
       }),
-      'https://app.prepr.io'
+      'https://app.prepr.io',
     );
 
     setTrustedParentOrigin(null);
@@ -68,7 +68,7 @@ describe('sendPreprEvent', () => {
     sendPreprEvent('loaded', undefined, { allowUntrustedTarget: true });
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'loaded' }),
-      '*'
+      '*',
     );
 
     Object.defineProperty(window, 'parent', {
