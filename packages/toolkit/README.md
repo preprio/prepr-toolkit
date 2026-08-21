@@ -1,23 +1,30 @@
 # @preprio/toolkit
 
-A framework-agnostic TypeScript library that provides preview functionality, visual editing capabilities, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Nuxt, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
+A framework-agnostic TypeScript library that provides preview functionality, visual editing, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Nuxt, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
 
-## Quick Start
+Every integration is the same three steps:
+
+1. **Middleware** — resolves the visitor's customer ID, segment, and A/B variant into request headers.
+2. **Layout** — mounts the preview toolbar and the tracking pixel.
+3. **Data fetching** — forwards the Prepr headers on your GraphQL requests, so Prepr returns personalized content.
+
+Jump to your framework: [Next.js](#nextjs) · [Astro](#astro) · [SvelteKit](#sveltekit) · [Nuxt](#nuxt) · [React without a framework](#react-no-framework) · [anything else](#any-other-framework).
+
+## Quick Start (Next.js)
 
 ```bash
-# Install the package
 npm install @preprio/toolkit
 # or
 pnpm add @preprio/toolkit
 ```
 
-Add your Prepr GraphQL URL to your `.env`:
+Add your Prepr GraphQL URL (Settings → Access tokens in Prepr) to your `.env`. The toolkit reads **no environment variables itself** — the name is yours; you pass the value in explicitly:
 
 ```bash
 PREPR_GRAPHQL_URL=https://graphql.prepr.io/{YOUR_ACCESS_TOKEN}
 ```
 
-Set up middleware in `middleware.ts`:
+**`middleware.ts`**
 
 ```typescript
 import type { NextRequest } from 'next/server';
@@ -35,7 +42,7 @@ export const config = {
 };
 ```
 
-Add the toolbar and tracking pixel to your layout:
+**`app/layout.tsx`**
 
 ```tsx
 import type { ReactNode } from 'react';
@@ -65,17 +72,34 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 }
 ```
 
+**Data fetching** — spread `getPreprHeaders()` into every Prepr GraphQL request:
+
+```typescript
+import { getPreprHeaders } from '@preprio/toolkit/nextjs';
+
+const response = await fetch(process.env.PREPR_GRAPHQL_URL!, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    ...(await getPreprHeaders()),
+  },
+  body: JSON.stringify({ query, variables }),
+  cache: 'no-store',
+});
+```
+
 No CSS import is needed. The toolbar renders into a shadow-DOM custom element (`<prepr-toolbar>`) with its styles inlined, so it can neither leak into nor inherit from your page's stylesheets.
 
 ## Prerequisites
 
-Before installing, ensure you have:
-
 - **Node.js 18.0.0 or later**
-- **A Prepr account**
-- **A Prepr GraphQL URL** (found in Settings → Access tokens)
+- **A Prepr account** — [prepr.io](https://prepr.io)
+- **A Prepr GraphQL URL**:
+  1. Go to Settings → Access tokens and open your **GraphQL Preview** access token.
+  2. Copy the full GraphQL URL — always `https://graphql.prepr.io/{YOUR_ACCESS_TOKEN}`.
+  3. Check **"Enable edit mode"** on the token and save (required for click-to-edit).
 
-Per-framework requirements:
+Per-framework peer dependencies — all optional; installing without them is fine as long as you only import the entry points you have dependencies for:
 
 | Entry point | Peer dependencies |
 | --- | --- |
@@ -86,103 +110,37 @@ Per-framework requirements:
 | `@preprio/toolkit/sveltekit` | `svelte` (only for the `.svelte` components) |
 | `@preprio/toolkit/nuxt` | `vue` (only for the `.vue` components) |
 
-All peer dependencies are optional — installing without React or Next.js is fine as long as you only import the entry points you have dependencies for.
+## The preview gate
 
-### Prepr Account Setup
+Three rules hold across every framework:
 
-1. **Create a Prepr account** at [prepr.io](https://prepr.io)
-2. **Get your GraphQL URL**:
-   - Go to Settings → Access tokens
-   - Find your GraphQL Preview access token
-   - Copy the full GraphQL URL (e.g. `https://graphql.prepr.io/e6f7a0521f11e5149ce65b0e9f372ced2dfc923490890e7f225da1db84cxxxxx`)
-   - The URL format is always `https://graphql.prepr.io/{YOUR_ACCESS_TOKEN}`
-3. **Enable edit mode** (required for click-to-edit in the toolbar):
-   - Open your GraphQL Preview access token
-   - Check "Enable edit mode"
-   - Save the token
+1. **The toolkit reads no environment variables.** Every value reaches it as an explicit argument, so behavior is identical across frameworks and bundlers. Because the GraphQL URL embeds an access token, keep it server-side unless you intend it to be public.
 
-## Installation & Setup
+2. **Preview mode is one boolean: the `preview` option you pass to the middleware.** Resolve it from whatever already distinguishes your environments — `VERCEL_ENV`, `NODE_ENV`, SvelteKit's `dev`, Astro's `import.meta.env.DEV`, a branch check, your own feature flag. A hardcoded `{ preview: true }` enables preview everywhere, **production included**.
 
-### 1. Install the Package
+3. **`getToolbarProps` is ungated — it fetches whenever you call it.** Gate the call on the same flag you pass the middleware:
 
-```bash
-npm install @preprio/toolkit
-# or
-pnpm add @preprio/toolkit
-# or
-yarn add @preprio/toolkit
-```
+   ```typescript
+   const toolbarProps = preview ? await getToolbarProps(token) : null;
+   ```
 
-### 2. Environment Configuration
-
-Create or update your `.env` file:
-
-```bash
-# Required: your Prepr GraphQL endpoint
-PREPR_GRAPHQL_URL=https://graphql.prepr.io/{YOUR_ACCESS_TOKEN}
-```
-
-> **Important**: Replace `{YOUR_ACCESS_TOKEN}` with your actual Prepr access token from Settings → Access tokens.
-
-The toolkit reads **no environment variables at all**. It has no opinion on the *name* of the URL variable either — `getToolbarProps(token)` takes the URL as a plain string, so store it wherever you like.
-
-### 3. The preview gate
-
-Preview mode is controlled by exactly one thing: the `preview` option you pass to the middleware.
-
-```typescript
-createPreprMiddleware(request, { preview: process.env.VERCEL_ENV !== 'production' });
-```
-
-Resolve that boolean however your deployment already distinguishes environments — `VERCEL_ENV`, `NODE_ENV`, SvelteKit's `dev`, Astro's `import.meta.env.DEV`, a branch check, or your own feature flag. Because the toolkit reads nothing from the environment itself, the behaviour is identical across every framework and every bundler.
-
-`getToolbarProps` is ungated in all frameworks — it fetches whenever you call it. Call it only when your preview flag is on:
-
-```typescript
-const toolbarProps = preview ? await getToolbarProps(token) : null;
-```
-
-> **Note:** a hardcoded `{ preview: true }` enables preview everywhere, production included. Always resolve it from an environment signal.
+   It never throws: a failed segment fetch degrades to an empty segment list, so no `try`/`catch` or error boundary is required.
 
 ## Next.js
 
-### Middleware Setup
-
-The middleware assigns the visitor's customer ID, captures UTM parameters, and resolves the active segment and A/B variant into request headers.
-
-Create or update `middleware.ts` in your project root:
-
-```typescript
-import type { NextRequest } from 'next/server';
-import { createPreprMiddleware } from '@preprio/toolkit/nextjs';
-
-export function middleware(request: NextRequest) {
-  return createPreprMiddleware(request, { preview: true });
-}
-
-export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
-  ],
-};
-```
+The [Quick Start](#quick-start-nextjs) above is the complete basic setup. This section covers the extras.
 
 Despite the `create` prefix, `createPreprMiddleware` runs per request — it does not return a handler.
 
-#### Chaining with Existing Middleware
+### Chaining with existing middleware
 
 Pass an existing `NextResponse` as the second argument to fold Prepr's headers and cookies onto a response another middleware already produced:
 
 ```typescript
 import { NextResponse, type NextRequest } from 'next/server';
 import { createPreprMiddleware } from '@preprio/toolkit/nextjs';
+
+const preview = process.env.VERCEL_ENV !== 'production';
 
 export function middleware(request: NextRequest) {
   const response = NextResponse.next();
@@ -191,11 +149,11 @@ export function middleware(request: NextRequest) {
     response.headers.set('x-admin-route', 'true');
   }
 
-  return createPreprMiddleware(request, response, { preview: true });
+  return createPreprMiddleware(request, response, { preview });
 }
 ```
 
-##### With next-intl
+With next-intl (return its redirects before Prepr runs):
 
 ```typescript
 import type { NextRequest } from 'next/server';
@@ -207,129 +165,26 @@ const intlMiddleware = createIntlMiddleware({
   defaultLocale: 'en',
 });
 
+const preview = process.env.VERCEL_ENV !== 'production';
+
 export function middleware(request: NextRequest) {
   const intlResponse = intlMiddleware(request);
 
-  // If next-intl returns a redirect, return it immediately.
   if (intlResponse.status >= 300 && intlResponse.status < 400) {
     return intlResponse;
   }
 
-  return createPreprMiddleware(request, intlResponse, { preview: true });
-}
-
-export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
-};
-```
-
-##### Conditional chaining
-
-```typescript
-import { NextResponse, type NextRequest } from 'next/server';
-import { createPreprMiddleware } from '@preprio/toolkit/nextjs';
-
-export function middleware(request: NextRequest) {
-  // Skip Prepr entirely for API routes.
-  if (request.nextUrl.pathname.startsWith('/api/')) {
-    return NextResponse.next();
-  }
-
-  return createPreprMiddleware(request, { preview: process.env.VERCEL_ENV !== 'production' });
+  return createPreprMiddleware(request, intlResponse, { preview });
 }
 ```
 
-### Layout Integration
+To skip Prepr for some routes entirely, return early with `NextResponse.next()` before calling `createPreprMiddleware` — or exclude them in `config.matcher`.
 
-`getToolbarProps` is ungated, so gate the call on the same flag you pass to the middleware:
+### Tracking pixel
 
-```tsx
-import type { ReactNode } from 'react';
-import { getToolbarProps, PreprToolbar } from '@preprio/toolkit/nextjs';
+The pixel collects the interaction data that powers personalization and A/B testing. Include it in **all** environments, preview and production alike — the Quick Start layout already does. `PreprTrackingPixel` renders nothing and loads the CDN script on mount, so its position in the tree does not matter.
 
-export default async function RootLayout({ children }: { children: ReactNode }) {
-  const preview = process.env.VERCEL_ENV !== 'production';
-  const toolbarProps = preview
-    ? await getToolbarProps(process.env.PREPR_GRAPHQL_URL!)
-    : null;
-
-  return (
-    <html lang="en">
-      <body>
-        {children}
-        {toolbarProps && <PreprToolbar {...toolbarProps} />}
-      </body>
-    </html>
-  );
-}
-```
-
-Skipping the call outside preview means no API call and no toolbar. `getToolbarProps` also never throws — a failed segment fetch degrades to an empty segment list rather than crashing the host app — so no `try`/`catch` or error boundary is required.
-
-To keep the toolbar out of the production bundle entirely, gate the *import* rather than the props, with a `next/dynamic` import behind the same flag.
-
-### Tracking Pixel
-
-The tracking pixel collects the interaction data that powers personalization and A/B testing. Include it in **all** environments, preview and production alike.
-
-```tsx
-import { extractAccessToken, PreprTrackingPixel } from '@preprio/toolkit/nextjs';
-
-export default function RootLayout({ children }: { children: ReactNode }) {
-  const accessToken = extractAccessToken(process.env.PREPR_GRAPHQL_URL!);
-
-  return (
-    <html lang="en">
-      <body>
-        {children}
-        {accessToken && <PreprTrackingPixel id={accessToken} />}
-      </body>
-    </html>
-  );
-}
-```
-
-`PreprTrackingPixel` renders nothing and loads the CDN script on mount, so its position in the tree does not matter.
-
-### API Integration
-
-Use `getPreprHeaders()` to forward the request's Prepr personalization context to your Prepr GraphQL fetches. Prepr resolves segments and A/B variants from these headers, so a query sent without them always returns the default, unpersonalized content.
-
-The headers are set by the middleware, so they are only present on routes its matcher covers — off-matcher requests yield an empty object.
-
-The signature differs per framework: `getPreprHeaders()` is async and zero-argument on Next.js (it reads `headers()` for you), while the Astro, SvelteKit, and Nuxt builds are synchronous and take the request's `Headers`.
-
-#### With the Fetch API
-
-```typescript
-import { getPreprHeaders } from '@preprio/toolkit/nextjs';
-
-async function getPage(slug: string) {
-  const response = await fetch(process.env.PREPR_GRAPHQL_URL!, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(await getPreprHeaders()),
-    },
-    body: JSON.stringify({
-      query: `
-        query GetPageBySlug($slug: String!) {
-          Page(slug: $slug) {
-            title
-            content
-          }
-        }
-      `,
-      variables: { slug },
-    }),
-    cache: 'no-store',
-  });
-
-  return response.json();
-}
-```
-
-#### With Apollo Client
+### With Apollo Client
 
 ```typescript
 import { getClient } from '@/lib/client';
@@ -348,7 +203,7 @@ async function getPage(slug: string) {
 }
 ```
 
-### Image Loader
+### Image loader
 
 Prepr's stream CDN resizes at the edge. Routing `next/image` through the bundled loader makes Next request the exact width it needs, instead of pulling the full-resolution original and re-encoding it through `/_next/image`.
 
@@ -375,15 +230,11 @@ The API emits each asset's real dimensions, so a Prepr URL renders as-is:
 https://393qibegr87z.b-cdn.net/w_800,h_600,fx_75,fy_67/b7ijwafd586-photo.jpg
 ```
 
-The loader rewrites `w_` to the width Next asks for and scales `h_` alongside it, holding the emitted ratio — for a cropped asset that ratio is the authored crop box, so the crop survives the resize. Focal points (`fx`/`fy`) are percentages and carry through unchanged, as does any other option in the segment. Quality is not a CDN option and is ignored.
-
-URLs with no transform segment pass through untouched — set `unoptimized` on those `<Image>`s.
+The loader rewrites `w_` to the width Next asks for and scales `h_` alongside it, holding the emitted ratio — for a cropped asset that ratio is the authored crop box, so the crop survives the resize. Focal points (`fx`/`fy`) are percentages and carry through unchanged, as does any other option in the segment. Quality is not a CDN option and is ignored. URLs with no transform segment pass through untouched — set `unoptimized` on those `<Image>`s.
 
 See the runnable example at `examples/nextjs` for the full source of truth.
 
 ## Astro
-
-### Middleware Setup
 
 **`src/middleware.ts`**
 
@@ -396,7 +247,7 @@ export const onRequest = defineMiddleware((context, next) =>
 );
 ```
 
-### Layout Integration
+**Layout** — the same preview flag gates `getToolbarProps`:
 
 ```astro
 ---
@@ -404,8 +255,8 @@ import PreprToolbar from '@preprio/toolkit/astro/components/PreprToolbar';
 import PreprTrackingPixel from '@preprio/toolkit/astro/components/PreprTrackingPixel';
 import { extractAccessToken, getToolbarProps } from '@preprio/toolkit/astro';
 
-const isPreview = import.meta.env.DEV;
-const toolbarProps = isPreview
+const preview = import.meta.env.DEV;
+const toolbarProps = preview
   ? await getToolbarProps(Astro.request.headers, import.meta.env.PREPR_GRAPHQL_URL)
   : null;
 const accessToken = extractAccessToken(import.meta.env.PREPR_GRAPHQL_URL);
@@ -420,15 +271,21 @@ const accessToken = extractAccessToken(import.meta.env.PREPR_GRAPHQL_URL);
 </html>
 ```
 
-`import.meta.env.DEV` is Astro's own dev flag; swap in whatever signal marks preview in your deployment. The same value should feed both the middleware and `getToolbarProps`.
+**Data fetching** — the Astro helpers are synchronous and take the request's `Headers`:
 
-The `.astro` components ship as source, compiled by your own Astro/Vite pipeline rather than this package's build. They use full-page navigation by default, matching Astro's MPA model — so switching segment or variant re-runs the server-rendered output.
+```typescript
+import { getPreprHeaders } from '@preprio/toolkit/astro';
+
+const headers = getPreprHeaders(Astro.request.headers);
+```
+
+`import.meta.env.DEV` is Astro's own dev flag; swap in whatever signal marks preview in your deployment.
+
+The `.astro` components ship as source, compiled by your own Astro/Vite pipeline. They use full-page navigation by default, matching Astro's MPA model — switching segment or variant re-runs the server-rendered output.
 
 See the runnable example at `examples/astro` for the full source of truth.
 
 ## SvelteKit
-
-`svelte` is an optional peer dependency, needed only if you import the `.svelte` components.
 
 **`src/hooks.server.ts`**
 
@@ -439,7 +296,7 @@ import { preprHandle } from '@preprio/toolkit/sveltekit';
 export const handle = preprHandle({ preview: dev });
 ```
 
-**`src/routes/+layout.server.ts`** — gate `getToolbarProps` on the same flag:
+**`src/routes/+layout.server.ts`** — the same flag gates `getToolbarProps`:
 
 ```typescript
 import { dev } from '$app/environment';
@@ -473,9 +330,7 @@ export const load: LayoutServerLoad = async ({ request }) => {
 {/if}
 ```
 
-The `.svelte` components ship as source (compiled by your own Vite/Svelte pipeline) and mount client-side via `onMount`, so they never run during SSR.
-
-Inside `load` functions and endpoints you can also read the headers the hook already computed straight off `event.locals`:
+**Data fetching** — in `load` functions and endpoints, read the headers the hook already computed off `event.locals`:
 
 ```typescript
 import { getPreprHeadersFromLocals } from '@preprio/toolkit/sveltekit';
@@ -483,11 +338,13 @@ import { getPreprHeadersFromLocals } from '@preprio/toolkit/sveltekit';
 const preprHeaders = getPreprHeadersFromLocals(event.locals);
 ```
 
+The `.svelte` components ship as source (compiled by your own Vite/Svelte pipeline) and mount client-side via `onMount`, so they never run during SSR.
+
 See the runnable example at `examples/sveltekit` for the full source of truth.
 
 ## Nuxt
 
-`vue` is an optional peer dependency, needed only if you import the `.vue` components. Requires Nitro's Node.js preset (the Nuxt default).
+Requires Nitro's Node.js preset (the Nuxt default).
 
 **`server/middleware/prepr.ts`**
 
@@ -524,15 +381,15 @@ const { data: toolbarProps } = await useAsyncData('prepr-toolbar', async () => {
 </template>
 ```
 
-The `.vue` components ship as source (compiled by your own Vite/Vue pipeline) and mount client-side via `onMounted`, so they never run during SSR.
-
-The middleware folds the computed Prepr headers back onto the incoming request — read them via `useRequestHeaders()` in composables, or straight off the h3 event in server routes:
+**Data fetching** — the middleware folds the computed Prepr headers back onto the incoming request. Read them via `useRequestHeaders()` in composables, or straight off the h3 event in server routes:
 
 ```typescript
 import { getPreprHeadersFromEvent } from '@preprio/toolkit/nuxt';
 
 const preprHeaders = getPreprHeadersFromEvent(event);
 ```
+
+The `.vue` components ship as source (compiled by your own Vite/Vue pipeline) and mount client-side via `onMounted`, so they never run during SSR.
 
 See the runnable example at `examples/nuxt` for the full source of truth.
 
@@ -558,17 +415,17 @@ Mount `PreprPreview` once per page — two copies start two editor bridges.
 
 ### Without personalization
 
-A client-rendered app with no segments and no A/B testing needs **no middleware and no server helpers at all**. The middleware exists to resolve segment and variant cookies into request headers; with both features off there are no headers to resolve. What remains is click-to-edit and the editor's scroll restore, which are pure client concerns:
+A client-rendered app with no segments and no A/B testing needs **no middleware and no server helpers at all**. The middleware exists to resolve segment and variant cookies into request headers; with both features off there are no headers to resolve. What remains — click-to-edit and the editor's scroll restore — is purely client-side:
 
 ```tsx
 <PreprPreview options={{ features: { segments: false, abTesting: false } }} />
 ```
 
-No `navigation` prop is needed here. The default adapter drives `window.location`, and with both features off the only reachable path is the preview-mode refresh — a full reload either way. `PreprPreview` also needs no router context in this configuration, so it can mount anywhere in the tree.
+No `navigation` prop or router context is needed in this configuration; the component can mount anywhere in the tree.
 
 ### With personalization
 
-Segments and A/B testing need request headers, which need a server. A static SPA has none — so this requires either a framework with a server (React Router in framework mode, Next.js) or your own backend using the [vanilla core](#any-other-framework).
+Segments and A/B testing need request headers, which need a server — either a framework with one (React Router in framework mode, Next.js) or your own backend using the [vanilla core](#any-other-framework).
 
 Once there is a server, pass a `navigation` adapter so segment and variant switches route softly instead of reloading:
 
@@ -591,7 +448,7 @@ const location = useLocation();
 
 ### Tracking pageviews
 
-`loadTrackingPixel` queues one `pageload` event when it installs. Client-side route changes emit nothing on their own, so a SPA records a single pageview per session unless you fire them yourself:
+`loadTrackingPixel` queues one `pageload` event when it installs. Client-side route changes emit nothing on their own, so fire them yourself:
 
 ```tsx
 import { useEffect } from 'react';
@@ -639,8 +496,6 @@ export function preprMiddleware({ preview } = {}) {
 }
 ```
 
-`processPreprRequest` reads no environment variables — no part of the toolkit does. Resolve the preview flag yourself before passing it in.
-
 Forward the headers on your GraphQL fetch with `getPreprHeadersFromHeaders(requestHeaders)`, and resolve toolbar props with `getToolbarPropsFromHeaders(requestHeaders, graphqlUrl)`.
 
 **Client** — mount the toolbar imperatively:
@@ -660,114 +515,48 @@ Serialize the server-computed props into the page — a `<script type="applicati
 
 ### Framework server helpers
 
-Each wrapper exposes the same five helpers, differing only in how they reach the request headers.
+Each wrapper exposes the same five helpers, differing only in how they reach the request headers. The Next.js versions read `next/headers` and are async; the Astro, SvelteKit, and Nuxt versions take a standard `Headers` (`Astro.request.headers`, `event.request.headers`, or one built from `useRequestHeaders()`) and are sync, except `getToolbarProps`.
 
-| Helper | Next.js | Astro / SvelteKit / Nuxt |
-| --- | --- | --- |
-| `getPreprUUID` | `await getPreprUUID()` | `getPreprUUID(headers)` |
-| `getActiveSegment` | `await getActiveSegment()` | `getActiveSegment(headers)` |
-| `getActiveVariant` | `await getActiveVariant()` | `getActiveVariant(headers)` |
-| `getPreprHeaders` | `await getPreprHeaders()` | `getPreprHeaders(headers)` |
-| `getToolbarProps` | `await getToolbarProps(token)` | `await getToolbarProps(headers, token)` |
+| Helper | Next.js | Astro / SvelteKit / Nuxt | Returns |
+| --- | --- | --- | --- |
+| `getPreprUUID` | `await getPreprUUID()` | `getPreprUUID(headers)` | Visitor's Prepr Customer ID, or `null` when the middleware did not run for this request. |
+| `getActiveSegment` | `await getActiveSegment()` | `getActiveSegment(headers)` | Active segment ID, or `null`. |
+| `getActiveVariant` | `await getActiveVariant()` | `getActiveVariant(headers)` | `'A'`, `'B'`, or `null`. |
+| `getPreprHeaders` | `await getPreprHeaders()` | `getPreprHeaders(headers)` | All Prepr headers as an object, ready to spread into a fetch. |
+| `getToolbarProps` | `await getToolbarProps(token)` | `await getToolbarProps(headers, token)` | `{ activeSegment, activeVariant, segments }`. Never throws — failures degrade to an empty segment list. |
 
-The Next.js versions read via `next/headers` and are async. The Astro, SvelteKit and Nuxt versions take a standard `Headers` (`Astro.request.headers`, `event.request.headers`, or one built from `useRequestHeaders()`) and are sync, except `getToolbarProps`.
-
-#### `getPreprUUID()`
-
-Returns the current visitor's Prepr Customer ID.
-
-```typescript
-const customerId = await getPreprUUID();
-// 'uuid-string' or null
-```
-
-Returns `null` when the middleware did not run for this request — a useful check when headers seem to be missing.
-
-#### `getActiveSegment()`
-
-Returns the currently active segment.
-
-```typescript
-const segment = await getActiveSegment();
-// 'segment-id' or null
-```
-
-#### `getActiveVariant()`
-
-Returns the active A/B testing variant.
-
-```typescript
-const variant = await getActiveVariant();
-// 'A' | 'B' | null
-```
-
-#### `getPreprHeaders()`
-
-Returns all Prepr headers for the request, ready to spread into a fetch.
-
-```typescript
-const headers = await getPreprHeaders();
-// { 'prepr-customer-id': 'uuid', 'Prepr-Segments': 'segment-id', ... }
-```
-
-#### `getToolbarProps(token)`
-
-Fetches the props needed to mount the toolbar. Never throws.
-
-```typescript
-const props = await getToolbarProps(process.env.PREPR_GRAPHQL_URL!);
-// { activeSegment, activeVariant, segments }
-```
+`getPreprUUID()` returning `null` is a useful check when headers seem to be missing — it means the middleware did not cover the route.
 
 ### Token helpers
 
 Exported from every entry point, including the core.
 
-#### `validatePreprToken(token)`
-
-Asserts that a Prepr GraphQL URL is well formed. Returns nothing and **throws** `PreprError` on a bad value — code `MISSING_TOKEN` when empty, `INVALID_TOKEN` when it is not an HTTPS URL.
-
-```typescript
-validatePreprToken(process.env.PREPR_GRAPHQL_URL!); // throws PreprError if invalid
-```
-
-#### `extractAccessToken(url)`
-
-Extracts the access token from a Prepr GraphQL URL — the value `PreprTrackingPixel` needs as its `id`.
-
-Returns the token as a `string`. It never returns `null` — a URL that is malformed, not on `graphql.prepr.io`, or missing a token segment throws a `PreprError` with code `INVALID_TOKEN`.
+- **`validatePreprToken(token)`** — asserts a Prepr GraphQL URL is well formed. Returns nothing; **throws** `PreprError` on a bad value (`MISSING_TOKEN` when empty, `INVALID_TOKEN` when not an HTTPS URL).
+- **`extractAccessToken(url)`** — extracts the access token from a Prepr GraphQL URL — the value `PreprTrackingPixel` needs as its `id`. Always returns a `string`; a URL that is malformed, not on `graphql.prepr.io`, or missing a token segment throws `PreprError(INVALID_TOKEN)`.
 
 ```typescript
 const token = extractAccessToken('https://graphql.prepr.io/abc123');
 // 'abc123'
-
-extractAccessToken('not-a-url'); // throws PreprError(INVALID_TOKEN)
 ```
 
 ### Components
 
 #### `PreprToolbar`
 
-The toolbar. Takes the props returned by `getToolbarProps`, and renders nothing itself — the UI is a shadow-DOM custom element mounted imperatively.
+The toolbar. Takes the props returned by `getToolbarProps`, and renders nothing itself — the UI is a shadow-DOM custom element mounted imperatively. There is no provider to wrap your tree in; state lives in the toolbar's own store.
 
 ```tsx
 <PreprToolbar {...toolbarProps} />
 ```
 
-There is no provider to wrap your tree in; state lives in the toolbar's own store.
-
 #### `PreprPreview`
 
 From `@preprio/toolkit/react`. The framework-free equivalent of `PreprToolbar`: same preview runtime, with the router binding left to you. Renders nothing.
 
-```tsx
-<PreprPreview {...toolbarProps} navigation={adapter} />
-```
-
 | Prop | Type | Description |
 | --- | --- | --- |
 | `activeSegment` / `activeVariant` / `segments` | — | Toolbar data, as returned by `getToolbarProps`. Optional for a headless preview. |
-| `options` | `PreprPreviewOptions` | Feature flags, `ui`, locale, debug (see [Preview Options](#preview-options)). |
+| `options` | `PreprPreviewOptions` | Feature flags, `ui`, locale, debug (see [Preview options](#preview-options)). |
 | `navigation` | `PreprNavigationAdapter` | Optional router binding. Defaults to `window.location`, which is correct for any router that keeps the URL bar in sync. |
 
 Every prop is read once on mount; changing one afterwards has no effect, since a live update would have to tear down the editor bridge and re-announce the preview. Remount to change configuration.
@@ -783,11 +572,11 @@ Loads Prepr's CDN tracking pixel on mount. Renders nothing. Exported from both `
 | Prop | Type | Description |
 | --- | --- | --- |
 | `id` | `string` | Prepr tracking/access token. Required. |
-| `config` | `PreprPixelConfig` | Optional pixel configuration (see [Pixel Options](#pixel-options)). |
+| `config` | `PreprPixelConfig` | Optional pixel configuration (see [Pixel options](#pixel-options)). |
 
 ### Core exports
 
-Available from `@preprio/toolkit` for apps outside Next.js, Astro, and SvelteKit.
+Available from `@preprio/toolkit` for apps outside the supported frameworks.
 
 #### `processPreprRequest(request, options?)`
 
@@ -820,49 +609,22 @@ controller.destroy();
 | Option | Type | Description |
 | --- | --- | --- |
 | `props` | `PreprToolbarProps` | From `getToolbarProps`. Optional — a headless preview has no segment list to pass. |
-| `options` | `PreprPreviewOptions` | `{ debug?, locale?, features?, ui?, allowedEditorOrigins? }`. |
-| `navigation` | `PreprNavigationAdapter` | How segment/variant switches navigate. |
+| `options` | `PreprPreviewOptions` | `{ debug?, locale?, features?, ui?, allowedEditorOrigins? }`. See [Preview options](#preview-options). |
+| `navigation` | `PreprNavigationAdapter` | How segment/variant switches navigate. Optional — omitted, the toolbar uses `window.location.assign` (a full page load). `reload` is optional too, runs after a preview-mode toggle, and defaults to `window.location.reload()`. The Next.js and SvelteKit wrappers wire all of this up for you. |
 
-The navigation adapter is optional. Omit it and the toolbar uses `window.location.assign` — a full page load. Supply one to integrate with a client-side router; its `reload` member is optional too, and runs after a preview-mode toggle (defaulting to `window.location.reload()`). The Next.js and SvelteKit wrappers wire all of this up for you.
+`createPreprPreview` is a no-op outside a browser (no `window`/`document`) and returns a controller whose `destroy()` does nothing, so it is safe to call during SSR. Call it **once per page** — two calls start two bridges and announce the preview twice.
 
-`createPreprPreview` is a no-op outside a browser (no `window`/`document`) and returns a controller whose `destroy()` does nothing, so it is safe to call during SSR.
+#### Tracking
 
-Chrome is skipped — while every side effect stays wired — when any of these hold: `ui: false`, `?prepr_hide_bar=true` (how the Prepr live-preview iframe suppresses the bar), or running inside the editor's iframe. See [Headless preview](#headless-preview-no-toolbar-ui).
-
-#### `loadTrackingPixel(id, config?)`
-
-Installs the CDN tracking pixel. Idempotent, and a no-op outside a browser.
-
-```typescript
-loadTrackingPixel('YOUR_ACCESS_TOKEN', {
-  destinations: { googleTagManager: true },
-  variantImpressionThreshold: 0.5,
-});
-```
-
-This is a typed facade over Prepr's existing CDN pixel (`https://cdn.tracking.prepr.io/js/prepr-v2.min.js`). It reproduces the legacy `<script>` snippet's queue-stub semantics, so calls made before the CDN script finishes loading are queued and flushed once it is ready.
-
-#### `trackEvent(name, data?)`
-
-Sends a custom tracking event.
-
-```typescript
-trackEvent('add_to_cart', { productId: 'abc123' });
-```
-
-#### `setTrackingParam(key, value)`
-
-Sets a persistent tracking parameter on the pixel.
-
-```typescript
-setTrackingParam('user_type', 'returning');
-```
+- **`loadTrackingPixel(id, config?)`** — installs the CDN tracking pixel. Idempotent, and a no-op outside a browser. A typed facade over Prepr's existing CDN pixel (`https://cdn.tracking.prepr.io/js/prepr-v2.min.js`), reproducing the legacy `<script>` snippet's queue-stub semantics: calls made before the CDN script loads are queued and flushed once it is ready.
+- **`trackEvent(name, data?)`** — sends a custom tracking event: `trackEvent('add_to_cart', { productId: 'abc123' })`.
+- **`setTrackingParam(key, value)`** — sets a persistent tracking parameter: `setTrackingParam('user_type', 'returning')`.
 
 `trackEvent` and `setTrackingParam` are independent of `loadTrackingPixel` — they work against `window.prepr` however it got installed, including a legacy HTML snippet already on the page. If no pixel is installed at all they warn once in the console and return without throwing.
 
 #### `stegaClean(value)`
 
-Strips stega-encoded characters from a string. Rarely needed, since cleaning is automatic (see [Visual Editing](#visual-editing)), but available when you need a clean value for comparison, sorting, or a non-DOM API.
+Strips stega-encoded characters from a string. Rarely needed, since cleaning is automatic (see [Visual editing](#visual-editing)), but available when you need a clean value for comparison, sorting, or a non-DOM API.
 
 #### Header-based server helpers
 
@@ -879,26 +641,18 @@ import {
 } from '@preprio/toolkit';
 ```
 
-Unlike `getToolbarProps`, `getPreprEnvironmentSegments(token)` throws on failure — see [Error Handling](#error-handling).
+Unlike `getToolbarProps`, `getPreprEnvironmentSegments(token)` throws on failure — see [Error handling](#error-handling).
 
-## Configuration Options
+## Configuration
 
-### Environment Variables
-
-The toolkit reads no environment variables itself. The one value you need to store is the GraphQL endpoint, under any name you like:
-
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `PREPR_GRAPHQL_URL` | Yes | — | Your Prepr GraphQL endpoint URL. The name is yours to choose; it is passed to `getToolbarProps` as a plain string. |
-
-### Middleware Options
+### Middleware options
 
 ```typescript
 // Simple usage (creates a new NextResponse)
-createPreprMiddleware(request, { preview: true });
+createPreprMiddleware(request, { preview });
 
 // Chaining usage (folds onto an existing NextResponse)
-createPreprMiddleware(request, response, { preview: true });
+createPreprMiddleware(request, response, { preview });
 ```
 
 | Option | Type | Description |
@@ -907,7 +661,7 @@ createPreprMiddleware(request, response, { preview: true });
 | `features` | `PreprFeatures` | Disable features app-wide. See [Feature flags](#feature-flags). |
 | `version` | `string` | Override the version reported in the `Prepr-Package` header. Mainly for tests. |
 
-### Preview Options
+### Preview options
 
 ```typescript
 createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
@@ -922,32 +676,6 @@ createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 | `allowedEditorOrigins` | `string[]` | `*.prepr.io` | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard. |
 
 `features` and `ui` are independent: `features` decides *what runs*, `ui` decides *whether the toolbar is visible*.
-
-### Headless preview (no toolbar UI)
-
-`ui: false` keeps every non-visual side effect wired — click-to-edit, the editor bridge, scroll restore, cookies and headers — while rendering no chrome of its own. That is how a site gets live editing, or editor scroll restore, alongside its own UI instead of the Prepr bar.
-
-```typescript
-// Live editing, no bar:
-const preview = createPreprPreview({
-  options: { ui: false, features: { editMode: true } },
-});
-
-preview.destroy();
-```
-
-`props` is optional here — a headless preview that only wants click-to-edit or scroll restore has no segment list to pass. For scroll restore and nothing else:
-
-```typescript
-createPreprPreview({
-  options: {
-    ui: false,
-    features: { segments: false, abTesting: false, editMode: false },
-  },
-});
-```
-
-`?prepr_hide_bar=true` and the editor's own iframe both imply `ui: false`. Outside an iframe the bridge is a no-op, so mounting unconditionally is safe. Call `createPreprPreview` **once per page** — two calls start two bridges and announce the preview twice.
 
 ### Feature flags
 
@@ -973,22 +701,49 @@ Pass the **same object to both sides**. Each enforces its own half, so a feature
 
 ```typescript
 // server
-createPreprMiddleware(request, { preview: true, features: preprFeatures });
+createPreprMiddleware(request, { preview, features: preprFeatures });
 const props = await getToolbarProps(graphqlUrl, preprFeatures);
 
 // client
 <PreprToolbar {...props} options={{ features: preprFeatures }} />
 ```
 
-Every framework's `getToolbarProps` takes `features` as its last argument, and every `<PreprToolbar>` accepts an `options` prop. Keeping the object in one module both sides import is the simplest way to stay in sync.
+Every framework's `getToolbarProps` takes `features` as its last argument, and every `<PreprToolbar>` accepts an `options` prop. Keeping the object in one module both sides import is the simplest way to stay in sync — the examples use `src/prepr-features.ts` (`shared/prepr-features.ts` in Nuxt).
 
 Disabling a feature also stops its `segment_changed` / `variant_changed` events, and the Reset button ignores it — state the user cannot see is never rewritten.
 
 **`editMode` does not disable the Prepr visual editor.** It governs your site's own click-to-edit affordance. When the Prepr editor frames your site it drives edit mode over its own `postMessage` handshake, which keeps working regardless — that is the CMS operating inside its own iframe, not an affordance offered to your visitors. Treat `editMode: false` as a UI choice, never as a security control.
 
-Feature flags govern the toolbar and the middleware. The toolbar-free scroll-sync entry point carries no personalization state, so there is nothing there to disable.
+### Headless preview (no toolbar UI)
 
-### Pixel Options
+`ui: false` keeps every non-visual side effect wired — click-to-edit, the editor bridge, scroll restore, cookies and headers — while rendering no chrome of its own. That is how a site gets live editing, or editor scroll restore, alongside its own UI instead of the Prepr bar.
+
+```typescript
+// Live editing, no bar:
+const preview = createPreprPreview({
+  options: { ui: false, features: { editMode: true } },
+});
+
+// Later, on teardown (SPA route change, component unmount):
+preview.destroy();
+```
+
+`props` is optional here — a headless preview that only wants click-to-edit or scroll restore has no segment list to pass. For scroll restore and nothing else:
+
+```typescript
+createPreprPreview({
+  options: {
+    ui: false,
+    features: { segments: false, abTesting: false, editMode: false },
+  },
+});
+```
+
+Scroll restore comes free with any preview, headless or not: inside the live-preview iframe the editor saves and restores the reader's position over the `postMessage` bridge, with no extra call and no configuration.
+
+`?prepr_hide_bar=true` and the editor's own iframe both imply `ui: false`; the bridge stays connected in each case. Outside an iframe the bridge is a no-op, so mounting unconditionally is safe. The handshake is only ever accepted from `https://<tenant>.prepr.io`, or from `allowedEditorOrigins` when set.
+
+### Pixel options
 
 ```typescript
 loadTrackingPixel(id, {
@@ -1057,7 +812,7 @@ The toolbar sets the segment; your data fetch decides what to do with it. Check 
 - **Server helpers in client components**: the Next.js helpers read `next/headers` and are server-only. Calling them from a `'use client'` component fails at build time.
 - **Missing peer dependencies**: importing `/nextjs` without `next`, `react`, and `react-dom` installed will not resolve. The core and `/astro` entry points have no framework peers.
 
-### Error Handling
+### Error handling
 
 Fetch and token failures throw `PreprError`, which carries a machine-readable code:
 
@@ -1078,7 +833,7 @@ Codes: `INVALID_TOKEN`, `MISSING_TOKEN`, `HTTP_ERROR`, `FETCH_ERROR`, `INVALID_R
 
 `getToolbarProps` is the exception — it swallows these and returns an empty segment list, so a bad token cannot crash your app.
 
-### Debug Mode
+### Debug mode
 
 ```typescript
 createPreprPreview({ props, options: { debug: true } });
@@ -1086,7 +841,7 @@ createPreprPreview({ props, options: { debug: true } });
 
 ## How It Works
 
-### Middleware Functionality
+### Middleware
 
 On each request the middleware:
 
@@ -1094,28 +849,22 @@ On each request the middleware:
 2. **Tracks UTM parameters** — lifts `utm_*` query params into `Prepr-Context-*` headers.
 3. **Manages segments** — resolves the active segment from cookie or preview query param.
 4. **Processes A/B tests** — resolves the active variant the same way.
-5. **Sets headers** — makes all of the above visible to Server Components and route handlers via `headers()`.
+5. **Sets headers** — makes all of the above visible to your server-side code.
 
 Cookie and query-parameter names are a frozen wire protocol shared with the Prepr editor.
 
-### Toolbar Features
+### Toolbar
 
 - **Segment selection** — preview the site as any configured audience segment.
 - **A/B testing** — toggle between variants A and B.
 - **Edit mode** — click-to-edit, jumping straight to the field in Prepr.
 - **Reset** — clear all personalization overrides.
 
-The toolbar renders with Preact into a shadow-DOM custom element (`<prepr-toolbar>`), which is what keeps its styles isolated from the host page in both directions. Segment/variant selection and edit mode are wired up for you; you only mount the toolbar and supply its props.
+The toolbar renders with Preact into a shadow-DOM custom element (`<prepr-toolbar>`), which keeps its styles isolated from the host page in both directions. Segment/variant selection and edit mode are wired up for you; you only mount the toolbar and supply its props.
 
-### Visual Editing
+### Visual editing
 
-With edit mode enabled, the toolkit:
-
-1. **Scans content** — finds editable text via its stega encoding.
-2. **Auto-cleans stega** — strips the invisible Unicode characters after load, so they cannot cause layout shifts with `letter-spacing` or text balancing.
-3. **Highlights elements** — proximity-based highlighting as the cursor moves.
-4. **Provides overlays** — click-to-edit affordances on editable fields.
-5. **Syncs with Prepr** — talks to the editor over a `postMessage` bridge when running inside the live-preview iframe.
+With edit mode enabled, the toolkit scans for stega-encoded content, strips the invisible Unicode characters after load so they cannot cause layout shifts, highlights editable elements by cursor proximity, and talks to the Prepr editor over a `postMessage` bridge when running inside the live-preview iframe.
 
 Stega cleaning is automatic. There is no need to call `vercelStegaSplit` or hand-manage hidden spans — the data attributes the toolkit relies on survive the clean, so edit mode still activates instantly.
 
