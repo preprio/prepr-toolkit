@@ -482,6 +482,44 @@ describe('processPreprRequest', () => {
       const value = result.requestHeaders.get('Prepr-Context-utm_source');
       expect(value!.length).toBeLessThanOrEqual(2048);
     });
+
+    it('does not throw on malformed percent-encoding in any cookie', () => {
+      // Another vendor's cookie on the same domain is enough to hit the parser.
+      const request = makeRequest('https://example.com/', {
+        headers: { cookie: 'vendor=%zz%E0; __prepr_uid=ok-uid' },
+      });
+
+      let result!: ReturnType<typeof processPreprRequest>;
+      expect(() => {
+        result = processPreprRequest(request, { preview: true });
+      }).not.toThrow();
+      expect(result.requestHeaders.get('Prepr-Customer-Id')).toBe('ok-uid');
+    });
+
+    it('strips CR/LF out of a hostile __prepr_uid cookie instead of throwing', () => {
+      const request = makeRequest('https://example.com/', {
+        headers: { cookie: `__prepr_uid=${encodeURIComponent(CRLF)}` },
+      });
+
+      let result!: ReturnType<typeof processPreprRequest>;
+      expect(() => {
+        result = processPreprRequest(request);
+      }).not.toThrow();
+      expect(result.requestHeaders.get('Prepr-Customer-Id')).not.toMatch(/[\r\n]/);
+      expect(result.requestHeaders.get('X-Injected')).toBeNull();
+    });
+
+    it('mints a fresh uuid when the __prepr_uid cookie is only control characters', () => {
+      const request = makeRequest('https://example.com/', {
+        headers: { cookie: '__prepr_uid=%0D%0A' },
+      });
+      const result = processPreprRequest(request);
+
+      expect(result.requestHeaders.get('Prepr-Customer-Id')).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+      expect(result.requestHeaders.get('Prepr-Customer-Id-Created')).toBe('true');
+    });
   });
 
   // The middleware is the sole authority on `Prepr-*`. A client that sends its

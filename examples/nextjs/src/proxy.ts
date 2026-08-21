@@ -4,7 +4,7 @@ import { preprFeatures } from '@/prepr-features'
 
 export function proxy(request: NextRequest) {
   return createPreprMiddleware(request, {
-    preview: true,
+    preview: process.env.NODE_ENV !== 'production',
     features: preprFeatures,
   })
 }

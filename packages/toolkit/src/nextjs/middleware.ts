@@ -44,11 +44,22 @@ export function createPreprMiddleware(
     chainedResponse ?? NextResponse.next({ request: { headers: requestHeaders } });
 
   if (chainedResponse) {
-    // A chained response skipped the next() constructor above, so it never
-    // picked up requestHeaders — copy them across by hand.
+    // A chained response skipped the next() constructor above. Writing
+    // requestHeaders onto response.headers would echo them (cookie included)
+    // to the browser and never reach Server Components — request-header
+    // forwarding only works via Next's override protocol, the same
+    // x-middleware-override-headers / x-middleware-request-* pair that
+    // NextResponse.next({ request }) writes internally. Union with any
+    // overrides a prior middleware in the chain already set.
+    const existing = response.headers.get('x-middleware-override-headers');
+    const names = new Set(
+      existing ? existing.split(',').map((name) => name.trim()).filter(Boolean) : []
+    );
     requestHeaders.forEach((value, key) => {
-      response.headers.set(key, value);
+      names.add(key);
+      response.headers.set(`x-middleware-request-${key}`, value);
     });
+    response.headers.set('x-middleware-override-headers', [...names].join(','));
   }
 
   for (const cookie of responseCookies) {

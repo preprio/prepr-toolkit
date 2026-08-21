@@ -92,7 +92,7 @@ No CSS import is needed. The toolbar renders into a shadow-DOM custom element (`
 
 ## Prerequisites
 
-- **Node.js 18.0.0 or later**
+- **Node.js 18.17 or later**
 - **A Prepr account** — [prepr.io](https://prepr.io)
 - **A Prepr GraphQL URL**:
   1. Go to Settings → Access tokens and open your **GraphQL Preview** access token.

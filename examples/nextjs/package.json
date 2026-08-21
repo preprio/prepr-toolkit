@@ -6,7 +6,6 @@
     "dev": "next dev --turbopack",
     "build": "npm run codegen && next build",
     "start": "next start",
-    "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "codegen": "graphql-codegen --config codegen.ts"
   },
@@ -36,5 +35,10 @@
     "@types/react-dom": "19.2.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "cookie@<0.7.0": ">=0.7.0"
+    }
   }
 }

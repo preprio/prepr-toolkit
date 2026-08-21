@@ -12,7 +12,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       // Set NUXT_PUBLIC_PREPR_GRAPHQL_URL in .env — this value reaches the
-      // browser, so it must never contain a hardcoded token.
+      // browser, so it must never contain a hardcoded token. Because it is
+      // exposed to every visitor, use a scoped read-only token with only the
+      // "Enable edit mode" / GraphQL read permissions.
       preprGraphqlUrl: '',
     },
   },
