@@ -60,7 +60,7 @@ pnpm typecheck:examples   # typecheck every example
 pnpm check:all            # everything, packages and examples
 ```
 
-Examples need their own `.env` to typecheck: `examples/sveltekit` reads `PUBLIC_PREPR_GRAPHQL_URL` through SvelteKit's `$env/static/public`, which is only declared when a `.env` supplies it. That is why they are out of the release path.
+The examples build and typecheck without a `.env` (`examples/sveltekit` reads `PUBLIC_PREPR_GRAPHQL_URL` through `$env/dynamic/public` at runtime, so nothing has to exist at compile time). They stay out of the release path anyway: a broken example should never block publishing the packages.
 
 All commands run through Turborepo, so they are cached and only re-run what changed. To scope one to a single workspace:
 

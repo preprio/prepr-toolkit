@@ -76,16 +76,45 @@ describe('createPreprMiddleware', () => {
     );
   });
 
-  it('accepts a chained NextResponse as the second argument and copies request headers onto it', () => {
-    const request = makeRequest('https://example.com/');
+  it('accepts a chained NextResponse and forwards request headers via the override protocol, never as response headers', () => {
+    const request = makeRequest('https://example.com/', {
+      headers: { cookie: '__prepr_uid=11111111-2222-3333-4444-555555555555' },
+    });
     const chained = NextResponse.redirect('https://example.com/elsewhere');
 
     const response = createPreprMiddleware(request, chained);
 
     expect(response).toBe(chained);
-    expect(response.headers.get('prepr-customer-id')).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    // Plain response headers would echo request headers (cookie included) to
+    // the browser while downstream headers() sees nothing — the forwarding
+    // must use the x-middleware-override-headers / x-middleware-request-* pair.
+    expect(response.headers.get('prepr-customer-id')).toBeNull();
+    expect(response.headers.get('cookie')).toBeNull();
+    expect(response.headers.get('x-middleware-request-prepr-customer-id')).toBe(
+      '11111111-2222-3333-4444-555555555555'
     );
+    // Header-name casing in the override list follows the source Headers
+    // object (Next's own next() writes capitalized names too) — match
+    // case-insensitively.
+    expect(
+      response.headers.get('x-middleware-override-headers')?.toLowerCase()
+    ).toContain('prepr-customer-id');
+  });
+
+  it('unions override names a prior middleware already set on the chained response', () => {
+    const request = makeRequest('https://example.com/');
+    const chained = NextResponse.next();
+    chained.headers.set('x-middleware-override-headers', 'x-intl-locale');
+    chained.headers.set('x-middleware-request-x-intl-locale', 'nl');
+
+    const response = createPreprMiddleware(request, chained);
+
+    const names = (
+      response.headers.get('x-middleware-override-headers') ?? ''
+    ).toLowerCase();
+    expect(names).toContain('x-intl-locale');
+    expect(names).toContain('prepr-customer-id');
+    expect(response.headers.get('x-middleware-request-x-intl-locale')).toBe('nl');
   });
 
   it('accepts options as the second argument when no response is chained', () => {

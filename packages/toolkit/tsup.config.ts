@@ -1,3 +1,4 @@
+import type { Plugin } from 'esbuild';
 import { defineConfig } from 'tsup';
 
 // CSS is compiled to `*.generated.ts` by `scripts/compile-css.mjs` (run via
@@ -12,6 +13,23 @@ const sharedOptions = {
   // Bundle preact (and its jsx-runtime) into dist so consumers never install
   // it — the toolbar stays a drop-in with no framework peer requirement.
   noExternal: ['preact', 'preact/jsx-runtime'],
+};
+
+// The `./components` sibling stays an external import (see the react/nextjs
+// configs below), but the specifier must match the *output* format: under
+// `"type": "module"` a `require('./components.js')` in the CJS bundle resolves
+// to the ESM sibling and throws ERR_REQUIRE_ESM on Node < 20.19 — inside the
+// package's declared `>=18.17` range. Rewrite to `.cjs` in the CJS build and
+// pin the explicit `.js` in ESM (plain Node does no extensionless lookup).
+const externalSiblingComponents: Plugin = {
+  name: 'external-sibling-components',
+  setup(build) {
+    const ext = build.initialOptions.format === 'cjs' ? '.cjs' : '.js';
+    build.onResolve({ filter: /^\.\/components(\.js)?$/ }, () => ({
+      path: `./components${ext}`,
+      external: true,
+    }));
+  },
 };
 
 export default defineConfig([
@@ -42,9 +60,9 @@ export default defineConfig([
     clean: false,
     // `./components.js` stays a real import into the sibling built above rather
     // than being inlined — same directive-preservation reason as `nextjs`.
-    // The extension is explicit so the emitted ESM resolves under plain Node,
-    // which does not do extensionless lookup the way bundlers do.
-    external: ['react', 'react-dom', './components.js'],
+    // Externalized (and format-suffixed) by the esbuild plugin.
+    external: ['react', 'react-dom'],
+    esbuildPlugins: [externalSiblingComponents],
   },
   {
     ...sharedOptions,
@@ -64,7 +82,9 @@ export default defineConfig([
     // its own entry file, not on files it inlines into another bundle), and
     // Next's RSC boundary detection needs that directive on the module where
     // the client-only hooks (`useEffect`/`useRouter`) actually run.
-    external: ['next', 'react', 'react-dom', './components'],
+    // Externalized (and format-suffixed) by the esbuild plugin.
+    external: ['next', 'react', 'react-dom'],
+    esbuildPlugins: [externalSiblingComponents],
   },
   {
     ...sharedOptions,
