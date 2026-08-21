@@ -7,7 +7,7 @@ import { createStegaController, stegaClean } from './index';
 function encode(
   visible: string,
   href = 'https://edit.example.com/entry/123',
-  origin = 'https://cms.example.com'
+  origin = 'https://cms.example.com',
 ): string {
   return vercelStegaCombine(visible, { origin, href });
 }
@@ -72,11 +72,9 @@ describe('createStegaController', () => {
     const tagged = document.querySelectorAll('[data-prepr-encoded]');
     expect(tagged.length).toBe(1);
     expect(p.getAttribute('data-prepr-href')).toBe(
-      'https://edit.example.com/entry/123'
+      'https://edit.example.com/entry/123',
     );
-    expect(p.getAttribute('data-prepr-origin')).toBe(
-      'https://cms.example.com'
-    );
+    expect(p.getAttribute('data-prepr-origin')).toBe('https://cms.example.com');
 
     controller.stop();
   });
@@ -120,7 +118,7 @@ describe('createStegaController', () => {
 
     // mousemove is what makes the tooltip visible
     p.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 }),
     );
 
     const tooltip = document.querySelector('.prepr-tooltip') as HTMLElement;
@@ -153,7 +151,7 @@ describe('createStegaController', () => {
     expect(style?.textContent).toContain('cursor:pointer');
 
     p.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 }),
     );
     expect(document.querySelector('.prepr-proximity-highlight')).toBeNull();
     expect(p.classList.contains('prepr-overlay-active')).toBe(false);
@@ -198,7 +196,7 @@ describe('createStegaAutoClean', () => {
     expect(h1.textContent).toBe('Hello world');
     expect(h1.hasAttribute('data-prepr-encoded')).toBe(true);
     expect(h1.getAttribute('data-prepr-href')).toBe(
-      'https://edit.example.com/entry/123'
+      'https://edit.example.com/entry/123',
     );
 
     autoClean.stop();

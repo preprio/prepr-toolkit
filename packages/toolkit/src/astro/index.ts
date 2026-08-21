@@ -42,9 +42,12 @@ export type AstroNext = () => Promise<Response>;
 export async function onPreprRequest(
   context: AstroLikeContext,
   next: AstroNext,
-  options?: PreprMiddlewareOptions
+  options?: PreprMiddlewareOptions,
 ): Promise<Response> {
-  const { requestHeaders, responseCookies } = processPreprRequest(context.request, options);
+  const { requestHeaders, responseCookies } = processPreprRequest(
+    context.request,
+    options,
+  );
 
   // processPreprRequest returns a copy, so fold it back onto the original
   // request — that instance is the only one downstream code will see.
@@ -94,7 +97,7 @@ export function getPreprHeaders(headers: Headers): PreprHeaders {
 export async function getToolbarProps(
   headers: Headers,
   token: string,
-  features?: PreprFeatures
+  features?: PreprFeatures,
 ): Promise<PreprToolbarProps> {
   return getToolbarPropsFromHeaders(headers, token, features);
 }

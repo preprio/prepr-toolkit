@@ -53,7 +53,7 @@ export interface ChangeHandlerDeps {
  * ordinary segment + variant write emitting `segment_changed`/`variant_changed`.
  */
 export function createChangeHandler(
-  deps: ChangeHandlerDeps
+  deps: ChangeHandlerDeps,
 ): (before: ToolbarState, after: ToolbarState) => void {
   const { store, stega, features, editingEnabled } = deps;
 
@@ -78,7 +78,7 @@ export function createChangeHandler(
 
   return function handleChange(
     before: ToolbarState,
-    after: ToolbarState
+    after: ToolbarState,
   ): void {
     const paramPatch: Record<string, string | null> = {};
 
@@ -94,7 +94,10 @@ export function createChangeHandler(
       });
     }
 
-    if (features.abTesting && before.selectedVariant !== after.selectedVariant) {
+    if (
+      features.abTesting &&
+      before.selectedVariant !== after.selectedVariant
+    ) {
       if (after.selectedVariant === null) {
         removeCookie(COOKIE_VARIANT, '/', crossSiteCookieOptions());
       } else {
@@ -139,7 +142,9 @@ export function createChangeHandler(
       }
       setCookie(COOKIE_PREVIEW_MODE, String(after.previewMode), cookieOpts());
       setCookie(COOKIE_TOOLBAR_OPEN, 'false', cookieOpts());
-      sendPreprEvent('preview_mode_toggled', { previewMode: after.previewMode });
+      sendPreprEvent('preview_mode_toggled', {
+        previewMode: after.previewMode,
+      });
       // Inside the editor iframe the transition comes from `prepr:initVE` and
       // the content is already preview — reloading there is what caused the
       // infinite reload loop when the cross-site preview cookie was dropped

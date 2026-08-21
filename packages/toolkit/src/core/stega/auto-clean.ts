@@ -48,7 +48,7 @@ export function createStegaAutoClean(): StegaAutoClean {
 
       let target: HTMLElement | null = textNode.parentElement;
       const editTargetParent = textNode.parentElement?.closest(
-        '[data-prepr-edit-target]'
+        '[data-prepr-edit-target]',
       );
       if (editTargetParent) target = editTargetParent as HTMLElement;
 
@@ -74,13 +74,13 @@ export function createStegaAutoClean(): StegaAutoClean {
 
   function collectAffected(mutations: MutationRecord[]): Set<Text> {
     const affected = new Set<Text>();
-    mutations.forEach(mutation => {
+    mutations.forEach((mutation) => {
       if (mutation.type === 'childList') {
-        mutation.addedNodes.forEach(node => {
+        mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.TEXT_NODE) {
             affected.add(node as Text);
           } else if (node.nodeType === Node.ELEMENT_NODE) {
-            walkTextNodes(node, textNode => affected.add(textNode));
+            walkTextNodes(node, (textNode) => affected.add(textNode));
           }
         });
       }
@@ -107,7 +107,7 @@ export function createStegaAutoClean(): StegaAutoClean {
     if (debounceTimeout) clearTimeout(debounceTimeout);
     debounceTimeout = setTimeout(() => {
       processing = true;
-      affected.forEach(textNode => cleanTextNode(textNode));
+      affected.forEach((textNode) => cleanTextNode(textNode));
       processing = false;
     }, 50);
   }

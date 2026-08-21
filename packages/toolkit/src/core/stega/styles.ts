@@ -19,10 +19,10 @@ export { STEGA_STYLES };
  * a no-op.
  */
 export function injectStegaStyles(
-  css: string = STEGA_STYLES
+  css: string = STEGA_STYLES,
 ): HTMLStyleElement {
   const existing = document.querySelector<HTMLStyleElement>(
-    `style[${STEGA_STYLE_MARKER}]`
+    `style[${STEGA_STYLE_MARKER}]`,
   );
   if (existing) return existing;
 
@@ -36,5 +36,5 @@ export function injectStegaStyles(
 export function removeStegaStyles(): void {
   document
     .querySelectorAll(`style[${STEGA_STYLE_MARKER}]`)
-    .forEach(node => node.parentNode?.removeChild(node));
+    .forEach((node) => node.parentNode?.removeChild(node));
 }

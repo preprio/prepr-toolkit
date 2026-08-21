@@ -36,7 +36,7 @@ describe('react components', () => {
 
     expect(createPreprPreview).toHaveBeenCalledTimes(1);
     expect(createPreprPreview).toHaveBeenCalledWith(
-      expect.objectContaining({ props })
+      expect.objectContaining({ props }),
     );
 
     await React.act(async () => {
@@ -73,12 +73,12 @@ describe('react components', () => {
           activeSegment: null,
           activeVariant: null,
           navigation,
-        })
+        }),
       );
     });
 
     expect(createPreprPreview).toHaveBeenCalledWith(
-      expect.objectContaining({ navigation })
+      expect.objectContaining({ navigation }),
     );
 
     await React.act(async () => {
@@ -91,12 +91,12 @@ describe('react components', () => {
         React.createElement(PreprPreview, {
           activeSegment: null,
           activeVariant: null,
-        })
+        }),
       );
     });
 
     expect(createPreprPreview).toHaveBeenLastCalledWith(
-      expect.objectContaining({ navigation: undefined })
+      expect.objectContaining({ navigation: undefined }),
     );
 
     await React.act(async () => {
@@ -126,7 +126,7 @@ describe('react components', () => {
       root.render(
         React.createElement(PreprPreview, {
           options: { features: { segments: false, abTesting: false } },
-        })
+        }),
       );
     });
 

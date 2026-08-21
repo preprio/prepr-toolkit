@@ -11,7 +11,11 @@ import { isLocale, t as translate, type Locale } from './i18n';
 import { createIframeBridge } from './iframe-bridge';
 import { createStegaAutoClean, type StegaAutoClean } from './stega/auto-clean';
 import { createStegaController, stegaClean } from './stega';
-import { createToolbarStore, type ToolbarState, type ToolbarStore } from './store';
+import {
+  createToolbarStore,
+  type ToolbarState,
+  type ToolbarStore,
+} from './store';
 import { createChangeHandler } from './toolbar-change-handler';
 import type {
   PreprPreviewOptions,
@@ -19,7 +23,10 @@ import type {
   PreprToolbarProps,
   PreprVariant,
 } from './types';
-import { definePreprToolbar, type PreprToolbarElement } from './ui/toolbar-element';
+import {
+  definePreprToolbar,
+  type PreprToolbarElement,
+} from './ui/toolbar-element';
 import { createScopedLogger, initDebugLogger, sendPreprEvent } from './utils';
 
 const debug = createScopedLogger('create-preview');
@@ -59,14 +66,14 @@ const controllerStores = new WeakMap<PreprPreviewController, ToolbarStore>();
 
 /** @internal */
 export function getControllerStore(
-  controller: PreprPreviewController
+  controller: PreprPreviewController,
 ): ToolbarStore | undefined {
   return controllerStores.get(controller);
 }
 
 function defaultNavigation(): PreprNavigationAdapter {
   return {
-    navigate: url => window.location.assign(url),
+    navigate: (url) => window.location.assign(url),
     currentPath: () => window.location.pathname + window.location.search,
   };
 }
@@ -112,7 +119,7 @@ function resolveLocale(options?: PreprPreviewOptions): Locale {
         : [navigator.language];
     const match = candidates
       .filter(Boolean)
-      .map(l => l.toLowerCase().split('-')[0])
+      .map((l) => l.toLowerCase().split('-')[0])
       .find(isLocale);
     if (match) return match;
   }
@@ -133,7 +140,7 @@ function resolveLocale(options?: PreprPreviewOptions): Locale {
  *   click-to-edit or editor scroll restore with no chrome of its own.
  */
 export function createPreprPreview(
-  opts: CreatePreprPreviewOptions = {}
+  opts: CreatePreprPreviewOptions = {},
 ): PreprPreviewController {
   const { props, options } = opts;
   const navigation = opts.navigation ?? defaultNavigation();
@@ -172,7 +179,7 @@ export function createPreprPreview(
   const cookieSegment = features.segments ? getCookie(COOKIE_SEGMENT) : null;
   const cookieVariant = features.abTesting ? getCookie(COOKIE_VARIANT) : null;
   const rawVariant = features.abTesting
-    ? props?.activeVariant ?? cookieVariant
+    ? (props?.activeVariant ?? cookieVariant)
     : null;
   const selectedVariant: PreprVariant | null =
     rawVariant === 'A' || rawVariant === 'B' ? rawVariant : null;
@@ -184,7 +191,7 @@ export function createPreprPreview(
       ? buildSegments(props?.segments ?? props?.data ?? [])
       : [],
     selectedSegment: features.segments
-      ? props?.activeSegment ?? cookieSegment ?? null
+      ? (props?.activeSegment ?? cookieSegment ?? null)
       : null,
     selectedVariant,
     previewMode,
@@ -198,7 +205,7 @@ export function createPreprPreview(
     definePreprToolbar();
     el = document.createElement('prepr-toolbar') as PreprToolbarElement;
     document.body.appendChild(el);
-    el.connect(store, key => translate(key, locale));
+    el.connect(store, (key) => translate(key, locale));
   }
 
   // --- Stega controllers ---------------------------------------------------
@@ -251,7 +258,7 @@ export function createPreprPreview(
     store,
     features,
     editingEnabled,
-    navigate: url => navigation.navigate(url),
+    navigate: (url) => navigation.navigate(url),
     currentPath: () => navigation.currentPath(),
     reload: navigation.reload ?? (() => window.location.reload()),
     stega,
@@ -262,7 +269,7 @@ export function createPreprPreview(
   // Advance `prev` BEFORE running the handlers: a nested `store.set` from
   // inside handleChange must diff against the state it actually mutated, and
   // the outer call must not clobber `prev` back to a stale snapshot afterwards.
-  const unsubscribe = store.subscribe(state => {
+  const unsubscribe = store.subscribe((state) => {
     const before = prev;
     prev = state;
     handleChange(before, state);
@@ -277,9 +284,13 @@ export function createPreprPreview(
   // `{ value: 0 }` payload the editor expects. Runs before `bridge.start()`,
   // so no trusted origin exists yet — allowed to broadcast because the
   // constant `{ value: 0 }` carries no content data, same as `loaded`.
-  sendPreprEvent('getScrollPosition', { value: 0 }, {
-    allowUntrustedTarget: true,
-  });
+  sendPreprEvent(
+    'getScrollPosition',
+    { value: 0 },
+    {
+      allowUntrustedTarget: true,
+    },
+  );
 
   if (isIframe) {
     bridge.start();

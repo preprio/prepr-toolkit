@@ -41,7 +41,7 @@ describe('definePreprToolbar', () => {
 
     expect(el.shadowRoot).not.toBeNull();
     const toggle = el.shadowRoot!.querySelector<HTMLButtonElement>(
-      '[data-prepr="toggle"]'
+      '[data-prepr="toggle"]',
     );
     expect(toggle).not.toBeNull();
   });
@@ -51,7 +51,7 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const panel = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="panel"]'
+      '[data-prepr="panel"]',
     )!;
     expect(panel.getAttribute('data-open')).toBe('false');
 
@@ -65,7 +65,7 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const toggle = el.shadowRoot!.querySelector<HTMLButtonElement>(
-      '[data-prepr="toggle"]'
+      '[data-prepr="toggle"]',
     )!;
     toggle.click();
 
@@ -81,9 +81,9 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const options = el.shadowRoot!.querySelectorAll('[role="option"]');
-    const labels = Array.from(options).map(o => o.textContent?.trim());
+    const labels = Array.from(options).map((o) => o.textContent?.trim());
     expect(labels).toEqual(
-      expect.arrayContaining(['Cat lovers', 'Dog lovers'])
+      expect.arrayContaining(['Cat lovers', 'Dog lovers']),
     );
   });
 
@@ -97,17 +97,17 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const listboxButton = el.shadowRoot!.querySelector<HTMLButtonElement>(
-      '[data-prepr="segment-button"]'
+      '[data-prepr="segment-button"]',
     )!;
     listboxButton.click();
 
     const option = el.shadowRoot!.querySelector<HTMLElement>(
-      '[role="option"][data-value="seg-2"]'
+      '[role="option"][data-value="seg-2"]',
     )!;
     option.click();
 
     expect(setSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ selectedSegment: 'seg-2' })
+      expect.objectContaining({ selectedSegment: 'seg-2' }),
     );
   });
 
@@ -120,12 +120,12 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const variantB = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="variant"][data-value="B"]'
+      '[data-prepr="variant"][data-value="B"]',
     )!;
     variantB.click();
 
     expect(setSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ selectedVariant: 'B' })
+      expect.objectContaining({ selectedVariant: 'B' }),
     );
   });
 
@@ -135,19 +135,19 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const on = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="preview-mode"][data-value="true"]'
+      '[data-prepr="preview-mode"][data-value="true"]',
     )!;
     on.click();
     expect(setSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ previewMode: true })
+      expect.objectContaining({ previewMode: true }),
     );
 
     const off = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="preview-mode"][data-value="false"]'
+      '[data-prepr="preview-mode"][data-value="false"]',
     )!;
     off.click();
     expect(setSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ previewMode: false })
+      expect.objectContaining({ previewMode: false }),
     );
   });
 
@@ -157,11 +157,11 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const on = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="edit-mode"][data-value="true"]'
+      '[data-prepr="edit-mode"][data-value="true"]',
     )!;
     on.click();
     expect(setSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ editMode: true })
+      expect.objectContaining({ editMode: true }),
     );
   });
 
@@ -177,7 +177,7 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const reset = el.shadowRoot!.querySelector<HTMLButtonElement>(
-      '[data-prepr="reset"]'
+      '[data-prepr="reset"]',
     )!;
     reset.click();
 
@@ -210,7 +210,7 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const pill = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="close-edit-pill"]'
+      '[data-prepr="close-edit-pill"]',
     )!;
     expect(pill.hasAttribute('hidden')).toBe(true);
 
@@ -228,7 +228,7 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const pill = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="status-pill"]'
+      '[data-prepr="status-pill"]',
     )!;
     expect(pill.textContent).toContain('Cat lovers');
     expect(pill.textContent).toContain('B');
@@ -243,7 +243,7 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const x = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="status-x"]'
+      '[data-prepr="status-x"]',
     )!;
     expect(x.hasAttribute('hidden')).toBe(true);
 
@@ -260,18 +260,18 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     el.shadowRoot!.querySelector<HTMLButtonElement>(
-      '[data-prepr="segment-button"]'
+      '[data-prepr="segment-button"]',
     )!.click();
 
     const search = el.shadowRoot!.querySelector<HTMLInputElement>(
-      '[data-prepr="segment-search"]'
+      '[data-prepr="segment-search"]',
     )!;
     search.value = 'dog';
     search.dispatchEvent(new Event('input', { bubbles: true }));
 
     const labels = Array.from(
-      el.shadowRoot!.querySelectorAll('[role="option"]')
-    ).map(o => o.textContent?.trim());
+      el.shadowRoot!.querySelectorAll('[role="option"]'),
+    ).map((o) => o.textContent?.trim());
     expect(labels).toEqual(['Dog lovers']);
   });
 
@@ -292,7 +292,10 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
     const css = el.shadowRoot!.querySelector('style')!.textContent ?? '';
 
-    const hostBlock = css.slice(css.indexOf(':host'), css.indexOf('}', css.indexOf(':host')) + 1);
+    const hostBlock = css.slice(
+      css.indexOf(':host'),
+      css.indexOf('}', css.indexOf(':host')) + 1,
+    );
     expect(hostBlock).not.toMatch(/all\s*:\s*initial/);
     // Concrete defaults, so the toolbar is visible when a consumer sets nothing.
     expect(css).toMatch(/--prepr-primary\s*:\s*#4338ca/);
@@ -307,13 +310,13 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const button = el.shadowRoot!.querySelector<HTMLButtonElement>(
-      '[data-prepr="segment-button"]'
+      '[data-prepr="segment-button"]',
     )!;
     button.click();
     expect(button.getAttribute('aria-expanded')).toBe('true');
 
     button.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     );
     expect(button.getAttribute('aria-expanded')).toBe('false');
   });
@@ -323,12 +326,12 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const tooltip = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="tooltip"]'
+      '[data-prepr="tooltip"]',
     )!;
     expect(tooltip.hasAttribute('hidden')).toBe(true);
 
     const off = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="preview-mode"][data-value="false"]'
+      '[data-prepr="preview-mode"][data-value="false"]',
     )!;
     off.dispatchEvent(new MouseEvent('mouseenter'));
 
@@ -344,10 +347,10 @@ describe('definePreprToolbar', () => {
     const el = mount(store);
 
     const tooltip = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="tooltip"]'
+      '[data-prepr="tooltip"]',
     )!;
     const on = el.shadowRoot!.querySelector<HTMLElement>(
-      '[data-prepr="preview-mode"][data-value="true"]'
+      '[data-prepr="preview-mode"][data-value="true"]',
     )!;
 
     on.dispatchEvent(new FocusEvent('focus'));
@@ -413,7 +416,7 @@ describe('definePreprToolbar', () => {
       expect(label.textContent).toBe('T[common.user]');
       // Nothing to clear, so no X.
       expect(
-        root.querySelector('[data-prepr="status-x"]')!.hasAttribute('hidden')
+        root.querySelector('[data-prepr="status-x"]')!.hasAttribute('hidden'),
       ).toBe(true);
     });
 
@@ -426,7 +429,7 @@ describe('definePreprToolbar', () => {
       const root = mount(store).shadowRoot!;
 
       expect(
-        root.querySelector('[data-prepr="status-segment"]')!.textContent
+        root.querySelector('[data-prepr="status-segment"]')!.textContent,
       ).toBe('Cat lovers');
     });
 
@@ -440,9 +443,9 @@ describe('definePreprToolbar', () => {
 
       // The control is not rendered, so drive the handler the way the iframe
       // bridge or a programmatic caller would.
-      el.shadowRoot!
-        .querySelector<HTMLElement>('[data-prepr="variant"][data-value="B"]')
-        ?.click();
+      el.shadowRoot!.querySelector<HTMLElement>(
+        '[data-prepr="variant"][data-value="B"]',
+      )?.click();
 
       expect(store.get().selectedVariant).toBe('A');
     });
@@ -457,9 +460,9 @@ describe('definePreprToolbar', () => {
       });
       const el = mount(store);
 
-      el.shadowRoot!
-        .querySelector<HTMLButtonElement>('[data-prepr="reset"]')!
-        .click();
+      el.shadowRoot!.querySelector<HTMLButtonElement>(
+        '[data-prepr="reset"]',
+      )!.click();
 
       expect(store.get().selectedSegment).toBeNull();
       // Untouched: abTesting is off, so its state must not be rewritten.

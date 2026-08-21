@@ -51,5 +51,7 @@ app.get('/{*slug}', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`express example on http://localhost:${PORT} (preview: ${IS_PREVIEW})`);
+  console.log(
+    `express example on http://localhost:${PORT} (preview: ${IS_PREVIEW})`,
+  );
 });

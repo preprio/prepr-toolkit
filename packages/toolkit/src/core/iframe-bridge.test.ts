@@ -128,9 +128,8 @@ describe('createIframeBridge — editor origin validation', () => {
 
     expect(
       spy.mock.calls.some(
-        ([msg]) =>
-          (msg as { event?: string })?.event === 'getScrollPosition'
-      )
+        ([msg]) => (msg as { event?: string })?.event === 'getScrollPosition',
+      ),
     ).toBe(false);
     spy.mockRestore();
   });
@@ -148,7 +147,7 @@ describe('createIframeBridge — loaded payload', () => {
     bridge.start();
     bridge.stop();
     window.removeEventListener('prepr_preview_bar', onEvent);
-    return seen.find(m => m.event === 'loaded');
+    return seen.find((m) => m.event === 'loaded');
   }
 
   it('reports the resolved feature flags so the editor can hide disabled UI', () => {

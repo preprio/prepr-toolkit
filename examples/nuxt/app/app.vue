@@ -19,7 +19,7 @@ const { data: toolbarProps } = await useAsyncData('prepr-toolbar', async () => {
     return await getToolbarProps(
       new Headers(requestHeaders as Record<string, string>),
       config.public.preprGraphqlUrl,
-      preprFeatures
+      preprFeatures,
     );
   } catch (error) {
     console.error('Failed to fetch toolbar props:', error);

@@ -15,7 +15,7 @@ function isEnabled(config: PreprFeatureConfig | undefined): boolean {
  * what a given config means.
  */
 export function resolveFeatures(
-  features?: PreprFeatures
+  features?: PreprFeatures,
 ): ResolvedPreprFeatures {
   return {
     segments: isEnabled(features?.segments),

@@ -25,7 +25,9 @@ export interface SvelteKitRequestEvent {
 export const PREPR_LOCALS_KEY = 'prepr';
 
 /** SvelteKit's `resolve(event)` — produces the downstream `Response`. */
-export type SvelteKitResolve = (event: SvelteKitRequestEvent) => Promise<Response>;
+export type SvelteKitResolve = (
+  event: SvelteKitRequestEvent,
+) => Promise<Response>;
 
 /** Structural match for SvelteKit's `Handle`. */
 export type Handle = (input: {
@@ -47,7 +49,10 @@ export type Handle = (input: {
  */
 export function preprHandle(options?: PreprMiddlewareOptions): Handle {
   return async ({ event, resolve }) => {
-    const { requestHeaders, responseCookies } = processPreprRequest(event.request, options);
+    const { requestHeaders, responseCookies } = processPreprRequest(
+      event.request,
+      options,
+    );
 
     requestHeaders.forEach((value, key) => {
       event.request.headers.set(key, value);
@@ -74,7 +79,9 @@ export function preprHandle(options?: PreprMiddlewareOptions): Handle {
  * writes both. Empty `Headers` if `preprHandle` did not run, so the result is
  * always safe to spread.
  */
-export function getPreprHeadersFromLocals(locals: Record<string, unknown>): Headers {
+export function getPreprHeadersFromLocals(
+  locals: Record<string, unknown>,
+): Headers {
   const headers = locals[PREPR_LOCALS_KEY];
   return headers instanceof Headers ? headers : new Headers();
 }

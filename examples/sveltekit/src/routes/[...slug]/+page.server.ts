@@ -17,7 +17,11 @@ export const load: PageServerLoad = async ({ params, request }) => {
 
   // GetPageBySlugDocument is a TypedDocumentNode; print() it to the raw query
   // string the fetch helper needs.
-  const response = await Prepr(print(GetPageBySlugDocument), { slug }, request.headers);
+  const response = await Prepr(
+    print(GetPageBySlugDocument),
+    { slug },
+    request.headers,
+  );
   const { data } = (await response.json()) as { data: GetPageBySlugQuery };
 
   if (!data?.Page) {

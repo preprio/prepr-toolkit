@@ -44,11 +44,17 @@ const isPositiveInteger = (value: string) => /^\d+$/.test(value);
  * neither of which is a ceiling on what the CDN can serve, so capping there
  * would rule out retina.
  */
-export default function preprImageLoader({ src, width }: ImageLoaderProps): string {
+export default function preprImageLoader({
+  src,
+  width,
+}: ImageLoaderProps): string {
   return src.replace(TRANSFORM_SEGMENT, (match, segment: string) => {
     const options = segment.split(',').map((pair) => {
       const underscore = pair.indexOf('_');
-      return [pair.slice(0, underscore), pair.slice(underscore + 1)] as [string, string];
+      return [pair.slice(0, underscore), pair.slice(underscore + 1)] as [
+        string,
+        string,
+      ];
     });
 
     const emittedWidth = options.find(([key]) => key === 'w');
@@ -57,7 +63,9 @@ export default function preprImageLoader({ src, width }: ImageLoaderProps): stri
     const emittedHeight = options.find(([key]) => key === 'h');
     if (emittedHeight && isPositiveInteger(emittedHeight[1])) {
       emittedHeight[1] = String(
-        Math.round((width * Number(emittedHeight[1])) / Number(emittedWidth[1])),
+        Math.round(
+          (width * Number(emittedHeight[1])) / Number(emittedWidth[1]),
+        ),
       );
     }
     emittedWidth[1] = String(width);

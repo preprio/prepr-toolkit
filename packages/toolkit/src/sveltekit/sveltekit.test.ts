@@ -10,7 +10,7 @@ import { preprHandle, getPreprHeadersFromLocals } from './hooks';
 // headers have to be set after construction.
 function makeRequest(
   url: string,
-  init: { headers?: Record<string, string> } = {}
+  init: { headers?: Record<string, string> } = {},
 ): Request {
   const request = new Request(url);
   for (const [key, value] of Object.entries(init.headers ?? {})) {
@@ -27,18 +27,20 @@ describe('preprHandle', () => {
     let seenDuringResolve: string | null = null;
     const resolve = async (): Promise<Response> => {
       // Must already be set by the time resolve() runs, not after.
-      seenDuringResolve = getPreprHeadersFromLocals(event.locals).get('prepr-customer-id');
+      seenDuringResolve = getPreprHeadersFromLocals(event.locals).get(
+        'prepr-customer-id',
+      );
       return new Response('ok');
     };
 
     await preprHandle()({ event, resolve });
 
     expect(seenDuringResolve).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
-    expect(getPreprHeadersFromLocals(event.locals).get('Prepr-Package')).toMatch(
-      /^@preprio\/toolkit@/
-    );
+    expect(
+      getPreprHeadersFromLocals(event.locals).get('Prepr-Package'),
+    ).toMatch(/^@preprio\/toolkit@/);
   });
 
   it('getPreprHeadersFromLocals returns an empty Headers when preprHandle did not run', () => {
@@ -59,12 +61,12 @@ describe('preprHandle', () => {
     const loadEvent = { ...event };
     expect(loadEvent.request).toBe(request);
     expect(loadEvent.request.headers.get('prepr-customer-id')).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     // Both channels agree.
-    expect(getPreprHeadersFromLocals(event.locals).get('prepr-customer-id')).toBe(
-      loadEvent.request.headers.get('prepr-customer-id')
-    );
+    expect(
+      getPreprHeadersFromLocals(event.locals).get('prepr-customer-id'),
+    ).toBe(loadEvent.request.headers.get('prepr-customer-id'));
   });
 
   it('works when the event has no locals (non-page endpoints, hand-built events)', async () => {
@@ -74,7 +76,7 @@ describe('preprHandle', () => {
     await preprHandle()({ event: { request }, resolve });
 
     expect(request.headers.get('prepr-customer-id')).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
   });
 
@@ -82,7 +84,10 @@ describe('preprHandle', () => {
     const request = makeRequest('https://example.com/');
     const resolve = async (): Promise<Response> => new Response('ok');
 
-    const response = await preprHandle()({ event: { request, locals: {} }, resolve });
+    const response = await preprHandle()({
+      event: { request, locals: {} },
+      resolve,
+    });
 
     const setCookie = response.headers.get('set-cookie');
     expect(setCookie).toMatch(/^__prepr_uid=[0-9a-f-]{36}/);
@@ -92,17 +97,26 @@ describe('preprHandle', () => {
 
   it('appends independent Set-Cookie headers for every entry (multi-cookie preview)', async () => {
     const request = makeRequest(
-      'https://example.com/?prepr_preview_segment=seg-1&prepr_preview_ab=B'
+      'https://example.com/?prepr_preview_segment=seg-1&prepr_preview_ab=B',
     );
     const resolve = async (): Promise<Response> => new Response('ok');
 
-    const response = await preprHandle({ preview: true })({ event: { request, locals: {} }, resolve });
+    const response = await preprHandle({ preview: true })({
+      event: { request, locals: {} },
+      resolve,
+    });
 
     const setCookies = response.headers.getSetCookie();
     expect(setCookies).toHaveLength(4);
-    expect(setCookies.some(c => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(true);
-    expect(setCookies.some(c => c.startsWith('Prepr-Segments=seg-1'))).toBe(true);
-    expect(setCookies.some(c => c.startsWith('Prepr-ABtesting=B'))).toBe(true);
+    expect(setCookies.some((c) => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(
+      true,
+    );
+    expect(setCookies.some((c) => c.startsWith('Prepr-Segments=seg-1'))).toBe(
+      true,
+    );
+    expect(setCookies.some((c) => c.startsWith('Prepr-ABtesting=B'))).toBe(
+      true,
+    );
     for (const cookie of setCookies) {
       expect(cookie).toMatch(/Max-Age=31536000/);
       expect(cookie).toMatch(/Path=\//);
@@ -120,9 +134,9 @@ describe('preprHandle', () => {
 
     expect(response.headers.get('set-cookie')).toBeNull();
     // Existing uid is still forwarded via locals.
-    expect(getPreprHeadersFromLocals(event.locals).get('Prepr-Customer-Id')).toBe(
-      'existing-uuid'
-    );
+    expect(
+      getPreprHeadersFromLocals(event.locals).get('Prepr-Customer-Id'),
+    ).toBe('existing-uuid');
   });
 
   it('returns the exact Response produced by resolve(), with cookies appended', async () => {
@@ -132,7 +146,10 @@ describe('preprHandle', () => {
     const resolved = new Response('body', { status: 201 });
     const resolve = async (): Promise<Response> => resolved;
 
-    const response = await preprHandle()({ event: { request, locals: {} }, resolve });
+    const response = await preprHandle()({
+      event: { request, locals: {} },
+      resolve,
+    });
 
     expect(response).toBe(resolved);
     expect(response.status).toBe(201);
@@ -146,7 +163,9 @@ describe('preprHandle', () => {
 
       await preprHandle()({ event, resolve });
 
-      expect(getPreprHeadersFromLocals(event.locals).get('Prepr-Preview-Bar')).toBeNull();
+      expect(
+        getPreprHeadersFromLocals(event.locals).get('Prepr-Preview-Bar'),
+      ).toBeNull();
     });
 
     it('enables preview bar when options.preview is true', async () => {
@@ -156,7 +175,9 @@ describe('preprHandle', () => {
 
       await preprHandle({ preview: true })({ event, resolve });
 
-      expect(getPreprHeadersFromLocals(event.locals).get('Prepr-Preview-Bar')).toBe('true');
+      expect(
+        getPreprHeadersFromLocals(event.locals).get('Prepr-Preview-Bar'),
+      ).toBe('true');
     });
 
     it('ignores PREPR_ENV entirely', async () => {
@@ -167,7 +188,9 @@ describe('preprHandle', () => {
 
       await preprHandle({ preview: true })({ event, resolve });
 
-      expect(getPreprHeadersFromLocals(event.locals).get('Prepr-Preview-Bar')).toBe('true');
+      expect(
+        getPreprHeadersFromLocals(event.locals).get('Prepr-Preview-Bar'),
+      ).toBe('true');
       delete process.env.PREPR_ENV;
     });
   });
@@ -175,8 +198,12 @@ describe('preprHandle', () => {
 
 describe('server helpers (SvelteKit re-exports)', () => {
   it('read from a standard Headers object', async () => {
-    const { getActiveSegment, getActiveVariant, getPreprHeaders, getPreprUUID } =
-      await import('./index');
+    const {
+      getActiveSegment,
+      getActiveVariant,
+      getPreprHeaders,
+      getPreprUUID,
+    } = await import('./index');
 
     const headers = new Headers({
       'prepr-customer-id': 'uid-123',
@@ -201,13 +228,16 @@ describe('server helpers (SvelteKit re-exports)', () => {
     const fetchMock = async (): Promise<Response> =>
       new Response(
         JSON.stringify({ data: { _Segments: [{ _id: 's1', name: 'VIP' }] } }),
-        { status: 200 }
+        { status: 200 },
       );
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as typeof fetch;
 
     try {
-      const props = await getToolbarProps(headers, 'https://graphql.prepr.io/abc123');
+      const props = await getToolbarProps(
+        headers,
+        'https://graphql.prepr.io/abc123',
+      );
       expect(props).toEqual({
         activeSegment: 'vip',
         activeVariant: null,

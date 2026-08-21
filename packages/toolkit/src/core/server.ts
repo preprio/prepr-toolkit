@@ -14,7 +14,7 @@ export class PreprError extends Error {
     message: string,
     public readonly code: PreprErrorCode,
     public readonly context?: string,
-    public readonly originalError?: Error
+    public readonly originalError?: Error,
   ) {
     super(message);
     this.name = 'PreprError';
@@ -86,13 +86,17 @@ export function getPreprHeadersFromHeaders(headers: Headers): PreprHeaders {
  */
 export function validatePreprToken(token: string): void {
   if (!token) {
-    throw new PreprError('Token is required', 'MISSING_TOKEN', 'validatePreprToken');
+    throw new PreprError(
+      'Token is required',
+      'MISSING_TOKEN',
+      'validatePreprToken',
+    );
   }
   if (!token.startsWith('https://')) {
     throw new PreprError(
       'Token must be a valid HTTPS URL',
       'INVALID_TOKEN',
-      'validatePreprToken'
+      'validatePreprToken',
     );
   }
 }
@@ -111,7 +115,7 @@ export function extractAccessToken(graphqlUrl: string): string {
       'Token must be a valid URL',
       'INVALID_TOKEN',
       'extractAccessToken',
-      error instanceof Error ? error : new Error(String(error))
+      error instanceof Error ? error : new Error(String(error)),
     );
   }
 
@@ -119,7 +123,7 @@ export function extractAccessToken(graphqlUrl: string): string {
     throw new PreprError(
       'Token must be a graphql.prepr.io URL',
       'INVALID_TOKEN',
-      'extractAccessToken'
+      'extractAccessToken',
     );
   }
 
@@ -130,7 +134,7 @@ export function extractAccessToken(graphqlUrl: string): string {
     throw new PreprError(
       'Token URL is missing an access token segment',
       'INVALID_TOKEN',
-      'extractAccessToken'
+      'extractAccessToken',
     );
   }
 
@@ -144,7 +148,7 @@ export function extractAccessToken(graphqlUrl: string): string {
  * @throws PreprError if the token is invalid or the request fails.
  */
 export async function getPreprEnvironmentSegments(
-  token: string
+  token: string,
 ): Promise<PreprSegment[]> {
   validatePreprToken(token);
 
@@ -169,7 +173,7 @@ export async function getPreprEnvironmentSegments(
       throw new PreprError(
         `HTTP ${response.status}: ${response.statusText}`,
         'HTTP_ERROR',
-        'getPreprEnvironmentSegments'
+        'getPreprEnvironmentSegments',
       );
     }
 
@@ -179,7 +183,7 @@ export async function getPreprEnvironmentSegments(
       throw new PreprError(
         'Invalid response format from Prepr API',
         'INVALID_RESPONSE',
-        'getPreprEnvironmentSegments'
+        'getPreprEnvironmentSegments',
       );
     }
 
@@ -192,7 +196,7 @@ export async function getPreprEnvironmentSegments(
       'Failed to fetch segments from Prepr API',
       'FETCH_ERROR',
       'getPreprEnvironmentSegments',
-      error instanceof Error ? error : new Error(String(error))
+      error instanceof Error ? error : new Error(String(error)),
     );
   }
 }
@@ -209,7 +213,7 @@ export async function getPreprEnvironmentSegments(
 export async function getToolbarPropsFromHeaders(
   headers: Headers,
   token: string,
-  features?: PreprFeatures
+  features?: PreprFeatures,
 ): Promise<PreprToolbarProps> {
   const resolved = resolveFeatures(features);
   let segments: PreprSegment[] = [];

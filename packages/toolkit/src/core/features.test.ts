@@ -27,7 +27,7 @@ describe('resolveFeatures', () => {
 
   it('accepts the object form', () => {
     expect(resolveFeatures({ editMode: { enabled: false } }).editMode).toBe(
-      false
+      false,
     );
   });
 

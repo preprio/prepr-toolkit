@@ -18,7 +18,7 @@ function toWebRequest(req) {
   const url = new URL(req.originalUrl, `http://${req.headers.host}`);
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) value.forEach(v => headers.append(key, v));
+    if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
     else if (value != null) headers.set(key, value);
   }
   return new Request(url, { headers });
@@ -31,12 +31,18 @@ function toWebRequest(req) {
  */
 export function preprMiddleware({ preview, features } = {}) {
   return (req, res, next) => {
-    const { requestHeaders, responseCookies } = processPreprRequest(toWebRequest(req), {
-      preview,
-      features,
-    });
+    const { requestHeaders, responseCookies } = processPreprRequest(
+      toWebRequest(req),
+      {
+        preview,
+        features,
+      },
+    );
     for (const cookie of responseCookies) {
-      res.cookie(cookie.name, cookie.value, { maxAge: cookie.maxAge * 1000, path: cookie.path });
+      res.cookie(cookie.name, cookie.value, {
+        maxAge: cookie.maxAge * 1000,
+        path: cookie.path,
+      });
     }
     res.locals.preprHeaders = requestHeaders;
     next();

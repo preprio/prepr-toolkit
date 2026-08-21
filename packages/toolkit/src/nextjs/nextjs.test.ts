@@ -24,7 +24,7 @@ afterEach(() => {
  */
 function makeRequest(
   url: string,
-  init: { headers?: Record<string, string> } = {}
+  init: { headers?: Record<string, string> } = {},
 ): NextRequest {
   const request = new NextRequest(url);
   for (const [key, value] of Object.entries(init.headers ?? {})) {
@@ -44,7 +44,7 @@ describe('createPreprMiddleware', () => {
     const uidCookie = response.cookies.get('__prepr_uid');
     expect(uidCookie).toBeDefined();
     expect(uidCookie?.value).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
   });
 
@@ -56,10 +56,10 @@ describe('createPreprMiddleware', () => {
 
     expect(response.cookies.get('__prepr_uid')).toBeUndefined();
     expect(
-      response.headers.get('x-middleware-request-prepr-customer-id-created')
+      response.headers.get('x-middleware-request-prepr-customer-id-created'),
     ).toBeNull();
     expect(response.headers.get('x-middleware-request-prepr-customer-id')).toBe(
-      'existing-uuid'
+      'existing-uuid',
     );
   });
 
@@ -69,10 +69,12 @@ describe('createPreprMiddleware', () => {
 
     // next() stashes forwarded request headers as an internal
     // x-middleware-override-headers / x-middleware-request-* pair.
-    const overrideHeaders = response.headers.get('x-middleware-override-headers');
+    const overrideHeaders = response.headers.get(
+      'x-middleware-override-headers',
+    );
     expect(overrideHeaders).toContain('Prepr-Package');
     expect(response.headers.get('x-middleware-request-prepr-package')).toMatch(
-      /^@preprio\/toolkit@/
+      /^@preprio\/toolkit@/,
     );
   });
 
@@ -91,13 +93,13 @@ describe('createPreprMiddleware', () => {
     expect(response.headers.get('prepr-customer-id')).toBeNull();
     expect(response.headers.get('cookie')).toBeNull();
     expect(response.headers.get('x-middleware-request-prepr-customer-id')).toBe(
-      '11111111-2222-3333-4444-555555555555'
+      '11111111-2222-3333-4444-555555555555',
     );
     // Header-name casing in the override list follows the source Headers
     // object (Next's own next() writes capitalized names too) — match
     // case-insensitively.
     expect(
-      response.headers.get('x-middleware-override-headers')?.toLowerCase()
+      response.headers.get('x-middleware-override-headers')?.toLowerCase(),
     ).toContain('prepr-customer-id');
   });
 
@@ -114,7 +116,9 @@ describe('createPreprMiddleware', () => {
     ).toLowerCase();
     expect(names).toContain('x-intl-locale');
     expect(names).toContain('prepr-customer-id');
-    expect(response.headers.get('x-middleware-request-x-intl-locale')).toBe('nl');
+    expect(response.headers.get('x-middleware-request-x-intl-locale')).toBe(
+      'nl',
+    );
   });
 
   it('accepts options as the second argument when no response is chained', () => {
@@ -124,7 +128,7 @@ describe('createPreprMiddleware', () => {
     const response = createPreprMiddleware(request, { version: '9.9.9' });
 
     expect(response.headers.get('x-middleware-request-prepr-package')).toBe(
-      '@preprio/toolkit@9.9.9'
+      '@preprio/toolkit@9.9.9',
     );
   });
 
@@ -133,14 +137,18 @@ describe('createPreprMiddleware', () => {
       const request = makeRequest('https://example.com/');
       const response = createPreprMiddleware(request);
 
-      expect(response.headers.get('x-middleware-request-prepr-preview-bar')).toBeNull();
+      expect(
+        response.headers.get('x-middleware-request-prepr-preview-bar'),
+      ).toBeNull();
     });
 
     it('enables the preview bar when options.preview is true', () => {
       const request = makeRequest('https://example.com/');
       const response = createPreprMiddleware(request, { preview: true });
 
-      expect(response.headers.get('x-middleware-request-prepr-preview-bar')).toBe('true');
+      expect(
+        response.headers.get('x-middleware-request-prepr-preview-bar'),
+      ).toBe('true');
     });
 
     it('ignores PREPR_ENV entirely', () => {
@@ -148,7 +156,9 @@ describe('createPreprMiddleware', () => {
       const request = makeRequest('https://example.com/');
       const response = createPreprMiddleware(request, { preview: true });
 
-      expect(response.headers.get('x-middleware-request-prepr-preview-bar')).toBe('true');
+      expect(
+        response.headers.get('x-middleware-request-prepr-preview-bar'),
+      ).toBe('true');
     });
   });
 });
@@ -168,7 +178,8 @@ describe('server helpers', () => {
         }),
     }));
 
-    const { getActiveSegment, getActiveVariant, getPreprUUID } = await import('./server');
+    const { getActiveSegment, getActiveVariant, getPreprUUID } =
+      await import('./server');
 
     await expect(getPreprUUID()).resolves.toBe('uid-123');
     await expect(getActiveSegment()).resolves.toBe('vip');
@@ -211,7 +222,9 @@ describe('server helpers', () => {
         headers: async () => new Headers({ 'Prepr-Segments': 'vip' }),
       }));
       const fetchMock = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ data: { _Segments: [] } }), { status: 200 })
+        new Response(JSON.stringify({ data: { _Segments: [] } }), {
+          status: 200,
+        }),
       );
       vi.stubGlobal('fetch', fetchMock);
 
@@ -229,9 +242,11 @@ describe('server helpers', () => {
       }));
       const fetchMock = vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({ data: { _Segments: [{ _id: 's1', name: 'VIP' }] } }),
-          { status: 200 }
-        )
+          JSON.stringify({
+            data: { _Segments: [{ _id: 's1', name: 'VIP' }] },
+          }),
+          { status: 200 },
+        ),
       );
       vi.stubGlobal('fetch', fetchMock);
 
@@ -250,12 +265,20 @@ describe('server helpers', () => {
       vi.doMock('next/headers', () => ({
         headers: async () => new Headers({ 'Prepr-Segments': 'vip' }),
       }));
-      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockRejectedValue(new Error('network down')),
+      );
 
       const { getToolbarProps } = await import('./server');
       await expect(
-        getToolbarProps('https://graphql.prepr.io/abc123')
-      ).resolves.toEqual({ activeSegment: 'vip', activeVariant: null, segments: [], data: [] });
+        getToolbarProps('https://graphql.prepr.io/abc123'),
+      ).resolves.toEqual({
+        activeSegment: 'vip',
+        activeVariant: null,
+        segments: [],
+        data: [],
+      });
     });
   });
 });
@@ -268,10 +291,12 @@ describe('token helper re-exports (Fix 5 — old package exposed these from the 
     expect(typeof mod.extractAccessToken).toBe('function');
     expect(typeof mod.PreprError).toBe('function');
 
-    expect(mod.extractAccessToken('https://graphql.prepr.io/abc123')).toBe('abc123');
+    expect(mod.extractAccessToken('https://graphql.prepr.io/abc123')).toBe(
+      'abc123',
+    );
     expect(() => mod.validatePreprToken('')).toThrow(mod.PreprError);
     expect(() =>
-      mod.validatePreprToken('https://graphql.prepr.io/abc123')
+      mod.validatePreprToken('https://graphql.prepr.io/abc123'),
     ).not.toThrow();
   });
 });
@@ -306,7 +331,7 @@ describe('components', () => {
 
     expect(createPreprPreview).toHaveBeenCalledTimes(1);
     expect(createPreprPreview).toHaveBeenCalledWith(
-      expect.objectContaining({ props })
+      expect.objectContaining({ props }),
     );
 
     await React.act(async () => {
@@ -314,6 +339,49 @@ describe('components', () => {
     });
     expect(destroy).toHaveBeenCalledTimes(1);
 
+    container.remove();
+  });
+
+  it('PreprToolbar navigation.currentPath tracks the pathname across client-side navigations', async () => {
+    // The toolbar lives in a layout and survives soft navigations while its
+    // mount effect runs once — currentPath must read the *current* pathname,
+    // not the mount-time closure.
+    let pathname = '/blog';
+    const createPreprPreview = vi.fn().mockReturnValue({ destroy: vi.fn() });
+
+    vi.doMock('../core/create-preview', () => ({ createPreprPreview }));
+    vi.doMock('next/navigation', () => ({
+      useRouter: () => ({ push: vi.fn() }),
+      usePathname: () => pathname,
+    }));
+
+    const React = await import('react');
+    const { default: ReactDOMClient } = await import('react-dom/client');
+    const { PreprToolbar } = await import('./components');
+
+    const props = { activeSegment: null, activeVariant: null, data: [] };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = ReactDOMClient.createRoot(container);
+
+    await React.act(async () => {
+      root.render(React.createElement(PreprToolbar, props));
+    });
+
+    const navigation = createPreprPreview.mock.calls[0][0].navigation;
+    expect(navigation.currentPath()).toContain('/blog');
+
+    pathname = '/about';
+    await React.act(async () => {
+      root.render(React.createElement(PreprToolbar, props));
+    });
+
+    expect(createPreprPreview).toHaveBeenCalledTimes(1);
+    expect(navigation.currentPath()).toContain('/about');
+
+    await React.act(async () => {
+      root.unmount();
+    });
     container.remove();
   });
 

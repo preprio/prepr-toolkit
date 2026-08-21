@@ -1,7 +1,8 @@
 import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import reactHooks from 'eslint-plugin-react-hooks';
+import prettier from 'eslint-config-prettier';
 import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
 
 // Scoped to `packages/*` — the published surface. The examples are consumer
 // demos with their own generated GraphQL code and framework conventions;
@@ -75,4 +76,8 @@ export default tseslint.config(
       globals: { console: 'readonly', process: 'readonly', URL: 'readonly' },
     },
   },
+
+  // Formatting is Prettier's job — last, so it switches off every stylistic
+  // rule the configs above might carry.
+  prettier,
 );

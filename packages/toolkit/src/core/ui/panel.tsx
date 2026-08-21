@@ -45,7 +45,13 @@ export interface PanelProps {
   handlers: PanelHandlers;
 }
 
-function RawSvg({ svg, className }: { svg: string; className?: string }): VNode {
+function RawSvg({
+  svg,
+  className,
+}: {
+  svg: string;
+  className?: string;
+}): VNode {
   return (
     <span
       className={className}
@@ -109,7 +115,7 @@ function PreviewSelector({
   ];
   return (
     <div class="prepr-radiogroup" role="radiogroup" data-prepr="preview-group">
-      {options.map(opt => {
+      {options.map((opt) => {
         const checked = value === String(opt.v);
         return (
           <button
@@ -123,11 +129,11 @@ function PreviewSelector({
             aria-checked={checked}
             data-tooltip-key={opt.tooltipKey}
             onClick={() => handlers.onPreviewMode(opt.v)}
-            onMouseEnter={e =>
+            onMouseEnter={(e) =>
               handlers.onPreviewTooltipEnter(e.currentTarget as HTMLElement)
             }
             onMouseLeave={() => handlers.onPreviewTooltipLeave()}
-            onFocus={e =>
+            onFocus={(e) =>
               handlers.onPreviewTooltipEnter(e.currentTarget as HTMLElement)
             }
             onBlur={() => handlers.onPreviewTooltipLeave()}
@@ -158,7 +164,7 @@ function SegmentListbox({
   const hasSegments = segments.length > 0;
   const filter = segmentFilter.trim().toLowerCase();
   const visibleSegments = filter
-    ? segments.filter(s => s.name.toLowerCase().includes(filter))
+    ? segments.filter((s) => s.name.toLowerCase().includes(filter))
     : segments;
 
   let label: string;
@@ -167,7 +173,7 @@ function SegmentListbox({
   } else if (state.selectedSegment === null) {
     label = t('adaptiveContent.chooseSegment');
   } else {
-    const seg = segments.find(s => s._id === state.selectedSegment);
+    const seg = segments.find((s) => s._id === state.selectedSegment);
     label = seg ? seg.name : t('adaptiveContent.chooseSegment');
   }
 
@@ -183,7 +189,7 @@ function SegmentListbox({
         aria-expanded={listboxOpen}
         disabled={disabled}
         onClick={() => handlers.onSegmentButtonClick()}
-        onKeyDown={e => handlers.onSegmentButtonKeydown(e as KeyboardEvent)}
+        onKeyDown={(e) => handlers.onSegmentButtonKeydown(e as KeyboardEvent)}
       >
         <span class="prepr-segment-label" data-prepr="segment-button-label">
           {label}
@@ -197,7 +203,7 @@ function SegmentListbox({
         data-prepr="options"
         role="listbox"
         hidden={!listboxOpen}
-        onKeyDown={e => handlers.onOptionsKeydown(e as KeyboardEvent)}
+        onKeyDown={(e) => handlers.onOptionsKeydown(e as KeyboardEvent)}
       >
         <li class="prepr-option-search" role="none">
           <input
@@ -206,14 +212,14 @@ function SegmentListbox({
             data-prepr="segment-search"
             placeholder={t('adaptiveContent.searchSegments')}
             value={segmentFilter}
-            onInput={e =>
+            onInput={(e) =>
               handlers.onSegmentFilterInput(
-                (e.currentTarget as HTMLInputElement).value
+                (e.currentTarget as HTMLInputElement).value,
               )
             }
           />
         </li>
-        {visibleSegments.map(seg => (
+        {visibleSegments.map((seg) => (
           <SegmentOption
             key={seg._id}
             seg={seg}
@@ -265,7 +271,7 @@ function VariantSelector({
       data-prepr="variant-group"
       data-disabled={String(!state.previewMode)}
     >
-      {values.map(v => {
+      {values.map((v) => {
         const checked = variantValue === v;
         return (
           <button
@@ -302,7 +308,7 @@ function EditModeSelector({
   ];
   return (
     <div class="prepr-radiogroup" role="radiogroup" data-prepr="edit-group">
-      {options.map(opt => {
+      {options.map((opt) => {
         const checked = value === String(opt.v);
         return (
           <button
@@ -335,7 +341,7 @@ function StatusPill({
 }): VNode {
   const { features } = state;
   const defaultSegmentName =
-    state.segments.find(s => s._id === 'all_other_users')?.name ??
+    state.segments.find((s) => s._id === 'all_other_users')?.name ??
     t('adaptiveContent.allOtherUsers');
 
   // With segments off there is no segment to name, so the pill falls back to
@@ -344,7 +350,7 @@ function StatusPill({
   if (!state.previewMode || !features.segments) {
     segmentLabel = t('common.user');
   } else if (state.selectedSegment !== null) {
-    const seg = state.segments.find(s => s._id === state.selectedSegment);
+    const seg = state.segments.find((s) => s._id === state.selectedSegment);
     segmentLabel = seg ? seg.name : defaultSegmentName;
   } else {
     segmentLabel = defaultSegmentName;
@@ -470,42 +476,42 @@ export function Panel({
           {/* Preview mode only drives segments/AB, so with both features
               disabled the whole section is hidden. */}
           {showAdaptive && (
-          <div class="prepr-section" data-prepr="section-adaptive">
-            <span class="prepr-section-label" data-prepr="adaptive-label">
-              {t('adaptiveContent.adaptiveContent')}
-            </span>
+            <div class="prepr-section" data-prepr="section-adaptive">
+              <span class="prepr-section-label" data-prepr="adaptive-label">
+                {t('adaptiveContent.adaptiveContent')}
+              </span>
 
-            <div class="prepr-row">
-              <h2 class="prepr-row-title" data-prepr="preview-label">
-                {t('adaptiveContent.enablePreview')}
-              </h2>
-              <PreviewSelector state={state} t={t} handlers={handlers} />
+              <div class="prepr-row">
+                <h2 class="prepr-row-title" data-prepr="preview-label">
+                  {t('adaptiveContent.enablePreview')}
+                </h2>
+                <PreviewSelector state={state} t={t} handlers={handlers} />
+              </div>
+
+              {features.segments && (
+                <div class="prepr-row">
+                  <h2 class="prepr-row-title" data-prepr="segment-label">
+                    {t('adaptiveContent.segment')}
+                  </h2>
+                  <SegmentListbox
+                    state={state}
+                    t={t}
+                    listboxOpen={listboxOpen}
+                    segmentFilter={segmentFilter}
+                    handlers={handlers}
+                  />
+                </div>
+              )}
+
+              {features.abTesting && (
+                <div class="prepr-row">
+                  <h2 class="prepr-row-title" data-prepr="variant-label">
+                    {t('adaptiveContent.ABVariant')}
+                  </h2>
+                  <VariantSelector state={state} handlers={handlers} />
+                </div>
+              )}
             </div>
-
-            {features.segments && (
-              <div class="prepr-row">
-                <h2 class="prepr-row-title" data-prepr="segment-label">
-                  {t('adaptiveContent.segment')}
-                </h2>
-                <SegmentListbox
-                  state={state}
-                  t={t}
-                  listboxOpen={listboxOpen}
-                  segmentFilter={segmentFilter}
-                  handlers={handlers}
-                />
-              </div>
-            )}
-
-            {features.abTesting && (
-              <div class="prepr-row">
-                <h2 class="prepr-row-title" data-prepr="variant-label">
-                  {t('adaptiveContent.ABVariant')}
-                </h2>
-                <VariantSelector state={state} handlers={handlers} />
-              </div>
-            )}
-          </div>
           )}
 
           {features.editMode && (

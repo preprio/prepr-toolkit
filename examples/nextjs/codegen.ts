@@ -1,4 +1,3 @@
-
 import type { CodegenConfig } from '@graphql-codegen/cli';
 
 /**
@@ -22,7 +21,7 @@ const config: CodegenConfig = {
   schema,
   documents: ['src/queries/**/*.graphql'],
   generates: {
-    "src/gql/": {
+    'src/gql/': {
       preset: 'client',
       plugins: [],
       presetConfig: {
@@ -32,10 +31,10 @@ const config: CodegenConfig = {
         reactApolloVersion: 3,
       },
     },
-    "./graphql.schema.json": {
-      plugins: ["introspection"]
-    }
-  }
+    './graphql.schema.json': {
+      plugins: ['introspection'],
+    },
+  },
 };
 
 export default config;

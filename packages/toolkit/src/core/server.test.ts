@@ -90,7 +90,7 @@ describe('header extraction from synthetic Headers', () => {
         'Prepr-Preview-Bar',
         'Prepr-Customer-Id-Created',
         'Prepr-Context-initial_referral',
-      ].sort()
+      ].sort(),
     );
     expect(result['Prepr-Segments']).toBe('vip');
     expect(result['Prepr-ABtesting']).toBe('A');
@@ -111,7 +111,7 @@ describe('header extraction from synthetic Headers', () => {
 describe('validatePreprToken', () => {
   it('accepts a valid https://graphql.prepr.io/<token> url', () => {
     expect(() =>
-      validatePreprToken('https://graphql.prepr.io/abc123')
+      validatePreprToken('https://graphql.prepr.io/abc123'),
     ).not.toThrow();
   });
 
@@ -128,7 +128,7 @@ describe('validatePreprToken', () => {
 
   it('throws PreprError with INVALID_TOKEN for a non-https url', () => {
     expect(() => validatePreprToken('http://graphql.prepr.io/abc123')).toThrow(
-      PreprError
+      PreprError,
     );
     try {
       validatePreprToken('http://graphql.prepr.io/abc123');
@@ -152,13 +152,13 @@ describe('validatePreprToken', () => {
 describe('extractAccessToken', () => {
   it('extracts the token segment from a valid graphql.prepr.io url', () => {
     expect(extractAccessToken('https://graphql.prepr.io/abc123')).toBe(
-      'abc123'
+      'abc123',
     );
   });
 
   it('throws PreprError for a non graphql.prepr.io hostname', () => {
     expect(() => extractAccessToken('https://example.com/abc123')).toThrow(
-      PreprError
+      PreprError,
     );
   });
 
@@ -183,13 +183,13 @@ describe('getPreprEnvironmentSegments', () => {
             ],
           },
         }),
-        { status: 200 }
-      )
+        { status: 200 },
+      ),
     );
     vi.stubGlobal('fetch', fetchMock);
 
     const segments = await getPreprEnvironmentSegments(
-      'https://graphql.prepr.io/abc123'
+      'https://graphql.prepr.io/abc123',
     );
 
     expect(segments).toEqual([
@@ -221,22 +221,26 @@ describe('getPreprEnvironmentSegments', () => {
   it('throws PreprError with HTTP_ERROR on a non-ok response', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response('', { status: 500, statusText: 'Server Error' }));
+      .mockResolvedValue(
+        new Response('', { status: 500, statusText: 'Server Error' }),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      getPreprEnvironmentSegments('https://graphql.prepr.io/abc123')
+      getPreprEnvironmentSegments('https://graphql.prepr.io/abc123'),
     ).rejects.toMatchObject({ code: 'HTTP_ERROR' });
   });
 
   it('throws PreprError with INVALID_RESPONSE when _Segments is missing', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify({ data: {} }), { status: 200 }));
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: {} }), { status: 200 }),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      getPreprEnvironmentSegments('https://graphql.prepr.io/abc123')
+      getPreprEnvironmentSegments('https://graphql.prepr.io/abc123'),
     ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 
@@ -245,7 +249,7 @@ describe('getPreprEnvironmentSegments', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      getPreprEnvironmentSegments('https://graphql.prepr.io/abc123')
+      getPreprEnvironmentSegments('https://graphql.prepr.io/abc123'),
     ).rejects.toMatchObject({ code: 'FETCH_ERROR' });
   });
 });
@@ -256,12 +260,14 @@ describe('getToolbarPropsFromHeaders', () => {
   });
 
   it('returns activeSegment, activeVariant and data on success', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ data: { _Segments: [{ _id: 's1', name: 'VIP' }] } }),
-        { status: 200 }
-      )
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ data: { _Segments: [{ _id: 's1', name: 'VIP' }] } }),
+          { status: 200 },
+        ),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const headers = makeHeaders({
@@ -271,7 +277,7 @@ describe('getToolbarPropsFromHeaders', () => {
 
     const props = await getToolbarPropsFromHeaders(
       headers,
-      'https://graphql.prepr.io/abc123'
+      'https://graphql.prepr.io/abc123',
     );
 
     expect(props).toEqual({
@@ -294,7 +300,7 @@ describe('getToolbarPropsFromHeaders', () => {
     const props = await getToolbarPropsFromHeaders(
       headers,
       'https://graphql.prepr.io/abc123',
-      { segments: false }
+      { segments: false },
     );
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -308,14 +314,16 @@ describe('getToolbarPropsFromHeaders', () => {
 
   it('reports no active variant when abTesting is disabled', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: { _Segments: [] } }), { status: 200 })
+      new Response(JSON.stringify({ data: { _Segments: [] } }), {
+        status: 200,
+      }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
     const props = await getToolbarPropsFromHeaders(
       makeHeaders({ 'Prepr-Segments': 'vip', 'Prepr-ABtesting': 'B' }),
       'https://graphql.prepr.io/abc123',
-      { abTesting: false }
+      { abTesting: false },
     );
 
     expect(props.activeVariant).toBeNull();
@@ -333,7 +341,7 @@ describe('getToolbarPropsFromHeaders', () => {
 
     const props = await getToolbarPropsFromHeaders(
       headers,
-      'https://graphql.prepr.io/abc123'
+      'https://graphql.prepr.io/abc123',
     );
 
     expect(props).toEqual({

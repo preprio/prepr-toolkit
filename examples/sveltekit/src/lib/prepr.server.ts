@@ -13,7 +13,7 @@ export const graphqlUrl = () => env.PREPR_GRAPHQL_URL || preprGraphqlUrl();
 export async function Prepr(
   query: string,
   variables: Record<string, unknown>,
-  headers: Headers
+  headers: Headers,
 ): Promise<Response> {
   return fetch(graphqlUrl(), {
     method: 'POST',

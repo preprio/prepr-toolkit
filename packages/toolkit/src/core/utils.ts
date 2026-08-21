@@ -7,11 +7,7 @@ export interface PreprEventData {
   /** Which toolkit features this site has enabled. Sent with `loaded`. */
   readonly features?: ResolvedPreprFeatures;
   readonly [key: string]:
-    | string
-    | boolean
-    | number
-    | ResolvedPreprFeatures
-    | undefined;
+    string | boolean | number | ResolvedPreprFeatures | undefined;
 }
 
 /**
@@ -38,7 +34,7 @@ export function setTrustedParentOrigin(origin: string | null): void {
 export function sendPreprEvent(
   event: PreprEventType,
   data?: PreprEventData,
-  options?: { allowUntrustedTarget?: boolean }
+  options?: { allowUntrustedTarget?: boolean },
 ): void {
   if (typeof window !== 'undefined') {
     const message = {
@@ -48,7 +44,7 @@ export function sendPreprEvent(
     };
 
     window.dispatchEvent(
-      new CustomEvent('prepr_preview_bar', { detail: message })
+      new CustomEvent('prepr_preview_bar', { detail: message }),
     );
 
     // The same-window CustomEvent above always fires — in-page listeners are
@@ -133,7 +129,7 @@ export interface ThrottledFunction<T extends (...args: any[]) => any> {
 /** Leading-edge throttle; trailing call is scheduled for the remaining delay. */
 export function throttle<T extends (...args: any[]) => any>(
   func: T,
-  delay: number
+  delay: number,
 ): ThrottledFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let lastExecTime = 0;
@@ -169,7 +165,7 @@ export function throttle<T extends (...args: any[]) => any>(
 
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
-  delay: number
+  delay: number,
 ): ThrottledFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -196,7 +192,7 @@ export function debounce<T extends (...args: any[]) => any>(
 // TTL cache over querySelectorAll, for hot paths that re-query the same nodes.
 export function createElementCache<T extends Element = Element>(
   query: string,
-  ttl: number = 1000
+  ttl: number = 1000,
 ) {
   let cache: NodeListOf<T> | null = null;
   let lastCacheTime = 0;

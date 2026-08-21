@@ -12,7 +12,7 @@ import {
 
 function makeEvent(
   url = '/',
-  headers: Record<string, string | string[]> = {}
+  headers: Record<string, string | string[]> = {},
 ): H3EventLike & { setCookies: string[] } {
   const setCookies: string[] = [];
   return {
@@ -36,9 +36,11 @@ describe('handlePreprRequest', () => {
     handlePreprRequest(event);
 
     expect(event.node.req.headers['prepr-customer-id']).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
-    expect(event.node.req.headers['prepr-package']).toMatch(/^@preprio\/toolkit@/);
+    expect(event.node.req.headers['prepr-package']).toMatch(
+      /^@preprio\/toolkit@/,
+    );
   });
 
   it('mirrors the same Headers onto event.context.prepr', () => {
@@ -48,7 +50,7 @@ describe('handlePreprRequest', () => {
 
     const headers = getPreprHeadersFromEvent(event);
     expect(headers.get('prepr-customer-id')).toBe(
-      event.node.req.headers['prepr-customer-id']
+      event.node.req.headers['prepr-customer-id'],
     );
   });
 
@@ -73,9 +75,15 @@ describe('handlePreprRequest', () => {
     handlePreprRequest(event, { preview: true });
 
     expect(event.setCookies).toHaveLength(4);
-    expect(event.setCookies.some(c => /^__prepr_uid=[0-9a-f-]{36}/.test(c))).toBe(true);
-    expect(event.setCookies.some(c => c.startsWith('Prepr-Segments=seg-1'))).toBe(true);
-    expect(event.setCookies.some(c => c.startsWith('Prepr-ABtesting=B'))).toBe(true);
+    expect(
+      event.setCookies.some((c) => /^__prepr_uid=[0-9a-f-]{36}/.test(c)),
+    ).toBe(true);
+    expect(
+      event.setCookies.some((c) => c.startsWith('Prepr-Segments=seg-1')),
+    ).toBe(true);
+    expect(
+      event.setCookies.some((c) => c.startsWith('Prepr-ABtesting=B')),
+    ).toBe(true);
   });
 
   it('does not overwrite an existing __prepr_uid cookie', () => {
@@ -116,8 +124,12 @@ describe('handlePreprRequest', () => {
 
 describe('server helpers (Nuxt re-exports)', () => {
   it('read from a standard Headers object', async () => {
-    const { getActiveSegment, getActiveVariant, getPreprHeaders, getPreprUUID } =
-      await import('./index');
+    const {
+      getActiveSegment,
+      getActiveVariant,
+      getPreprHeaders,
+      getPreprUUID,
+    } = await import('./index');
 
     const headers = new Headers({
       'prepr-customer-id': 'uid-123',
@@ -142,13 +154,16 @@ describe('server helpers (Nuxt re-exports)', () => {
     const fetchMock = async (): Promise<Response> =>
       new Response(
         JSON.stringify({ data: { _Segments: [{ _id: 's1', name: 'VIP' }] } }),
-        { status: 200 }
+        { status: 200 },
       );
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as typeof fetch;
 
     try {
-      const props = await getToolbarProps(headers, 'https://graphql.prepr.io/abc123');
+      const props = await getToolbarProps(
+        headers,
+        'https://graphql.prepr.io/abc123',
+      );
       expect(props).toEqual({
         activeSegment: 'vip',
         activeVariant: null,

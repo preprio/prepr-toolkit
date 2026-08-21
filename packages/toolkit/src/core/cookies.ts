@@ -23,7 +23,7 @@ export function getCookie(name: string): string | null {
 
   const match = document.cookie
     .split('; ')
-    .find(row => row.startsWith(`${name}=`));
+    .find((row) => row.startsWith(`${name}=`));
   if (!match) return null;
 
   const value = match.slice(name.length + 1);
@@ -33,7 +33,7 @@ export function getCookie(name: string): string | null {
 export function setCookie(
   name: string,
   value: string,
-  options: CookieOptions = {}
+  options: CookieOptions = {},
 ): void {
   if (typeof document === 'undefined') return;
 
@@ -58,7 +58,7 @@ export function setCookie(
 export function removeCookie(
   name: string,
   path: string = '/',
-  options: Pick<CookieOptions, 'sameSite' | 'secure'> = {}
+  options: Pick<CookieOptions, 'sameSite' | 'secure'> = {},
 ): void {
   if (typeof document === 'undefined') return;
 
