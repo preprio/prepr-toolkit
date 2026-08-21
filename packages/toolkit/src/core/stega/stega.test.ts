@@ -181,3 +181,58 @@ describe('createStegaController', () => {
     controller.stop();
   });
 });
+
+describe('createStegaAutoClean', () => {
+  it('start() strips encoded text and tags the parent synchronously', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+    document.body.innerHTML = '';
+    const h1 = document.createElement('h1');
+    h1.textContent = encode('Hello world');
+    document.body.appendChild(h1);
+
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+
+    // No idle callback, no timers: the first scan must complete before
+    // start() returns, or a reload racing it leaves tagged-but-encoded text.
+    expect(h1.textContent).toBe('Hello world');
+    expect(h1.hasAttribute('data-prepr-encoded')).toBe(true);
+    expect(h1.getAttribute('data-prepr-href')).toBe(
+      'https://edit.example.com/entry/123'
+    );
+
+    autoClean.stop();
+    document.body.innerHTML = '';
+  });
+
+  it('leaves plain text alone', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+    document.body.innerHTML = '';
+    const p = document.createElement('p');
+    p.textContent = 'nothing encoded here';
+    document.body.appendChild(p);
+
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+
+    expect(p.textContent).toBe('nothing encoded here');
+    expect(p.hasAttribute('data-prepr-encoded')).toBe(false);
+
+    autoClean.stop();
+    document.body.innerHTML = '';
+  });
+});
+
+describe('createStegaAutoClean document.title', () => {
+  it('strips stega characters from the document title', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+    document.body.innerHTML = '';
+    document.title = encode('Homepage');
+
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+
+    expect(document.title).toBe('Homepage');
+    autoClean.stop();
+  });
+});

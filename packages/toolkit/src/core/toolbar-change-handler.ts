@@ -42,8 +42,6 @@ export interface ChangeHandlerDeps {
   reload(): void;
   /** Start/stop the click-to-edit stega controller on edit-mode toggles. */
   stega: { start(): void; stop(): void };
-  /** Start/stop the runtime auto-clean pass on preview-mode toggles. */
-  syncAutoClean(active: boolean): void;
 }
 
 /**
@@ -57,7 +55,7 @@ export interface ChangeHandlerDeps {
 export function createChangeHandler(
   deps: ChangeHandlerDeps
 ): (before: ToolbarState, after: ToolbarState) => void {
-  const { store, stega, syncAutoClean, features, editingEnabled } = deps;
+  const { store, stega, features, editingEnabled } = deps;
 
   // Batches every param write in a transition into a single `navigate` call.
   // `navigate` triggers a full page load, so two calls race: the second
@@ -142,22 +140,27 @@ export function createChangeHandler(
       setCookie(COOKIE_PREVIEW_MODE, String(after.previewMode), cookieOpts());
       setCookie(COOKIE_TOOLBAR_OPEN, 'false', cookieOpts());
       sendPreprEvent('preview_mode_toggled', { previewMode: after.previewMode });
-      // Auto-clean runs only in preview mode.
-      syncAutoClean(after.previewMode);
-      // Stale ?segment/?ab_testing params outrank the preview cookie in the
-      // middleware, so a plain reload would keep serving preview content.
-      // Strip them (navigate is a full page load) and only fall back to
-      // reload() when there is nothing to strip.
-      const [path, existing] = splitPath(deps.currentPath());
-      const params = new URLSearchParams(existing);
-      if (params.has(PARAM_SEGMENT) || params.has(PARAM_VARIANT)) {
-        params.delete(PARAM_SEGMENT);
-        params.delete(PARAM_VARIANT);
-        const query = params.toString();
-        deps.navigate(query ? `${path}?${query}` : path);
-      } else {
-        // Re-render with the new preview state.
-        deps.reload();
+      // Inside the editor iframe the transition comes from `prepr:initVE` and
+      // the content is already preview — reloading there is what caused the
+      // infinite reload loop when the cross-site preview cookie was dropped
+      // (each load remounted as previewMode:false, initVE flipped it back,
+      // reload, repeat).
+      if (!after.isIframe) {
+        // Stale ?segment/?ab_testing params outrank the preview cookie in the
+        // middleware, so a plain reload would keep serving preview content.
+        // Strip them (navigate is a full page load) and only fall back to
+        // reload() when there is nothing to strip.
+        const [path, existing] = splitPath(deps.currentPath());
+        const params = new URLSearchParams(existing);
+        if (params.has(PARAM_SEGMENT) || params.has(PARAM_VARIANT)) {
+          params.delete(PARAM_SEGMENT);
+          params.delete(PARAM_VARIANT);
+          const query = params.toString();
+          deps.navigate(query ? `${path}?${query}` : path);
+        } else {
+          // Re-render with the new preview state.
+          deps.reload();
+        }
       }
     }
 
