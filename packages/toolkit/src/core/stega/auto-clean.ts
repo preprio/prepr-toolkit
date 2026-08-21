@@ -65,6 +65,10 @@ export function createStegaAutoClean(): StegaAutoClean {
   function scanAndClean(): void {
     processing = true;
     walkTextNodes(document.body, cleanTextNode);
+    // <title> lives in <head>, outside the body walk — encoded titles show
+    // raw garbage in the browser tab. Nothing to tag; just strip.
+    const title = vercelStegaSplit(document.title);
+    if (title.encoded) document.title = title.cleaned;
     processing = false;
   }
 
@@ -120,16 +124,13 @@ export function createStegaAutoClean(): StegaAutoClean {
   function start(): void {
     if (observer || typeof window === 'undefined') return;
 
-    const run = () => {
-      scanAndClean();
-      setupObserver();
-    };
-    if ('requestIdleCallback' in window) {
-      (window as unknown as { requestIdleCallback: (cb: () => void) => void })
-        .requestIdleCallback(run);
-    } else {
-      setTimeout(run, 0);
-    }
+    // Synchronous on purpose: the first scan must win the race against both
+    // the click-to-edit tagging pass (which tags without stripping) and the
+    // reload a preview-mode transition triggers — a deferred
+    // requestIdleCallback scan was killed by that reload, leaving elements
+    // tagged but still encoded.
+    scanAndClean();
+    setupObserver();
     debug.log('stega auto-clean started');
   }
 

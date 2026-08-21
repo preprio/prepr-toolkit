@@ -237,18 +237,14 @@ export function createPreprPreview(
     },
   });
 
+  // Unconditional: stega characters only exist when the server already
+  // fetched preview (encoded) content, so their presence — not the preview
+  // cookie — is the signal. Outside preview the scan finds nothing and the
+  // observer never matches, so this is free in production. Gating this on
+  // previewMode left the editor iframe (edit mode via `prepr:initVE`, cookie
+  // dropped cross-site) tagged but never stripped.
   const autoClean: StegaAutoClean = createStegaAutoClean();
-
-  let autoCleanActive = false;
-  function syncAutoClean(active: boolean): void {
-    if (active && !autoCleanActive) {
-      autoClean.start();
-      autoCleanActive = true;
-    } else if (!active && autoCleanActive) {
-      autoClean.stop();
-      autoCleanActive = false;
-    }
-  }
+  autoClean.start();
 
   // --- Subscriptions (side effects) ----------------------------------------
   const handleChange = createChangeHandler({
@@ -259,7 +255,6 @@ export function createPreprPreview(
     currentPath: () => navigation.currentPath(),
     reload: navigation.reload ?? (() => window.location.reload()),
     stega,
-    syncAutoClean,
   });
 
   let prev: ToolbarState = store.get();
@@ -272,9 +267,6 @@ export function createPreprPreview(
     prev = state;
     handleChange(before, state);
   });
-
-  // Catch the case where we mounted already in preview mode.
-  syncAutoClean(store.get().previewMode);
 
   // --- Iframe messaging -----------------------------------------------------
   const bridge = createIframeBridge(store, {
@@ -297,7 +289,7 @@ export function createPreprPreview(
   function destroy(): void {
     unsubscribe();
     stega.stop();
-    syncAutoClean(false);
+    autoClean.stop();
     if (isIframe) {
       bridge.stop();
     }

@@ -24,7 +24,6 @@ function setup(path: string, features?: PreprFeatures) {
     currentPath: () => path,
     reload: vi.fn(),
     stega,
-    syncAutoClean: vi.fn(),
   });
   return { handle, navigate, stega };
 }

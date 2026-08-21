@@ -232,14 +232,16 @@ describe('createPreprPreview', () => {
     controller.destroy();
   });
 
-  it('preview-mode change sets the Prepr-Preview-Mode cookie and reloads', () => {
+  it('preview-mode change sets the cookie and emits the event WITHOUT reloading inside the editor iframe', () => {
+    // Reloading on the initVE-driven transition is what caused the infinite
+    // reload loop when the cross-site preview cookie was dropped.
     const controller = createPreprPreview({ props: PROPS });
     handshake();
 
     storeOf(controller).set({ previewMode: true });
 
     expect(document.cookie).toContain('Prepr-Preview-Mode=true');
-    expect(reloadSpy).toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
     expect(postMessageSpy).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'preview_mode_toggled' }),
       PARENT_ORIGIN
@@ -250,6 +252,8 @@ describe('createPreprPreview', () => {
   it('preview-mode toggle strips stale preview params instead of reloading', () => {
     // A stale ?prepr_preview_segment outranks the preview cookie in the
     // middleware, so a plain reload would keep serving preview content.
+    // Top-level: inside the editor iframe preview toggles never navigate.
+    stubTopLevel();
     const nav = fakeNavigation();
     nav.currentPath = () =>
       '/blog?prepr_preview_segment=seg-1&prepr_preview_ab=B&foo=bar';
@@ -264,6 +268,7 @@ describe('createPreprPreview', () => {
   });
 
   it('uses navigation.reload instead of window.location.reload when provided', () => {
+    stubTopLevel();
     const softReload = vi.fn();
     const nav = { ...fakeNavigation(), reload: softReload };
     const controller = createPreprPreview({ props: PROPS, navigation: nav });
@@ -283,6 +288,26 @@ describe('createPreprPreview', () => {
     storeOf(controller).set({ previewMode: false });
 
     expect(storeOf(controller).get().editMode).toBe(false);
+    controller.destroy();
+  });
+
+  it('auto-clean strips encoded text at mount even with preview mode off', async () => {
+    // Stega characters only exist when the server already fetched encoded
+    // content, so the clean pass must not depend on the preview cookie —
+    // inside the editor iframe that cookie is dropped cross-site.
+    const { vercelStegaCombine } = await import('@vercel/stega');
+    const h1 = document.createElement('h1');
+    h1.textContent = vercelStegaCombine('Hello world', {
+      href: 'https://edit.example.com/entry/123',
+      origin: 'https://cms.example.com',
+    });
+    document.body.appendChild(h1);
+
+    const controller = createPreprPreview({ props: PROPS });
+
+    expect(storeOf(controller).get().previewMode).toBe(false);
+    expect(h1.textContent).toBe('Hello world');
+    expect(h1.hasAttribute('data-prepr-encoded')).toBe(true);
     controller.destroy();
   });
 
@@ -324,7 +349,7 @@ describe('createPreprPreview', () => {
     controller.destroy();
   });
 
-  it('preview toggle emits exactly one preview_mode_toggled and one reload', () => {
+  it('preview toggle emits exactly one preview_mode_toggled', () => {
     const controller = createPreprPreview({ props: PROPS });
     handshake();
     // Preview on + edit on + toolbar open, so turning preview off has to force
@@ -340,7 +365,8 @@ describe('createPreprPreview', () => {
       ([msg]) => (msg as { event?: string }).event === 'preview_mode_toggled'
     );
     expect(previewEvents).toHaveLength(1);
-    expect(reloadSpy).toHaveBeenCalledTimes(1);
+    // Framed context: the reload is suppressed to avoid the initVE loop.
+    expect(reloadSpy).not.toHaveBeenCalled();
     expect(storeOf(controller).get().editMode).toBe(false);
     expect(storeOf(controller).get().toolbarOpen).toBe(false);
     controller.destroy();
