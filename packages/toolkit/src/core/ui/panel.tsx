@@ -377,13 +377,18 @@ function StatusPill({
       >
         {state.selectedVariant === 'B' ? 'B' : 'A'}
       </span>
+      {/* Mirrors the reset the pill performs: it clears the segment and puts
+          the variant back to 'A', so the X must appear whenever either is
+          off-default. A disabled feature can never be off-default. */}
       <span
         class="prepr-status-x"
         data-prepr="status-x"
         hidden={
-          !features.segments ||
           !state.previewMode ||
-          state.selectedSegment === null
+          !(
+            (features.segments && state.selectedSegment !== null) ||
+            (features.abTesting && state.selectedVariant === 'B')
+          )
         }
       >
         <RawSvg svg={XMARK_ICON_SVG} />

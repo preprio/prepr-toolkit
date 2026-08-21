@@ -112,6 +112,9 @@ button {
   background: var(--prepr-primary);
   color: #ffffff;
 }
+.prepr-toggle > span {
+  display: flex;
+}
 .prepr-toggle svg {
   color: #ffffff;
 }
