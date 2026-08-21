@@ -25,7 +25,7 @@ export interface PreprPixelConfig {
 
 type PreprQueueArgs = unknown[];
 
-// Shape of `window.prepr`, both as our stub and once the real pixel takes over
+// Shape of `window.prepr`, both as the local queue stub and once the real pixel takes over
 // via `.process`.
 interface PreprQueueFn {
   (...args: PreprQueueArgs): void;

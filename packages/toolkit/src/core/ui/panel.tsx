@@ -467,8 +467,8 @@ export function Panel({
         >
           <Header t={t} onClose={handlers.onClose} />
 
-          {/* ponytail: preview mode only drives segments/AB, so with both off
-              the whole section is dead weight. */}
+          {/* Preview mode only drives segments/AB, so with both features
+              disabled the whole section is hidden. */}
           {showAdaptive && (
           <div class="prepr-section" data-prepr="section-adaptive">
             <span class="prepr-section-label" data-prepr="adaptive-label">

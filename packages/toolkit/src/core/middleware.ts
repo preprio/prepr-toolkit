@@ -247,7 +247,7 @@ export function processPreprRequest(
 
   requestHeaders.set('Prepr-Preview-Bar', 'true');
 
-  // prepr_hide_bar=true means we're in the live preview iframe, where cookies
+  // prepr_hide_bar=true means the page runs in the live preview iframe, where cookies
   // must be ignored entirely — segments/variants come only from query params.
   const isLivePreview = searchParams.get(PARAM_HIDE_BAR) === 'true';
 

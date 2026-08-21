@@ -35,7 +35,7 @@ export type AstroNext = () => Promise<Response>;
  * Astro middleware entry point: computes the Prepr headers/cookies for this
  * request, forwards the headers downstream and sets the cookies on the response.
  *
- * Astro hands downstream code the same `Request` instance we get here, so the
+ * Astro hands downstream code the same `Request` instance this middleware receives, so the
  * headers are mutated in place — building a new `Request` would go nowhere,
  * there's no way to hand a replacement back out of middleware.
  */
