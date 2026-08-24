@@ -1,6 +1,11 @@
 import { createScopedLogger } from '../utils';
 import { decodeStega, type StegaDecodedData } from './clean';
-import { isIgnoredTextNode, tagEncodedElement, walkTextNodes } from './dom';
+import {
+  isIgnoredTextNode,
+  resolveEditTarget,
+  tagEncodedElement,
+  walkTextNodes,
+} from './dom';
 
 const debug = createScopedLogger('stega:elements');
 
@@ -31,7 +36,7 @@ export class StegaElements {
   private tagFromTextNode(node: Text): boolean {
     const decoded = this.decode(node.textContent);
     if (!decoded?.href) return false;
-    const target = node.parentElement;
+    const target = resolveEditTarget(node);
     if (!target || target.hasAttribute('data-prepr-encoded')) return false;
     tagEncodedElement(target, decoded);
     return true;

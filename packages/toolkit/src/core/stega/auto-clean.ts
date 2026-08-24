@@ -2,7 +2,12 @@ import { vercelStegaSplit } from '@vercel/stega';
 
 import { createScopedLogger } from '../utils';
 import { decodeStega } from './clean';
-import { isIgnoredTextNode, tagEncodedElement, walkTextNodes } from './dom';
+import {
+  isIgnoredTextNode,
+  resolveEditTarget,
+  tagEncodedElement,
+  walkTextNodes,
+} from './dom';
 
 const debug = createScopedLogger('stega:auto-clean');
 
@@ -46,11 +51,7 @@ export function createStegaAutoClean(): StegaAutoClean {
       cleaned.set(textNode, { original: textContent, cleaned: stripped });
       textNode.textContent = stripped;
 
-      let target: HTMLElement | null = textNode.parentElement;
-      const editTargetParent = textNode.parentElement?.closest(
-        '[data-prepr-edit-target]',
-      );
-      if (editTargetParent) target = editTargetParent as HTMLElement;
+      const target = resolveEditTarget(textNode);
 
       if (target) {
         tagEncodedElement(target, decoded);
