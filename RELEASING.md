@@ -183,14 +183,36 @@ it publishes to `latest`.
 
 ## Breaking changes
 
-None yet. `0.2.0` is the first release with real consumers — the `0.1.x` and
-`0.2.0-beta.x` migration notes that used to live here described versions nobody
-shipped against, so they have been removed.
-
 Pre-1.0, a breaking change ships as a **minor** bump (see
 [Version policy](#version-policy-pre-10)). Every one gets an entry here, newest
 first, with the diff a consumer applies to upgrade — that is what makes removing
 an export without a deprecation cycle reasonable.
+
+### 0.3.0 — click-to-edit skips elements that render no box
+
+No API changed. Edit mode now refuses to tag an element that cannot be hovered or
+outlined, so a site that hides the stega payload in a `display: none` /
+`visibility: hidden` / `hidden` element loses a tag it was previously given.
+
+Nothing observable breaks: those elements were tagged and permanently inert. The
+overlay measures `getBoundingClientRect()` and hover resolves through `closest()`
+from the moused-over element, so an element with no layout box could never receive
+either. The tag existed and did nothing.
+
+`data-prepr-edit-target` is how a hidden payload becomes editable — put it on the
+visible ancestor that should take the outline and the click:
+
+```diff
+-<p>Product title<span hidden>{encodedPayload}</span></p>
++<p data-prepr-edit-target>Product title<span hidden>{encodedPayload}</span></p>
+```
+
+The attribute is not new — `createStegaAutoClean` already honoured it while the
+click-to-edit tagging pass did not, so the two passes disagreed about which element
+was editable for the same markup. Both now resolve the target the same way.
+
+Sites that render encoded text normally (the overwhelmingly common case, where the
+payload rides on the visible text node) are unaffected.
 
 ## When something goes wrong
 
