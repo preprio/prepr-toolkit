@@ -183,68 +183,14 @@ it publishes to `latest`.
 
 ## Breaking changes
 
-### 0.2.0-beta.4 — `activeSegment` / `activeVariant` are optional
+None yet. `0.2.0` is the first release with real consumers — the `0.1.x` and
+`0.2.0-beta.x` migration notes that used to live here described versions nobody
+shipped against, so they have been removed.
 
-Not a break: it widens the type, so existing code that passes both keeps
-compiling. Preview-only apps can now omit them.
-
-```diff
- <PreprPreview
--  activeSegment={null}
--  activeVariant={null}
-   options={{ features: { segments: false, abTesting: false } }}
- />
-```
-
-Both carry a server-resolved value that only exists when the matching feature
-is on, so a preview/Visual-Editing-only integration had to pass `null` twice as
-pure ceremony. The runtime already tolerated their absence (`props?.activeSegment
-?? cookieSegment ?? null`, gated on the feature being enabled) — only the type
-demanded them. With a feature enabled and the prop omitted, the persisted cookie
-is used, as before.
-
-Affects `PreprToolbarProps`, so every framework wrapper picks it up.
-
-### 0.2.0-beta.2 — one preview runtime
-
-> `v0.2.0-beta.1` was tagged but never published — its release run failed at
-> `pnpm typecheck` before the publish step. Tag deletion is blocked by a repository
-> ruleset, so that tag remains in the history pointing at a commit that never shipped.
-> `0.2.0-beta.2` is the first release of this change.
-
-`createPreprToolbar` and `createPreprScrollSync` were replaced by a single
-`createPreprPreview`. Both old names are **removed**, not deprecated — pre-1.0, and
-`createPreprScrollSync` had no known consumers.
-
-```diff
--import { createPreprToolbar } from '@preprio/toolkit'
--createPreprToolbar({ props })
-+import { createPreprPreview } from '@preprio/toolkit'
-+createPreprPreview({ props })
-```
-
-`createPreprScrollSync()` becomes an explicit opt-out of everything else:
-
-```diff
--createPreprScrollSync()
-+createPreprPreview({
-+  options: {
-+    ui: false,
-+    features: { segments: false, abTesting: false, editMode: false },
-+  },
-+})
-```
-
-Renamed types: `PreprToolbarController` → `PreprPreviewController`,
-`CreatePreprToolbarOptions` → `CreatePreprPreviewOptions`. `PreprScrollSync` is gone.
-`PreprToolbarOptions` still exists; `PreprPreviewOptions` extends it with `ui` and
-`allowedEditorOrigins`.
-
-The `<PreprToolbar>` components are unchanged in every framework — only the core
-function was renamed. Apps using the wrappers need no changes.
-
-The minor bump (rather than another `0.1.0-beta.x`) is deliberate: the break should
-be legible in the version.
+Pre-1.0, a breaking change ships as a **minor** bump (see
+[Version policy](#version-policy-pre-10)). Every one gets an entry here, newest
+first, with the diff a consumer applies to upgrade — that is what makes removing
+an export without a deprecation cycle reasonable.
 
 ## When something goes wrong
 
@@ -263,6 +209,13 @@ git push origin :refs/tags/v0.1.1
 ```
 
 Then redo steps 2–4.
+
+### A tag exists that was never published
+
+`v0.2.0-beta.1` is tagged but never reached npm — its release run failed at
+`pnpm typecheck` before the publish step. A repository ruleset blocks tag deletion, so
+it stays in the history pointing at a commit that never shipped. Skip the version and
+tag the next one; do not try to reuse it.
 
 ### The workflow failed after publishing
 
