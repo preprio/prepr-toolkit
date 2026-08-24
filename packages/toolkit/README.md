@@ -819,6 +819,12 @@ createPreprPreview({ props, options: { locale: 'nl' } });
 - **Confirm the middleware matcher**: if `config.matcher` excludes the current path, no Prepr headers were set for it. `getPreprUUID()` returning `null` confirms this.
 - **Check for `prepr_hide_bar=true`** in the URL, which suppresses the bar by design.
 
+### Click-to-edit not working on some elements
+
+- **Check the token permissions**: "Enable edit mode" must be checked on the token in Prepr.
+- **Check whether the encoded text sits in a hidden element.** The parent of the encoded text node is what becomes editable, and a parent that renders no box (`display: none`, `visibility: hidden`, the `hidden` attribute) is skipped — it cannot be hovered or clicked. Put `data-prepr-edit-target` on the visible ancestor that should be editable instead. See [Choosing the element that becomes editable](#choosing-the-element-that-becomes-editable).
+- **Inspect the tagged elements**: `document.querySelectorAll('[data-prepr-encoded]')` in the console lists everything edit mode found. An element you expected to be in that list points at one of the two cases above.
+
 ### Headers not working
 
 - **Middleware setup**: confirm `middleware.ts` sits in the project root (or `src/`) and its matcher covers the route.
@@ -890,7 +896,40 @@ The toolbar renders with Preact into a shadow-DOM custom element (`<prepr-toolba
 
 With edit mode enabled, the toolkit scans for stega-encoded content, strips the invisible Unicode characters after load so they cannot cause layout shifts, highlights editable elements by cursor proximity, and talks to the Prepr editor over a `postMessage` bridge when running inside the live-preview iframe.
 
-Stega cleaning is automatic. There is no need to call `vercelStegaSplit` or hand-manage hidden spans — the data attributes the toolkit relies on survive the clean, so edit mode still activates instantly.
+Stega cleaning is automatic. There is no need to call `vercelStegaSplit` or to strip the payload yourself before rendering — the data attributes the toolkit relies on survive the clean, so edit mode still activates instantly.
+
+#### Choosing the element that becomes editable
+
+The element that gets the outline, the tooltip and the click handler is the **parent of the encoded text node**. Rendering `{title}` inside an `<h2>` makes the `<h2>` editable, which is what you want almost every time.
+
+Two rules govern the choice:
+
+- A parent that renders no box is skipped. An element hidden with `display: none`, `visibility: hidden`, or the `hidden` attribute cannot be hovered or outlined, so tagging it would produce an element that looks editable to the code and is unreachable to the visitor. Nothing is tagged for it.
+- `data-prepr-edit-target` overrides the parent. The closest ancestor carrying it becomes the editable element instead.
+
+That attribute is the supported way to separate _where the payload lives_ from _what the visitor clicks_. It is what makes the hidden-payload pattern work:
+
+```html
+<!-- The payload rides in a visually hidden span; the <article> is what
+     gets outlined and clicked. -->
+<article data-prepr-edit-target>
+  <h2>Product title</h2>
+  <span hidden>{encodedPayload}</span>
+</article>
+```
+
+Without the attribute that span is skipped entirely — it renders no box, so there is nothing to click.
+
+It is equally useful when the encoded text sits deep inside markup you do not control, and the natural click target is an ancestor:
+
+```html
+<figure data-prepr-edit-target>
+  <img src="..." alt="..." />
+  <figcaption><em>{encodedCaption}</em></figcaption>
+</figure>
+```
+
+Without it the `<em>` would be the editable element; with it the whole figure is.
 
 ## Examples
 
