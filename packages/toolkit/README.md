@@ -1,5 +1,10 @@
 # @preprio/toolkit
 
+> **Beta — pre-1.0.** The package is published to `latest` and is safe to use, but the
+> public API can still change between minor versions (`0.2.x` → `0.3.0`). Every change
+> is documented in [Breaking changes](https://github.com/preprio/prepr-toolkit/blob/main/RELEASING.md#breaking-changes). Pin an exact
+> version in production, or use a tilde range (`~0.2.0`) so you only pick up patches.
+
 A framework-agnostic TypeScript library that provides preview functionality, visual editing, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Nuxt, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
 
 Every integration is the same three steps:
@@ -9,6 +14,8 @@ Every integration is the same three steps:
 3. **Data fetching** — forwards the Prepr headers on your GraphQL requests, so Prepr returns personalized content.
 
 Jump to your framework: [Next.js](#nextjs) · [Astro](#astro) · [SvelteKit](#sveltekit) · [Nuxt](#nuxt) · [React without a framework](#react-no-framework) · [anything else](#any-other-framework).
+
+Coming from `@preprio/prepr-nextjs`? See the [migration guide](https://github.com/preprio/prepr-toolkit/blob/main/MIGRATION.md).
 
 ## Quick Start (Next.js)
 
@@ -896,6 +903,14 @@ Runnable examples live in the repository root:
 | `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components       |
 | `examples/nuxt`      | `server/middleware`, `useAsyncData`, `.vue` components             |
 | `examples/express`   | Vanilla core — a hand-written adapter for an unsupported framework |
+
+## Migrating from `@preprio/prepr-nextjs`
+
+`@preprio/toolkit` replaces the Next.js-only `@preprio/prepr-nextjs` package. Most of
+the change is import paths — the middleware signature is unchanged and the server
+helpers keep their names — but the toolbar's provider and the stylesheet are gone.
+
+The [migration guide](https://github.com/preprio/prepr-toolkit/blob/main/MIGRATION.md) has the diffs.
 
 ## Support
 

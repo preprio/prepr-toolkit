@@ -1,23 +1,88 @@
 # Releasing `@preprio/toolkit`
 
+> **For Prepr maintainers.** Publishing requires write access to this repository.
+> If you are contributing a change, see [CONTRIBUTING.md](./CONTRIBUTING.md) — your
+> work reaches npm through a maintainer cutting a release.
+
 Read this before your first release. You don't publish from your laptop — you push a
-`v*` tag and the `Release` workflow does the rest. Your job is to get the version numbers right and push
-the tag; everything after that is automated.
+`v*` tag and the `Release` workflow does the rest. Your job is to get the version
+numbers right and push the tag; everything after that is automated.
 
 Current version is in `packages/toolkit/package.json`.
 
-## Before your first release
+## How the publish authenticates
 
-Check that `NPM_TOKEN` exists in the repo secrets (Settings → Secrets and variables
-→ Actions). It needs to be an npm **automation** token with publish rights. If it's
-missing, ask someone with npm org access — you'll need it before any release can
-work.
+There is **no npm token anywhere** — not in repository secrets, not on a laptop. npm
+Trusted Publishing (OIDC) establishes the trust instead: npm accepts publishes of
+`@preprio/toolkit` that come from `preprio/prepr-toolkit` via `release.yml`, and from
+nothing else.
 
-You only check this once. Skip it after that.
+At publish time the workflow's `id-token: write` permission mints a short-lived
+credential that npm verifies against that configuration. Nothing long-lived exists to
+leak or rotate, and a fork cannot publish — the identity npm checks is the repository
+_and_ the workflow file.
+
+Trusted Publishing is configured on npmjs.com under the package's Settings → Trusted
+Publisher. It is already set up; you should not need to touch it.
+
+The publish step uses `npm publish`, not `pnpm publish`. Trusted Publishing is
+implemented in the npm CLI and requires npm >= 11.5.1; `pnpm@9.15.0`, which this repo
+pins, has no OIDC support in its own publish path. The runner's Node 22 ships npm
+10.x, still below the threshold, so the workflow installs a current npm for that step
+alone.
+
+If this repo moves to a newer pnpm, check whether that version publishes via OIDC on
+its own — if it does, the `npm install -g npm@latest` step can go and the publish can
+go back to `pnpm publish --filter @preprio/toolkit`.
+
+After a release, confirm what landed — the registry is the only source of truth for
+what consumers get:
+
+```bash
+npm view @preprio/toolkit versions --json
+npm view @preprio/toolkit dist-tags --json
+```
+
+## Version policy (pre-1.0)
+
+The package is beta until `1.0.0`, and the version number is what says so — there is
+no `beta` dist-tag on it. Every `0.x` release publishes to `latest`, so
+`npm install @preprio/toolkit` just works, while semver's own pre-1.0 rule does the
+gating: a caret range like `^0.2.0` will never resolve to `0.3.0` on its own, so a
+breaking minor cannot reach anyone who did not ask for it.
+
+While the version is below `1.0.0`:
+
+| Change                                                                       | Bump      | Example           |
+| ---------------------------------------------------------------------------- | --------- | ----------------- |
+| Breaking change — an export removed, renamed, or narrowed; a default changed | **minor** | `0.2.3` → `0.3.0` |
+| New feature, backward compatible                                             | **patch** | `0.2.3` → `0.2.4` |
+| Bugfix                                                                       | **patch** | `0.2.3` → `0.2.4` |
+
+Adding features does not need a `major`, and shipping one does not end the beta —
+keep landing them as patches until the API is worth freezing.
+
+Every breaking change gets an entry in [Breaking changes](#breaking-changes), newest
+first, with the diff a consumer needs to apply. That section is the migration guide;
+pre-1.0 permits removals without a deprecation cycle, which only stays reasonable if
+each one is written down.
+
+Reserve `major` (`1.0.0`) for the point where the API is stable and you are willing
+to hold it. At that release, drop the beta banner from
+[`packages/toolkit/README.md`](packages/toolkit/README.md) and normal semver takes
+over: breaking changes become `major`, features `minor`, fixes `patch`.
 
 ## Cutting a release
 
-### 1. Start clean, on `main`
+### 1. Get the changes onto `main`
+
+Work accumulates on `develop`. A release starts by merging it into `main`:
+
+```bash
+gh pr create --base main --head develop --title "release: vX.Y.Z"
+```
+
+Merge that, then start clean from `main`:
 
 ```bash
 git checkout main && git pull
@@ -34,7 +99,9 @@ which is the most annoying time to find out.
 pnpm --filter @preprio/toolkit version patch
 ```
 
-Use `patch` for bugfixes, `minor` for new features, `major` for breaking changes.
+Pre-1.0, `patch` covers both bugfixes and new features, and `minor` is what a
+breaking change gets — see [Version policy](#version-policy-pre-10). Once the
+package hits `1.0.0`, this becomes plain semver: `patch` / `minor` / `major`.
 
 ### 3. Update `src/version.ts` to match
 
@@ -68,20 +135,27 @@ Open the Actions tab and follow the `Release` run. In order, it:
 3. publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements),
 4. creates a GitHub release with notes generated from the commits since the last tag.
 
-Once it's green, confirm the version is live:
+Green is not proof. Confirm the version is actually live — and that it landed on the
+dist-tag you expected:
 
 ```bash
-npm view @preprio/toolkit version
+npm view @preprio/toolkit versions --json
+npm view @preprio/toolkit dist-tags --json
 ```
+
+If your version is missing, the run should have failed — read the `Publish` step's
+log. `ENEEDAUTH` means OIDC did not authenticate (check that Trusted Publishing on
+npmjs.com still points at `release.yml`, and that the workflow kept its
+`id-token: write` permission).
 
 These checks run nowhere else — there is no CI on pushes or PRs — so step 2 is the
 first time anything is verified. Run `pnpm check:all` before tagging and it will not
 surprise you.
 
-## Beta releases
+## Prerelease versions
 
-Ship a beta when you want the package installable without affecting anyone on
-`latest`.
+Separate from the pre-1.0 beta above: ship a prerelease when you want a specific
+version installable for testing without affecting anyone on `latest`.
 
 Any version with a hyphen in it is treated as a prerelease automatically. It goes out
 under the `beta` npm dist-tag and is marked as a prerelease on GitHub. `latest` is
