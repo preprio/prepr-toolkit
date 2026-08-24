@@ -188,7 +188,13 @@ Pre-1.0, a breaking change ships as a **minor** bump (see
 first, with the diff a consumer applies to upgrade — that is what makes removing
 an export without a deprecation cycle reasonable.
 
-### 0.3.0 — click-to-edit skips elements that render no box
+### 0.3.1 — click-to-edit skips elements that render no box
+
+> `v0.3.0` was tagged against the wrong commit — `main` had not yet merged the
+> version bump, so the tag pointed at a tree still reading `0.2.0` and the release
+> run failed its version check before publishing. The ruleset blocks tag deletion,
+> so `v0.3.0` remains in the history pointing at a commit that never shipped.
+> `0.3.1` is the first release of this change.
 
 No API changed. Edit mode now refuses to tag an element that cannot be hovered or
 outlined, so a site that hides the stega payload in a `display: none` /
@@ -223,14 +229,30 @@ You forgot `--follow-tags`, or pushed the tag to the wrong remote. Check with
 
 ### "Tag X != package.json Y"
 
-Your tag and `package.json` disagree. Delete the tag, fix the version, tag again:
+Your tag and `package.json` disagree. The usual cause is tagging `main` before the
+release PR that carries the version bump was merged, so the tag points at a tree
+still holding the previous version.
 
-```bash
-git tag -d v0.1.1
-git push origin :refs/tags/v0.1.1
+**The tag cannot be reused.** Deleting it locally works, but the ruleset rejects the
+remote delete:
+
+```
+! [remote rejected] v0.3.0 (push declined due to repository rule violations)
 ```
 
-Then redo steps 2–4.
+So the burned version number is gone for good. Recover by releasing the next patch:
+
+```bash
+git checkout main && git pull          # confirm the bump is actually on main
+```
+
+Bump both version locations to the next patch, commit, and tag that. Add a note to
+the new version's [Breaking changes](#breaking-changes) entry recording which tag was
+stranded and why — `v0.2.0-beta.1` and `v0.3.0` both have one.
+
+To avoid it entirely: merge the release PR first, then `git checkout main && git
+pull`, confirm `package.json` reads the version you are about to tag, and only then
+create the tag.
 
 ### A tag exists that was never published
 
