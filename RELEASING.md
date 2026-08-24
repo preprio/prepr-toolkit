@@ -116,6 +116,17 @@ pushed bad tag is annoying, so get it right here.
 
 The tag is the version with a `v` in front. Nothing else.
 
+**Run the preflight check first.** A tag pushed against the wrong commit cannot be
+deleted, so the version number is lost — this has cost two numbers already:
+
+```bash
+pnpm preflight:tag
+```
+
+It verifies you are on `main`, in sync with `origin/main`, with a clean tree, both
+version locations matching, and the tag not already taken. It prints the exact tag
+commands when everything passes.
+
 ```bash
 git commit -am "release: v0.1.1"
 git tag v0.1.1
@@ -188,13 +199,13 @@ Pre-1.0, a breaking change ships as a **minor** bump (see
 first, with the diff a consumer applies to upgrade — that is what makes removing
 an export without a deprecation cycle reasonable.
 
-### 0.3.1 — click-to-edit skips elements that render no box
+### 0.3.2 — click-to-edit skips elements that render no box
 
-> `v0.3.0` was tagged against the wrong commit — `main` had not yet merged the
-> version bump, so the tag pointed at a tree still reading `0.2.0` and the release
-> run failed its version check before publishing. The ruleset blocks tag deletion,
-> so `v0.3.0` remains in the history pointing at a commit that never shipped.
-> `0.3.1` is the first release of this change.
+> `v0.3.0` and `v0.3.1` were both tagged against a commit whose tree still held the
+> previous version — `main` had not yet merged the bump either time — so the release
+> run failed its version check before publishing. The ruleset blocks tag deletion, so
+> both remain in the history pointing at commits that never shipped. `0.3.2` is the
+> first release of this change.
 
 No API changed. Edit mode now refuses to tag an element that cannot be hovered or
 outlined, so a site that hides the stega payload in a `display: none` /
