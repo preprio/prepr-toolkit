@@ -15,6 +15,8 @@ Every integration is the same three steps:
 
 Jump to your framework: [Next.js](#nextjs) · [Astro](#astro) · [SvelteKit](#sveltekit) · [Nuxt](#nuxt) · [React without a framework](#react-no-framework) · [anything else](#any-other-framework).
 
+Coming from `@preprio/prepr-nextjs`? See the [migration guide](https://github.com/preprio/prepr-toolkit/blob/main/MIGRATION.md).
+
 ## Quick Start (Next.js)
 
 ```bash
@@ -901,6 +903,14 @@ Runnable examples live in the repository root:
 | `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components       |
 | `examples/nuxt`      | `server/middleware`, `useAsyncData`, `.vue` components             |
 | `examples/express`   | Vanilla core — a hand-written adapter for an unsupported framework |
+
+## Migrating from `@preprio/prepr-nextjs`
+
+`@preprio/toolkit` replaces the Next.js-only `@preprio/prepr-nextjs` package. Most of
+the change is import paths — the middleware signature is unchanged and the server
+helpers keep their names — but the toolbar's provider and the stylesheet are gone.
+
+The [migration guide](https://github.com/preprio/prepr-toolkit/blob/main/MIGRATION.md) has the diffs.
 
 ## Support
 
