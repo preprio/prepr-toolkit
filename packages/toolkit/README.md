@@ -1,5 +1,10 @@
 # @preprio/toolkit
 
+> **Beta — pre-1.0.** The package is published to `latest` and is safe to use, but the
+> public API can still change between minor versions (`0.2.x` → `0.3.0`). Every change
+> is documented in [Breaking changes](https://github.com/preprio/prepr-toolkit/blob/main/RELEASING.md#breaking-changes). Pin an exact
+> version in production, or use a tilde range (`~0.2.0`) so you only pick up patches.
+
 A framework-agnostic TypeScript library that provides preview functionality, visual editing, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Nuxt, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
 
 Every integration is the same three steps:
