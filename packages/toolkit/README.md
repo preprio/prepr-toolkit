@@ -631,7 +631,7 @@ controller.destroy();
 | Option       | Type                     | Description                                                                                                                                                                                                                                                                                      |
 | ------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `props`      | `PreprToolbarProps`      | From `getToolbarProps`. Optional — a headless preview has no segment list to pass.                                                                                                                                                                                                               |
-| `options`    | `PreprPreviewOptions`    | `{ debug?, locale?, features?, ui?, allowedEditorOrigins? }`. See [Preview options](#preview-options).                                                                                                                                                                                           |
+| `options`    | `PreprPreviewOptions`    | `{ debug?, locale?, features?, ui?, allowedEditorOrigins?, autoClean? }`. See [Preview options](#preview-options).                                                                                                                                                                               |
 | `navigation` | `PreprNavigationAdapter` | How segment/variant switches navigate. Optional — omitted, the toolbar uses `window.location.assign` (a full page load). `reload` is optional too, runs after a preview-mode toggle, and defaults to `window.location.reload()`. The Next.js and SvelteKit wrappers wire all of this up for you. |
 
 `createPreprPreview` is a no-op outside a browser (no `window`/`document`) and returns a controller whose `destroy()` does nothing, so it is safe to call during SSR. Call it **once per page** — two calls start two bridges and announce the preview twice.
@@ -689,13 +689,14 @@ createPreprMiddleware(request, response, { preview });
 createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 ```
 
-| Option                 | Type            | Default       | Description                                                                                         |
-| ---------------------- | --------------- | ------------- | --------------------------------------------------------------------------------------------------- |
-| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                               |
-| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                         |
-| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                            |
-| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                 |
-| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard. |
+| Option                 | Type            | Default       | Description                                                                                              |
+| ---------------------- | --------------- | ------------- | -------------------------------------------------------------------------------------------------------- |
+| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                                    |
+| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                              |
+| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                 |
+| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                      |
+| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard.      |
+| `autoClean`            | `boolean`       | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning). |
 
 `features` and `ui` are independent: `features` decides _what runs_, `ui` decides _whether the toolbar is visible_.
 
@@ -897,6 +898,28 @@ The toolbar renders with Preact into a shadow-DOM custom element (`<prepr-toolba
 With edit mode enabled, the toolkit scans for stega-encoded content, strips the invisible Unicode characters after load so they cannot cause layout shifts, highlights editable elements by cursor proximity, and talks to the Prepr editor over a `postMessage` bridge when running inside the live-preview iframe.
 
 Stega cleaning is automatic. There is no need to call `vercelStegaSplit` or to strip the payload yourself before rendering — the data attributes the toolkit relies on survive the clean, so edit mode still activates instantly.
+
+#### Stega auto-cleaning
+
+Preview content carries its edit payload inside the text itself, as a run of invisible Unicode characters. The toolkit strips them from the DOM after load and keeps stripping them as your framework re-renders.
+
+Leaving them in place is not cosmetic. The characters are real string content: they inflate `String.length`, break text measurement and truncation, and are announced by screen readers.
+
+Turn the stripping off with `autoClean: false`:
+
+```typescript
+createPreprPreview({ props, options: { autoClean: false } });
+```
+
+Only do this when your app already strips the payload itself — for example by passing every field through `stegaClean` as it renders:
+
+```typescript
+import { stegaClean } from '@preprio/toolkit';
+
+<h1>{stegaClean(page.title)}</h1>;
+```
+
+Click-to-edit is unaffected by this option. Elements are still tagged from the payload, so the overlay, tooltip and edit bridge keep working either way.
 
 #### Choosing the element that becomes editable
 

@@ -234,3 +234,121 @@ describe('createStegaAutoClean document.title', () => {
     autoClean.stop();
   });
 });
+
+describe('stega auto-clean reveals hidden content', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('tags a node that had no layout box at clean time once it is revealed', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+
+    // A collapsed dropdown: the text is in the DOM but the panel generates no
+    // box, so the first clean strips the payload with nothing to tag.
+    document.body.innerHTML = `<nav><div id="panel"><a id="item">${encode('Digital leaders')}</a></div></nav>`;
+    const item = document.getElementById('item')!;
+
+    // happy-dom reports a box even for display:none, so the collapsed state is
+    // emulated directly: no client rects until the dropdown "opens".
+    let open = false;
+    vi.spyOn(item, 'getClientRects').mockImplementation(
+      () => (open ? [{}] : []) as unknown as DOMRectList,
+    );
+
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+
+    // stripped for the visitor, but not yet editable
+    expect(item.textContent).toBe('Digital leaders');
+    expect(item.hasAttribute('data-prepr-encoded')).toBe(false);
+
+    // opening the dropdown changes only an inline style: no text mutation and
+    // no added nodes, which is exactly the case that used to be missed.
+    open = true;
+    document.getElementById('panel')!.setAttribute('style', 'display:block');
+
+    await vi.waitFor(() =>
+      expect(item.hasAttribute('data-prepr-encoded')).toBe(true),
+    );
+    expect(item.getAttribute('data-prepr-href')).toBe(
+      'https://edit.example.com/entry/123',
+    );
+
+    autoClean.stop();
+  });
+});
+
+describe('stega auto-clean mutation batching', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('cleans every batch when mutations arrive faster than the debounce', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root')!;
+
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+
+    // Streaming SSR / hydration: each append restarts the 50ms debounce, so
+    // every batch but the last used to be discarded with its nodes still
+    // encoded and untagged.
+    const nodes: HTMLElement[] = [];
+    for (let i = 0; i < 5; i++) {
+      const p = document.createElement('p');
+      p.textContent = encode(`Item ${i}`);
+      root.appendChild(p);
+      nodes.push(p);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await vi.waitFor(() => {
+      nodes.forEach((node, i) => {
+        expect(node.textContent).toBe(`Item ${i}`);
+        expect(node.hasAttribute('data-prepr-encoded')).toBe(true);
+      });
+    });
+
+    autoClean.stop();
+  });
+});
+
+describe('createStegaAutoClean autoClean disabled', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('leaves the encoded text in place but still tags for click-to-edit', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+
+    const h1 = document.createElement('h1');
+    const encoded = encode('Hello world');
+    h1.textContent = encoded;
+    document.body.appendChild(h1);
+    document.title = encode('Homepage');
+
+    const autoClean = createStegaAutoClean({ enabled: false });
+    autoClean.start();
+
+    expect(h1.textContent).toBe(encoded);
+    expect(document.title).toBe(encode('Homepage'));
+    // Editing must keep working for a site that strips the characters itself.
+    expect(h1.getAttribute('data-prepr-href')).toBe(
+      'https://edit.example.com/entry/123',
+    );
+
+    autoClean.stop();
+  });
+});

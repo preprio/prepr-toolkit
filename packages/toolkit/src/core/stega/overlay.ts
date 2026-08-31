@@ -102,12 +102,17 @@ export class StegaOverlay {
         const maxLeft =
           window.scrollX + window.innerWidth - tooltip.clientWidth - 4;
 
-        if (top < minTop) {
+        // No room above: sit under the element instead. The flat edge of the
+        // tooltip must stay against the element it labels, so the flipped
+        // placement is exposed for the stylesheet to mirror the rounding.
+        const below = top < minTop;
+        if (below) {
           top = rect.bottom + window.scrollY + 2;
         }
         top = Math.max(minTop, Math.min(top, maxTop));
         left = Math.max(minLeft, Math.min(left, maxLeft));
 
+        tooltip.dataset.preprPlacement = below ? 'below' : 'above';
         tooltip.style.top = `${top}px`;
         tooltip.style.left = `${left}px`;
       });
