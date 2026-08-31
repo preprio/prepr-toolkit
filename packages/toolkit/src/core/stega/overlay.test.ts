@@ -57,3 +57,52 @@ describe('StegaOverlay', () => {
     overlay.cleanup();
   });
 });
+
+describe('StegaOverlay tooltip placement', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  const showOn = (top: number, bottom: number): HTMLElement => {
+    const el = document.createElement('h1');
+    el.setAttribute('data-prepr-href', 'https://app.prepr.io/x');
+    el.setAttribute('data-prepr-origin', 'https://app.prepr.io');
+    document.body.appendChild(el);
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      top,
+      bottom,
+      left: 100,
+      right: 300,
+      width: 200,
+      height: bottom - top,
+    } as DOMRect);
+    return el;
+  };
+
+  it('marks the tooltip as flipped below when there is no room above', async () => {
+    const overlay = new StegaOverlay(vi.fn());
+    const { tooltip } = overlay.create();
+    // element pinned to the very top of the viewport
+    overlay.show(showOn(0, 40));
+
+    await vi.waitFor(() =>
+      expect(tooltip.dataset.preprPlacement).toBe('below'),
+    );
+    overlay.cleanup();
+  });
+
+  it('keeps the default above placement when the element has room', async () => {
+    const overlay = new StegaOverlay(vi.fn());
+    const { tooltip } = overlay.create();
+    overlay.show(showOn(400, 440));
+
+    await vi.waitFor(() =>
+      expect(tooltip.dataset.preprPlacement).toBe('above'),
+    );
+    overlay.cleanup();
+  });
+});

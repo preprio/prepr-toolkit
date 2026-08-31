@@ -234,6 +234,45 @@ describe('definePreprToolbar', () => {
     expect(pill.textContent).toContain('B');
   });
 
+  it('makes the status pill inert when there is nothing to reset', () => {
+    // Default segment and variant A: the pill's only action is the reset, so
+    // with nothing off-default it must not look or behave like a control.
+    const store = createToolbarStore({
+      previewMode: true,
+      segments: SEGMENTS,
+      selectedSegment: null,
+      selectedVariant: 'A',
+    });
+    const el = mount(store);
+
+    const pill = el.shadowRoot!.querySelector<HTMLButtonElement>(
+      '[data-prepr="status-pill"]',
+    )!;
+    expect(pill.dataset.interactive).toBe('false');
+    expect(pill.disabled).toBe(true);
+
+    // picking a non-default segment gives the reset something to do
+    store.set({ selectedSegment: 'seg-1' });
+    expect(pill.dataset.interactive).toBe('true');
+    expect(pill.disabled).toBe(false);
+
+    // so does switching to variant B on its own
+    store.set({ selectedSegment: null, selectedVariant: 'B' });
+    expect(pill.dataset.interactive).toBe('true');
+    expect(pill.disabled).toBe(false);
+  });
+
+  it('keeps the status pill clickable out of preview mode so it can enable it', () => {
+    const store = createToolbarStore({ previewMode: false });
+    const el = mount(store);
+
+    const pill = el.shadowRoot!.querySelector<HTMLButtonElement>(
+      '[data-prepr="status-pill"]',
+    )!;
+    expect(pill.dataset.interactive).toBe('true');
+    expect(pill.disabled).toBe(false);
+  });
+
   it('hides the status-pill x when preview mode is off', () => {
     const store = createToolbarStore({
       previewMode: false,

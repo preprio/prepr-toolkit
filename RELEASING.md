@@ -199,6 +199,21 @@ Pre-1.0, a breaking change ships as a **minor** bump (see
 first, with the diff a consumer applies to upgrade — that is what makes removing
 an export without a deprecation cycle reasonable.
 
+### 0.3.3 — no breaking changes
+
+Bugfix and a backward-compatible option; nothing to migrate. Listed here only
+because the auto-clean behaviour it changes is worth knowing about.
+
+Stega auto-cleaning dropped whole batches of mutations when they arrived faster
+than its 50ms debounce — each restart cancelled the pending flush while the
+nodes it covered were held in a local set that went out of scope. On a page that
+streams or hydrates in bursts, most encoded text stayed unstripped and untagged.
+Nodes are now accumulated across debounce restarts.
+
+New `autoClean` option on `createPreprPreview` (default `true`, matching prior
+behaviour) turns the text stripping off for sites that strip the payload
+themselves. Click-to-edit tagging is unaffected either way.
+
 ### 0.3.2 — click-to-edit skips elements that render no box
 
 > `v0.3.0` and `v0.3.1` were both tagged against a commit whose tree still held the

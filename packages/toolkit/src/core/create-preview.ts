@@ -250,7 +250,9 @@ export function createPreprPreview(
   // observer never matches, so this is free in production. Gating this on
   // previewMode left the editor iframe (edit mode via `prepr:initVE`, cookie
   // dropped cross-site) tagged but never stripped.
-  const autoClean: StegaAutoClean = createStegaAutoClean();
+  const autoClean: StegaAutoClean = createStegaAutoClean({
+    enabled: options?.autoClean,
+  });
   autoClean.start();
 
   // --- Subscriptions (side effects) ----------------------------------------

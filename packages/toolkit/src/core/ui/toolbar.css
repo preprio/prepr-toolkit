@@ -453,7 +453,14 @@ button {
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
-.prepr-status-pill:hover {
+/* Only the reset-capable pill is a control; the read-only one keeps the same
+   look but offers no hover, pointer, or focus affordance. */
+.prepr-status-pill[data-interactive='false'] {
+  cursor: default;
+  opacity: 1;
+  color: #ffffff;
+}
+.prepr-status-pill[data-interactive='true']:hover {
   background: var(--prepr-primary-800);
 }
 .prepr-status-pill[hidden] {
