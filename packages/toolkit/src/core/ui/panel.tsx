@@ -356,12 +356,22 @@ function StatusPill({
     segmentLabel = defaultSegmentName;
   }
 
+  // The pill's only action in preview mode is the reset, so when nothing is
+  // off-default it has nothing to do: it drops its hover affordance and stops
+  // taking clicks and focus. Out of preview mode it still turns preview on.
+  const dirty =
+    (features.segments && state.selectedSegment !== null) ||
+    (features.abTesting && state.selectedVariant === 'B');
+  const interactive = !state.previewMode || dirty;
+
   return (
     <button
       type="button"
       class="prepr-status-pill"
       data-prepr="status-pill"
+      data-interactive={String(interactive)}
       hidden={state.isIframe}
+      disabled={!interactive}
       onClick={() => handlers.onStatusPill()}
     >
       <span class="prepr-status-viewing" data-prepr="status-viewing">
@@ -383,13 +393,7 @@ function StatusPill({
       <span
         class="prepr-status-x"
         data-prepr="status-x"
-        hidden={
-          !state.previewMode ||
-          !(
-            (features.segments && state.selectedSegment !== null) ||
-            (features.abTesting && state.selectedVariant === 'B')
-          )
-        }
+        hidden={!state.previewMode || !dirty}
       >
         <RawSvg svg={XMARK_ICON_SVG} />
       </span>
