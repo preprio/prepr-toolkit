@@ -12,7 +12,7 @@
  *     `Math.ceil(Date.now() / cacheTime) * cacheTime`.
  */
 
-const PIXEL_SCRIPT_URL = 'https://cdn.tracking.prepr.io/js/prepr_v2.min.js';
+const PIXEL_SCRIPT_URL = 'https://cdn.tracking.prepr.io/js/prepr.min.js';
 const CACHE_BUST_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /** Config accepted by the CDN pixel. */
