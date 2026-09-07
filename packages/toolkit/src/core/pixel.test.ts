@@ -66,12 +66,12 @@ describe('loadTrackingPixel', () => {
     loadTrackingPixel('ID-XXXXXXXX');
 
     const scripts = getScriptTags().filter((s) =>
-      s.src.startsWith('https://cdn.tracking.prepr.io/js/prepr-v2.min.js'),
+      s.src.startsWith('https://cdn.tracking.prepr.io/js/prepr.min.js'),
     );
     expect(scripts.length).toBe(1);
     expect(scripts[0].async).toBe(true);
     expect(scripts[0].src).toBe(
-      `https://cdn.tracking.prepr.io/js/prepr-v2.min.js?t=${expectedBuster}`,
+      `https://cdn.tracking.prepr.io/js/prepr.min.js?t=${expectedBuster}`,
     );
   });
 
@@ -86,7 +86,7 @@ describe('loadTrackingPixel', () => {
     expect(window.prepr!.queue.length).toBe(firstQueueLength);
 
     const scripts = getScriptTags().filter((s) =>
-      s.src.startsWith('https://cdn.tracking.prepr.io/js/prepr-v2.min.js'),
+      s.src.startsWith('https://cdn.tracking.prepr.io/js/prepr.min.js'),
     );
     expect(scripts.length).toBe(1);
   });
