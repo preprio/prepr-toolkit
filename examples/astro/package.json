@@ -15,7 +15,7 @@
     "@graphql-typed-document-node/core": "^3.2.0",
     "@preprio/toolkit": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
-    "astro": "^7.1.6",
+    "astro": "^7.2.8",
     "graphql": "^16.14.2",
     "tailwindcss": "^4.3.3"
   },
