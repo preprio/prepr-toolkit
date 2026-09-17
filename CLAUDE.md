@@ -58,7 +58,7 @@ Public exports get a JSDoc block covering what the function does, when to reach 
 
 - Named exports only from the package — no default exports except where a framework demands one (the `next/image` loader).
 - Options land in a single trailing options object with optional fields, never positional boolean/config arguments. Keep option names identical across framework wrappers.
-- Public API changes are semver events: removing or renaming an export, narrowing a type, or changing a default belongs in RELEASING.md's "Breaking changes" section (pre-1.0 removals are allowed but must be documented there).
+- Public API changes are semver events: removing or renaming an export, narrowing a type, or changing a default belongs in RELEASING.md's "Breaking changes" section (a breaking change is a major bump, never a minor).
 - Prefer structural types over framework imports at wrapper boundaries (`AstroLikeContext`, `H3EventLike`, `SvelteKitRequestEvent`) — a peer dependency is only for code the consumer's framework actually compiles.
 - New runtime dependencies are a last resort: the package's value is being a drop-in. Bundle tiny vendored pieces (as with preact) rather than adding peers.
 

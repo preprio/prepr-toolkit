@@ -1,9 +1,14 @@
 # @preprio/toolkit
 
-> **Beta — pre-1.0.** The package is published to `latest` and is safe to use, but the
-> public API can still change between minor versions (`0.2.x` → `0.3.0`). Every change
-> is documented in [Breaking changes](https://github.com/preprio/prepr-toolkit/blob/main/RELEASING.md#breaking-changes). Pin an exact
-> version in production, or use a tilde range (`~0.2.0`) so you only pick up patches.
+> **Stable, pre-1.0.** The core is stable and published to `latest`. The package follows
+> semver: minor and patch releases never break the public API, and any breaking change
+> ships as a major bump with a migration entry in
+> [Breaking changes](https://github.com/preprio/prepr-toolkit/blob/main/RELEASING.md#breaking-changes).
+>
+> **Framework support.** The Next.js and Astro integrations are tested end to end. The
+> Nuxt, SvelteKit, and vanilla wrappers share the same core but have seen less real-world
+> use. If you hit a problem with any of them, please
+> [open an issue](https://github.com/preprio/prepr-toolkit/issues).
 
 A framework-agnostic TypeScript library that provides preview functionality, visual editing, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Nuxt, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
 

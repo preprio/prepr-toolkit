@@ -6,6 +6,7 @@ import {
   setTrackingParam,
   trackEvent,
 } from './pixel';
+import { VERSION } from '../version';
 
 function getScriptTags(): HTMLScriptElement[] {
   return Array.from(document.getElementsByTagName('script'));
@@ -36,17 +37,30 @@ describe('loadTrackingPixel', () => {
     expect(window.prepr!.t).toBeLessThanOrEqual(after);
   });
 
-  it('queues ("init", id, config) then ("event", "pageload") in order', () => {
+  it('queues ("init", id, config), the package param, then ("event", "pageload") in order', () => {
     loadTrackingPixel('ID-XXXXXXXX', { variantImpressionThreshold: 5 });
 
     const queue = window.prepr!.queue;
-    expect(queue.length).toBe(2);
+    expect(queue.length).toBe(3);
     expect(Array.from(queue[0] as unknown[])).toEqual([
       'init',
       'ID-XXXXXXXX',
       { variantImpressionThreshold: 5 },
     ]);
-    expect(Array.from(queue[1] as unknown[])).toEqual(['event', 'pageload']);
+    expect(Array.from(queue[1] as unknown[])).toEqual(['param', 'pp', VERSION]);
+    expect(Array.from(queue[2] as unknown[])).toEqual(['event', 'pageload']);
+  });
+
+  it('reports the package param before the pageload event so the first event carries it', () => {
+    loadTrackingPixel('ID-XXXXXXXX');
+
+    const queue = window.prepr!.queue;
+    const paramIndex = queue.findIndex((a) => (a as unknown[])[1] === 'pp');
+    const pageloadIndex = queue.findIndex(
+      (a) => (a as unknown[])[1] === 'pageload',
+    );
+    expect(paramIndex).toBeGreaterThanOrEqual(0);
+    expect(paramIndex).toBeLessThan(pageloadIndex);
   });
 
   it('queues ("init", id) without a third argument when no config is passed', () => {

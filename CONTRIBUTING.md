@@ -111,7 +111,7 @@ shipping your branch straight to production.
 
 In the description, cover what changed, why, and how you verified it. If it affects
 public API, say so: that determines whether the next release is a patch, a minor, or
-a beta.
+a major.
 
 ### 5. Review
 
@@ -132,7 +132,7 @@ without credentials.
 There is no fixed release schedule. If a merged fix is blocking you, say so on the
 pull request and someone will cut a release.
 
-To test a change before it is released, install the current beta:
+To test a change before it is released, install the prerelease if one is published:
 
 ```bash
 pnpm add @preprio/toolkit@beta
