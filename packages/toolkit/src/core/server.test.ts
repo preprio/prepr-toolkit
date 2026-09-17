@@ -67,6 +67,12 @@ describe('header extraction from synthetic Headers', () => {
     expect(result).not.toHaveProperty('x-other-header');
   });
 
+  it('getPreprHeadersFromHeaders forwards Prepr-Package so the API sees the toolkit version', () => {
+    const headers = makeHeaders({ 'Prepr-Package': '@preprio/toolkit@9.9.9' });
+    const result = getPreprHeadersFromHeaders(headers);
+    expect(result['Prepr-Package']).toBe('@preprio/toolkit@9.9.9');
+  });
+
   it('getPreprHeadersFromHeaders returns keys in the exact casing declared by PreprHeaders', () => {
     // Incoming names are wire-lowercased, as real runtimes deliver them.
     const headers = makeHeaders({
