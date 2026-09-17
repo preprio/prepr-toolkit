@@ -43,34 +43,23 @@ npm view @preprio/toolkit versions --json
 npm view @preprio/toolkit dist-tags --json
 ```
 
-## Version policy (pre-1.0)
+## Version policy
 
-The package is beta until `1.0.0`, and the version number is what says so — there is
-no `beta` dist-tag on it. Every `0.x` release publishes to `latest`, so
-`npm install @preprio/toolkit` just works, while semver's own pre-1.0 rule does the
-gating: a caret range like `^0.2.0` will never resolve to `0.3.0` on its own, so a
-breaking minor cannot reach anyone who did not ask for it.
-
-While the version is below `1.0.0`:
+The package follows plain semver. Every release publishes to `latest`, so
+`npm install @preprio/toolkit` just works. The `0.x` version number does not signal
+instability: the public API is held stable across minor and patch releases, and a
+breaking change only ships as a major bump.
 
 | Change                                                                       | Bump      | Example           |
 | ---------------------------------------------------------------------------- | --------- | ----------------- |
-| Breaking change — an export removed, renamed, or narrowed; a default changed | **minor** | `0.2.3` → `0.3.0` |
-| New feature, backward compatible                                             | **patch** | `0.2.3` → `0.2.4` |
-| Bugfix                                                                       | **patch** | `0.2.3` → `0.2.4` |
-
-Adding features does not need a `major`, and shipping one does not end the beta —
-keep landing them as patches until the API is worth freezing.
+| Breaking change — an export removed, renamed, or narrowed; a default changed | **major** | `0.3.5` → `1.0.0` |
+| New feature, backward compatible                                             | **minor** | `0.3.5` → `0.4.0` |
+| Bugfix                                                                       | **patch** | `0.3.5` → `0.3.6` |
 
 Every breaking change gets an entry in [Breaking changes](#breaking-changes), newest
-first, with the diff a consumer needs to apply. That section is the migration guide;
-pre-1.0 permits removals without a deprecation cycle, which only stays reasonable if
-each one is written down.
-
-Reserve `major` (`1.0.0`) for the point where the API is stable and you are willing
-to hold it. At that release, drop the beta banner from
-[`packages/toolkit/README.md`](packages/toolkit/README.md) and normal semver takes
-over: breaking changes become `major`, features `minor`, fixes `patch`.
+first, with the diff a consumer needs to apply. That section is the migration guide.
+Prefer a deprecation cycle (keep the old export working for one minor, warn, then
+remove in the major) over an outright removal.
 
 ## Cutting a release
 
@@ -99,9 +88,8 @@ which is the most annoying time to find out.
 pnpm --filter @preprio/toolkit version patch
 ```
 
-Pre-1.0, `patch` covers both bugfixes and new features, and `minor` is what a
-breaking change gets — see [Version policy](#version-policy-pre-10). Once the
-package hits `1.0.0`, this becomes plain semver: `patch` / `minor` / `major`.
+`patch` for bugfixes, `minor` for backward-compatible features, `major` for a
+breaking change — see [Version policy](#version-policy).
 
 ### 3. Update `src/version.ts` to match
 
@@ -165,7 +153,7 @@ surprise you.
 
 ## Prerelease versions
 
-Separate from the pre-1.0 beta above: ship a prerelease when you want a specific
+Ship a prerelease when you want a specific
 version installable for testing without affecting anyone on `latest`.
 
 Any version with a hyphen in it is treated as a prerelease automatically. It goes out
@@ -194,10 +182,9 @@ it publishes to `latest`.
 
 ## Breaking changes
 
-Pre-1.0, a breaking change ships as a **minor** bump (see
-[Version policy](#version-policy-pre-10)). Every one gets an entry here, newest
-first, with the diff a consumer applies to upgrade — that is what makes removing
-an export without a deprecation cycle reasonable.
+A breaking change ships as a **major** bump (see [Version policy](#version-policy)).
+Every one gets an entry here, newest first, with the diff a consumer applies to
+upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
 ### 0.3.3 — no breaking changes
 

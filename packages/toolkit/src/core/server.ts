@@ -53,6 +53,7 @@ const PREPR_HEADER_KEYS: readonly (keyof PreprHeaders)[] = [
   'Prepr-Hubspot-Id',
   'Prepr-Customer-Id-Created',
   'Prepr-User-Agent',
+  'Prepr-Package',
 ];
 
 /**

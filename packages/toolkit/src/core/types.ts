@@ -146,6 +146,7 @@ export interface PreprHeaders {
   readonly 'Prepr-Hubspot-Id'?: string;
   readonly 'Prepr-Customer-Id-Created'?: 'true';
   readonly 'Prepr-User-Agent'?: string;
+  readonly 'Prepr-Package'?: string;
 }
 
 export type PreprErrorCode =
