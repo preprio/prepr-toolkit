@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import {
-  processPreprRequest,
+  processFrameworkRequest,
   type PreprMiddlewareOptions,
 } from '../core/middleware';
 
@@ -38,9 +38,10 @@ export function createPreprMiddleware(
     options = responseOrOptions;
   }
 
-  const { requestHeaders, responseCookies } = processPreprRequest(
+  const { requestHeaders, responseCookies } = processFrameworkRequest(
     request,
     options,
+    'nextjs',
   );
 
   // NextResponse.next({ request: { headers } }) is the only way to make
