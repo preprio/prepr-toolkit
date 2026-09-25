@@ -15,5 +15,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'happy-dom',
+    // A few suites `await import()` a whole entry point (react-dom included)
+    // cold. When `turbo` builds the examples in parallel that transform can
+    // exceed vitest's 5s default, so the limit is raised for everything.
+    testTimeout: 20_000,
   },
 });
