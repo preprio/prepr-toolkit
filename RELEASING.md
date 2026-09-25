@@ -63,9 +63,31 @@ remove in the major) over an outright removal.
 
 ## Cutting a release
 
-### 1. Get the changes onto `main`
+### 1. Bump the version on `develop`
 
-Work accumulates on `develop`. A release starts by merging it into `main`:
+`main` does not accept direct pushes, so the bump travels with the changes: put it in
+the last feature PR into `develop`, or in its own commit on `develop`.
+
+```bash
+pnpm --filter @preprio/toolkit version minor --no-git-tag-version
+```
+
+`patch` for bugfixes, `minor` for backward-compatible features, `major` for a
+breaking change — see [Version policy](#version-policy). `--no-git-tag-version`
+stops npm from committing and tagging; the tag goes on `main` in step 4.
+
+### 2. Update `src/version.ts` to match
+
+Open `packages/toolkit/src/version.ts` and set it to the exact version you just
+bumped to. Two places, same number. Commit both as `release: vX.Y.Z`.
+
+If you forget, `scripts/check-version.mjs` fails the build during `prebuild`. That's
+the safety net — but it fires in CI _after_ you've pushed the tag, and cleaning up a
+pushed bad tag is annoying, so get it right here.
+
+### 3. Get the changes onto `main`
+
+Merge `develop` into `main` through a PR:
 
 ```bash
 gh pr create --base main --head develop --title "release: vX.Y.Z"
@@ -77,30 +99,13 @@ Merge that, then start clean from `main`:
 git checkout main && git pull
 ```
 
-Make sure `git status` is clean, then run `pnpm check:all` locally and confirm it
-passes. Nothing has verified `main` for you — the release workflow is the only thing
-that runs the checks, so anything broken surfaces after you have pushed the tag,
-which is the most annoying time to find out.
+Make sure `git status` is clean and `packages/toolkit/package.json` reads the version
+you are about to tag, then run `pnpm check:all` locally and confirm it passes.
+Nothing has verified `main` for you — the release workflow is the only thing that
+runs the checks, so anything broken surfaces after you have pushed the tag, which is
+the most annoying time to find out.
 
-### 2. Bump the version
-
-```bash
-pnpm --filter @preprio/toolkit version patch
-```
-
-`patch` for bugfixes, `minor` for backward-compatible features, `major` for a
-breaking change — see [Version policy](#version-policy).
-
-### 3. Update `src/version.ts` to match
-
-Open `packages/toolkit/src/version.ts` and set it to the exact version you just
-bumped to. Two places, same number.
-
-If you forget, `scripts/check-version.mjs` fails the build during `prebuild`. That's
-the safety net — but it fires in CI _after_ you've pushed the tag, and cleaning up a
-pushed bad tag is annoying, so get it right here.
-
-### 4. Commit, tag, push
+### 4. Tag and push the tag
 
 The tag is the version with a `v` in front. Nothing else.
 
@@ -116,13 +121,12 @@ version locations matching, and the tag not already taken. It prints the exact t
 commands when everything passes.
 
 ```bash
-git commit -am "release: v0.1.1"
 git tag v0.1.1
-git push --follow-tags
+git push origin v0.1.1
 ```
 
-`--follow-tags` pushes the commit and the tag together. A plain `git push` leaves the
-tag sitting on your machine and nothing happens — if you pushed and no workflow
+Push the tag by name. A plain `git push` leaves the tag sitting on your machine and
+nothing happens — if you pushed and no workflow
 started, this is why.
 
 ### 5. Watch the workflow
@@ -161,15 +165,19 @@ under the `beta` npm dist-tag and is marked as a prerelease on GitHub. `latest` 
 untouched, so `pnpm add @preprio/toolkit` keeps resolving to the newest stable
 version.
 
+Same flow as a normal release: bump both version locations on `develop`, merge to
+`main`, then tag `main`.
+
 ```bash
+# on develop
 cd packages/toolkit && npm version 0.1.0-beta.2 --no-git-tag-version
-# update src/version.ts to match
-git commit -am "release: v0.1.0-beta.2"
-git tag v0.1.0-beta.2 && git push --follow-tags
+# update src/version.ts to match, commit, merge develop into main via PR
+# on main, after pulling the merge
+git tag v0.1.0-beta.2 && git push origin v0.1.0-beta.2
 ```
 
-Note `--no-git-tag-version` here — you're tagging by hand in the next line, and
-without the flag npm creates its own tag and you end up with two.
+Note `--no-git-tag-version` here — without it npm creates its own tag on `develop`
+and you end up with two.
 
 Testing a beta:
 
@@ -237,7 +245,7 @@ payload rides on the visible text node) are unaffected.
 
 ### The tag didn't trigger anything
 
-You forgot `--follow-tags`, or pushed the tag to the wrong remote. Check with
+You never pushed the tag (`git push origin vX.Y.Z`), or pushed it to the wrong remote. Check with
 `git ls-remote --tags origin`.
 
 ### "Tag X != package.json Y"
