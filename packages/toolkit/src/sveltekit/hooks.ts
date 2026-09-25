@@ -1,5 +1,5 @@
 import {
-  processPreprRequest,
+  processFrameworkRequest,
   serializeCookie,
   type PreprMiddlewareOptions,
 } from '../core/middleware';
@@ -49,9 +49,10 @@ export type Handle = (input: {
  */
 export function preprHandle(options?: PreprMiddlewareOptions): Handle {
   return async ({ event, resolve }) => {
-    const { requestHeaders, responseCookies } = processPreprRequest(
+    const { requestHeaders, responseCookies } = processFrameworkRequest(
       event.request,
       options,
+      'sveltekit',
     );
 
     requestHeaders.forEach((value, key) => {

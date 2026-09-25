@@ -156,6 +156,10 @@ export async function getPreprEnvironmentSegments(
   try {
     const response = await fetch(token, {
       headers: {
+        'Prepr-Package': `@preprio/toolkit@${VERSION}`,
+        // Duplicates the version in Prepr-Package. It keeps the User-Agent
+        // format used by `@preprio/prepr-nextjs`, for Prepr API consumers that
+        // still identify the toolbar by that string.
         'User-Agent': `Prepr-Preview-Bar/${VERSION}`,
         'Content-Type': 'application/json',
       },
