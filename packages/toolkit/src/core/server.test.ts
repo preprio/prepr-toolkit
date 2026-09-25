@@ -15,6 +15,7 @@ import {
   getToolbarPropsFromHeaders,
   validatePreprToken,
 } from './server';
+import { VERSION } from '../version';
 
 function makeHeaders(entries: Record<string, string>): Headers {
   return new Headers(entries);
@@ -208,6 +209,7 @@ describe('getPreprEnvironmentSegments', () => {
     expect(url).toBe('https://graphql.prepr.io/abc123');
     expect(init.method).toBe('POST');
     expect(init.headers['Content-Type']).toBe('application/json');
+    expect(init.headers['Prepr-Package']).toBe(`@preprio/toolkit@${VERSION}`);
 
     const body = JSON.parse(init.body);
     expect(body.query).toBe(`{
