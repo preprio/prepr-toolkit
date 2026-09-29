@@ -14,8 +14,11 @@ const debug = createScopedLogger('stega:auto-clean');
 interface CleanedInfo {
   original: string;
   cleaned: string;
-  /** Kept so a node hidden at clean time can still be tagged once shown. */
-  decoded: StegaDecodedData;
+  /**
+   * Kept so a node hidden at clean time can still be tagged once shown. Null
+   * when the run does not decode on its own (see `cleanTextNode`).
+   */
+  decoded: StegaDecodedData | null;
 }
 
 export interface StegaAutoClean {
@@ -74,6 +77,7 @@ export function createStegaAutoClean(
       // element had no layout box back then (a collapsed dropdown, a closed
       // accordion) it never got tagged, and revealing it fires no mutation the
       // observer can see — so retry the tagging from the remembered payload.
+      if (!info.decoded) return false;
       const shown = resolveEditTarget(textNode);
       if (!shown) return false;
       pendingHidden.delete(textNode);
@@ -86,15 +90,21 @@ export function createStegaAutoClean(
       const { cleaned: stripped, encoded } = vercelStegaSplit(textContent);
       if (!encoded || stripped === textContent) return false;
 
+      // A run that does not decode is still stripped. Prepr rich-text (HTML)
+      // fields can spread one payload across several text nodes (one per
+      // list item or paragraph), so no single node decodes — yet each one
+      // still carries invisible characters that shift letter-spaced text and
+      // are read out by screen readers. Only the tagging needs the payload.
       const decoded = decodeStega(textContent);
-      if (!decoded?.href) return false;
+      if (!decoded?.href && !stripText) return false;
 
       cleaned.set(textNode, {
         original: textContent,
         cleaned: stripped,
-        decoded,
+        decoded: decoded?.href ? decoded : null,
       });
       if (stripText) textNode.textContent = stripped;
+      if (!decoded?.href) return false;
 
       const target = resolveEditTarget(textNode);
 
@@ -141,8 +151,14 @@ export function createStegaAutoClean(
       ) {
         const textNode = mutation.target as Text;
         const info = cleaned.get(textNode);
-        // framework re-render put the encoded text back; clean it again
-        if (info && textNode.textContent === info.original) {
+        const text = textNode.textContent ?? '';
+        // Anything other than this pass's own write is a framework write:
+        // either the encoded original put back by a re-render, or new encoded
+        // content in a reused node (React writes `nodeValue` when only the
+        // string changes). Both need cleaning. The encoded check keeps
+        // animated plain text (counters, tickers) from churning the debounce.
+        const settled = stripText ? info?.cleaned : info?.original;
+        if (text !== settled && vercelStegaSplit(text).encoded) {
           affected.add(textNode);
         }
       }
