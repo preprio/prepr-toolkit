@@ -36,15 +36,17 @@ jobs:
       # Trusted Publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.x.
       - run: npm install -g npm@latest
 
-      # A version with a hyphen (0.1.0-beta.1) is a prerelease -> publish under
-      # the "beta" dist-tag so plain `pnpm add @preprio/toolkit` never picks it up.
+      # A version with a hyphen is a prerelease -> publish under its prerelease
+      # identifier as dist-tag (0.5.0-rc.1 -> "rc", 0.1.0-beta.2 -> "beta") so
+      # plain `pnpm add @preprio/toolkit` never picks it up.
       - name: Publish
         working-directory: packages/toolkit
         run: |
           case "$GITHUB_REF_NAME" in
-            *-*) TAG=beta ;;
+            *-*) TAG=$(echo "${GITHUB_REF_NAME#*-}" | sed 's/[.0-9].*//') ;;
             *)   TAG=latest ;;
           esac
+          [ -n "$TAG" ] || { echo "Prerelease needs a named identifier (rc.1, beta.1)"; exit 1; }
           echo "Publishing to dist-tag: $TAG"
           npm publish --provenance --access public --tag "$TAG"
 

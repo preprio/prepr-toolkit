@@ -157,36 +157,42 @@ surprise you.
 
 ## Prerelease versions
 
-Ship a prerelease when you want a specific
-version installable for testing without affecting anyone on `latest`.
+Ship a prerelease when you want a specific version installable for testing without
+affecting anyone on `latest` — typically a release candidate of a feature branch that
+a developer needs to try before it merges.
 
-Any version with a hyphen in it is treated as a prerelease automatically. It goes out
-under the `beta` npm dist-tag and is marked as a prerelease on GitHub. `latest` is
-untouched, so `pnpm add @preprio/toolkit` keeps resolving to the newest stable
-version.
+Any version with a hyphen is a prerelease. It publishes under its identifier as the
+npm dist-tag (`0.5.0-rc.1` → `rc`, `0.5.0-beta.2` → `beta`) and is marked as a
+prerelease on GitHub. `latest` is untouched, and semver ranges skip prereleases, so
+neither `pnpm add @preprio/toolkit` nor an existing `^0.4.0` dependency ever
+resolves to it. Only someone asking for the tag or the exact version gets it.
 
-Same flow as a normal release: bump both version locations on `develop`, merge to
-`main`, then tag `main`.
-
-```bash
-# on develop
-cd packages/toolkit && npm version 0.1.0-beta.2 --no-git-tag-version
-# update src/version.ts to match, commit, merge develop into main via PR
-# on main, after pulling the merge
-git tag v0.1.0-beta.2 && git push origin v0.1.0-beta.2
-```
-
-Note `--no-git-tag-version` here — without it npm creates its own tag on `develop`
-and you end up with two.
-
-Testing a beta:
+Prereleases may be tagged from any branch — no merge to `main` needed. On the feature
+branch:
 
 ```bash
-pnpm add @preprio/toolkit@beta
+cd packages/toolkit && npm version 0.5.0-rc.1 --no-git-tag-version
+# set src/version.ts to 0.5.0-rc.1, commit both as "release: v0.5.0-rc.1"
+git push -u origin feature/live-preview
+pnpm preflight:tag        # accepts any branch for a prerelease version
+git tag -a v0.5.0-rc.1 -m "release: v0.5.0-rc.1" && git push origin v0.5.0-rc.1
 ```
 
-Going stable afterwards is just a normal release: bump to `0.1.0`, tag `v0.1.0`, and
-it publishes to `latest`.
+Note `--no-git-tag-version` — without it npm creates its own tag and you end up with
+two. Pick the version the feature will eventually ship as (a minor for a new feature)
+and count the `rc.N` up for each round of fixes.
+
+Installing it:
+
+```bash
+pnpm add @preprio/toolkit@rc          # newest rc
+pnpm add @preprio/toolkit@0.5.0-rc.1  # pin one exactly
+```
+
+Going stable afterwards is a normal release: merge the feature, bump to `0.5.0` on
+`develop`, tag `v0.5.0` from `main`. The `rc` dist-tag keeps pointing at the last
+candidate; that is harmless, but it can be removed with
+`npm dist-tag rm @preprio/toolkit rc`.
 
 ## Breaking changes
 
