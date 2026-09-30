@@ -104,14 +104,14 @@ describe('header extraction from synthetic Headers', () => {
     expect(result['Prepr-Visitor-IP']).toBe('1.2.3.4');
   });
 
-  it('getPreprHeadersFromHeaders returns prepr-user-agent under the declared Prepr-User-Agent key', () => {
+  it('getPreprHeadersFromHeaders returns user-agent under the standard User-Agent key', () => {
     const headers = makeHeaders({
-      'prepr-user-agent': 'Mozilla/5.0 Test',
+      'user-agent': 'Mozilla/5.0 Test',
     });
     const result = getPreprHeadersFromHeaders(headers);
-    expect(result).toEqual({ 'Prepr-User-Agent': 'Mozilla/5.0 Test' });
-    expect(result).not.toHaveProperty('User-Agent');
-    expect(result).not.toHaveProperty('prepr-user-agent');
+    expect(result).toEqual({ 'User-Agent': 'Mozilla/5.0 Test' });
+    expect(result).not.toHaveProperty('Prepr-User-Agent');
+    expect(result).not.toHaveProperty('user-agent');
   });
 });
 

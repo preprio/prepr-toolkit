@@ -209,10 +209,11 @@ export function processFrameworkRequest(
     );
   }
 
-  // The API does device detection off this.
+  // The API does device detection off the standard User-Agent header, so the
+  // visitor's value is forwarded under that name, not a `Prepr-*` alias.
   const userAgent = request.headers.get('user-agent');
   if (userAgent) {
-    requestHeaders.set('Prepr-User-Agent', sanitizeHeaderValue(userAgent));
+    requestHeaders.set('User-Agent', sanitizeHeaderValue(userAgent));
   }
 
   // `<package>@<version>` first, then `; key=value` pairs, so a parser that
