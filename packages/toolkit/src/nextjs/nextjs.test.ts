@@ -128,7 +128,7 @@ describe('createPreprMiddleware', () => {
     const response = createPreprMiddleware(request, { version: '9.9.9' });
 
     expect(response.headers.get('x-middleware-request-prepr-package')).toBe(
-      '@preprio/toolkit@9.9.9',
+      '@preprio/toolkit@9.9.9; framework=nextjs; preview=false',
     );
   });
 

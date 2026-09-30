@@ -15,6 +15,7 @@ import {
   getToolbarPropsFromHeaders,
   validatePreprToken,
 } from './server';
+import { VERSION } from '../version';
 
 function makeHeaders(entries: Record<string, string>): Headers {
   return new Headers(entries);
@@ -67,6 +68,12 @@ describe('header extraction from synthetic Headers', () => {
     expect(result).not.toHaveProperty('x-other-header');
   });
 
+  it('getPreprHeadersFromHeaders forwards Prepr-Package so the API sees the toolkit version', () => {
+    const headers = makeHeaders({ 'Prepr-Package': '@preprio/toolkit@9.9.9' });
+    const result = getPreprHeadersFromHeaders(headers);
+    expect(result['Prepr-Package']).toBe('@preprio/toolkit@9.9.9');
+  });
+
   it('getPreprHeadersFromHeaders returns keys in the exact casing declared by PreprHeaders', () => {
     // Incoming names are wire-lowercased, as real runtimes deliver them.
     const headers = makeHeaders({
@@ -97,14 +104,14 @@ describe('header extraction from synthetic Headers', () => {
     expect(result['Prepr-Visitor-IP']).toBe('1.2.3.4');
   });
 
-  it('getPreprHeadersFromHeaders returns prepr-user-agent under the declared Prepr-User-Agent key', () => {
+  it('getPreprHeadersFromHeaders returns user-agent under the standard User-Agent key', () => {
     const headers = makeHeaders({
-      'prepr-user-agent': 'Mozilla/5.0 Test',
+      'user-agent': 'Mozilla/5.0 Test',
     });
     const result = getPreprHeadersFromHeaders(headers);
-    expect(result).toEqual({ 'Prepr-User-Agent': 'Mozilla/5.0 Test' });
-    expect(result).not.toHaveProperty('User-Agent');
-    expect(result).not.toHaveProperty('prepr-user-agent');
+    expect(result).toEqual({ 'User-Agent': 'Mozilla/5.0 Test' });
+    expect(result).not.toHaveProperty('Prepr-User-Agent');
+    expect(result).not.toHaveProperty('user-agent');
   });
 });
 
@@ -202,6 +209,7 @@ describe('getPreprEnvironmentSegments', () => {
     expect(url).toBe('https://graphql.prepr.io/abc123');
     expect(init.method).toBe('POST');
     expect(init.headers['Content-Type']).toBe('application/json');
+    expect(init.headers['Prepr-Package']).toBe(`@preprio/toolkit@${VERSION}`);
 
     const body = JSON.parse(init.body);
     expect(body.query).toBe(`{

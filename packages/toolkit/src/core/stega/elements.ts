@@ -1,6 +1,11 @@
 import { createScopedLogger } from '../utils';
 import { decodeStega, type StegaDecodedData } from './clean';
-import { isIgnoredTextNode, tagEncodedElement, walkTextNodes } from './dom';
+import {
+  isIgnoredTextNode,
+  resolveEditTarget,
+  tagEncodedElement,
+  walkTextNodes,
+} from './dom';
 
 const debug = createScopedLogger('stega:elements');
 
@@ -31,7 +36,7 @@ export class StegaElements {
   private tagFromTextNode(node: Text): boolean {
     const decoded = this.decode(node.textContent);
     if (!decoded?.href) return false;
-    const target = node.parentElement;
+    const target = resolveEditTarget(node);
     if (!target || target.hasAttribute('data-prepr-encoded')) return false;
     tagEncodedElement(target, decoded);
     return true;
@@ -84,8 +89,15 @@ export class StegaElements {
         if (mutation.type === 'characterData') {
           addedNodes.add(mutation.target);
         }
+        // An attribute change can reveal a subtree that was unhoverable when
+        // it was first walked, so its target is rescanned rather than skipped.
+        if (mutation.type === 'attributes') {
+          addedNodes.add(mutation.target);
+        }
       });
-      addedNodes.forEach((node) => this.scanNode(node));
+      addedNodes.forEach((node) => {
+        if (node.isConnected) this.scanNode(node);
+      });
       pending = [];
       this.elements = document.querySelectorAll('[data-prepr-encoded]');
       onUpdate?.();
@@ -100,6 +112,10 @@ export class StegaElements {
       childList: true,
       subtree: true,
       characterData: true,
+      // Reveal-on-class/style (dropdowns, accordions) changes no text and adds
+      // no nodes, but does change what is hoverable and needs a rescan.
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'open', 'aria-expanded'],
     });
   }
 

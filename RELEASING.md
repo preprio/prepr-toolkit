@@ -43,40 +43,51 @@ npm view @preprio/toolkit versions --json
 npm view @preprio/toolkit dist-tags --json
 ```
 
-## Version policy (pre-1.0)
+## Version policy
 
-The package is beta until `1.0.0`, and the version number is what says so — there is
-no `beta` dist-tag on it. Every `0.x` release publishes to `latest`, so
-`npm install @preprio/toolkit` just works, while semver's own pre-1.0 rule does the
-gating: a caret range like `^0.2.0` will never resolve to `0.3.0` on its own, so a
-breaking minor cannot reach anyone who did not ask for it.
-
-While the version is below `1.0.0`:
+The package follows plain semver. Every release publishes to `latest`, so
+`npm install @preprio/toolkit` just works. The `0.x` version number does not signal
+instability: the public API is held stable across minor and patch releases, and a
+breaking change only ships as a major bump.
 
 | Change                                                                       | Bump      | Example           |
 | ---------------------------------------------------------------------------- | --------- | ----------------- |
-| Breaking change — an export removed, renamed, or narrowed; a default changed | **minor** | `0.2.3` → `0.3.0` |
-| New feature, backward compatible                                             | **patch** | `0.2.3` → `0.2.4` |
-| Bugfix                                                                       | **patch** | `0.2.3` → `0.2.4` |
-
-Adding features does not need a `major`, and shipping one does not end the beta —
-keep landing them as patches until the API is worth freezing.
+| Breaking change — an export removed, renamed, or narrowed; a default changed | **major** | `0.3.5` → `1.0.0` |
+| New feature, backward compatible                                             | **minor** | `0.3.5` → `0.4.0` |
+| Bugfix                                                                       | **patch** | `0.3.5` → `0.3.6` |
 
 Every breaking change gets an entry in [Breaking changes](#breaking-changes), newest
-first, with the diff a consumer needs to apply. That section is the migration guide;
-pre-1.0 permits removals without a deprecation cycle, which only stays reasonable if
-each one is written down.
-
-Reserve `major` (`1.0.0`) for the point where the API is stable and you are willing
-to hold it. At that release, drop the beta banner from
-[`packages/toolkit/README.md`](packages/toolkit/README.md) and normal semver takes
-over: breaking changes become `major`, features `minor`, fixes `patch`.
+first, with the diff a consumer needs to apply. That section is the migration guide.
+Prefer a deprecation cycle (keep the old export working for one minor, warn, then
+remove in the major) over an outright removal.
 
 ## Cutting a release
 
-### 1. Get the changes onto `main`
+### 1. Bump the version on `develop`
 
-Work accumulates on `develop`. A release starts by merging it into `main`:
+`main` does not accept direct pushes, so the bump travels with the changes: put it in
+the last feature PR into `develop`, or in its own commit on `develop`.
+
+```bash
+pnpm --filter @preprio/toolkit version minor --no-git-tag-version
+```
+
+`patch` for bugfixes, `minor` for backward-compatible features, `major` for a
+breaking change — see [Version policy](#version-policy). `--no-git-tag-version`
+stops npm from committing and tagging; the tag goes on `main` in step 4.
+
+### 2. Update `src/version.ts` to match
+
+Open `packages/toolkit/src/version.ts` and set it to the exact version you just
+bumped to. Two places, same number. Commit both as `release: vX.Y.Z`.
+
+If you forget, `scripts/check-version.mjs` fails the build during `prebuild`. That's
+the safety net — but it fires in CI _after_ you've pushed the tag, and cleaning up a
+pushed bad tag is annoying, so get it right here.
+
+### 3. Get the changes onto `main`
+
+Merge `develop` into `main` through a PR:
 
 ```bash
 gh pr create --base main --head develop --title "release: vX.Y.Z"
@@ -88,42 +99,34 @@ Merge that, then start clean from `main`:
 git checkout main && git pull
 ```
 
-Make sure `git status` is clean, then run `pnpm check:all` locally and confirm it
-passes. Nothing has verified `main` for you — the release workflow is the only thing
-that runs the checks, so anything broken surfaces after you have pushed the tag,
-which is the most annoying time to find out.
+Make sure `git status` is clean and `packages/toolkit/package.json` reads the version
+you are about to tag, then run `pnpm check:all` locally and confirm it passes.
+Nothing has verified `main` for you — the release workflow is the only thing that
+runs the checks, so anything broken surfaces after you have pushed the tag, which is
+the most annoying time to find out.
 
-### 2. Bump the version
-
-```bash
-pnpm --filter @preprio/toolkit version patch
-```
-
-Pre-1.0, `patch` covers both bugfixes and new features, and `minor` is what a
-breaking change gets — see [Version policy](#version-policy-pre-10). Once the
-package hits `1.0.0`, this becomes plain semver: `patch` / `minor` / `major`.
-
-### 3. Update `src/version.ts` to match
-
-Open `packages/toolkit/src/version.ts` and set it to the exact version you just
-bumped to. Two places, same number.
-
-If you forget, `scripts/check-version.mjs` fails the build during `prebuild`. That's
-the safety net — but it fires in CI _after_ you've pushed the tag, and cleaning up a
-pushed bad tag is annoying, so get it right here.
-
-### 4. Commit, tag, push
+### 4. Tag and push the tag
 
 The tag is the version with a `v` in front. Nothing else.
 
+**Run the preflight check first.** A tag pushed against the wrong commit cannot be
+deleted, so the version number is lost — this has cost two numbers already:
+
 ```bash
-git commit -am "release: v0.1.1"
-git tag v0.1.1
-git push --follow-tags
+pnpm preflight:tag
 ```
 
-`--follow-tags` pushes the commit and the tag together. A plain `git push` leaves the
-tag sitting on your machine and nothing happens — if you pushed and no workflow
+It verifies you are on `main`, in sync with `origin/main`, with a clean tree, both
+version locations matching, and the tag not already taken. It prints the exact tag
+commands when everything passes.
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+Push the tag by name. A plain `git push` leaves the tag sitting on your machine and
+nothing happens — if you pushed and no workflow
 started, this is why.
 
 ### 5. Watch the workflow
@@ -154,115 +157,136 @@ surprise you.
 
 ## Prerelease versions
 
-Separate from the pre-1.0 beta above: ship a prerelease when you want a specific
-version installable for testing without affecting anyone on `latest`.
+Ship a prerelease when you want a specific version installable for testing without
+affecting anyone on `latest` — typically a release candidate of a feature branch that
+a developer needs to try before it merges.
 
-Any version with a hyphen in it is treated as a prerelease automatically. It goes out
-under the `beta` npm dist-tag and is marked as a prerelease on GitHub. `latest` is
-untouched, so `pnpm add @preprio/toolkit` keeps resolving to the newest stable
-version.
+Any version with a hyphen is a prerelease. It publishes under its identifier as the
+npm dist-tag (`0.5.0-rc.1` → `rc`, `0.5.0-beta.2` → `beta`) and is marked as a
+prerelease on GitHub. `latest` is untouched, and semver ranges skip prereleases, so
+neither `pnpm add @preprio/toolkit` nor an existing `^0.4.0` dependency ever
+resolves to it. Only someone asking for the tag or the exact version gets it.
 
-```bash
-cd packages/toolkit && npm version 0.1.0-beta.2 --no-git-tag-version
-# update src/version.ts to match
-git commit -am "release: v0.1.0-beta.2"
-git tag v0.1.0-beta.2 && git push --follow-tags
-```
-
-Note `--no-git-tag-version` here — you're tagging by hand in the next line, and
-without the flag npm creates its own tag and you end up with two.
-
-Testing a beta:
+Prereleases may be tagged from any branch — no merge to `main` needed. On the feature
+branch:
 
 ```bash
-pnpm add @preprio/toolkit@beta
+cd packages/toolkit && npm version 0.5.0-rc.1 --no-git-tag-version
+# set src/version.ts to 0.5.0-rc.1, commit both as "release: v0.5.0-rc.1"
+git push -u origin feature/live-preview
+pnpm preflight:tag        # accepts any branch for a prerelease version
+git tag -a v0.5.0-rc.1 -m "release: v0.5.0-rc.1" && git push origin v0.5.0-rc.1
 ```
 
-Going stable afterwards is just a normal release: bump to `0.1.0`, tag `v0.1.0`, and
-it publishes to `latest`.
+Note `--no-git-tag-version` — without it npm creates its own tag and you end up with
+two. Pick the version the feature will eventually ship as (a minor for a new feature)
+and count the `rc.N` up for each round of fixes.
+
+Installing it:
+
+```bash
+pnpm add @preprio/toolkit@rc          # newest rc
+pnpm add @preprio/toolkit@0.5.0-rc.1  # pin one exactly
+```
+
+Going stable afterwards is a normal release: merge the feature, bump to `0.5.0` on
+`develop`, tag `v0.5.0` from `main`. The `rc` dist-tag keeps pointing at the last
+candidate; that is harmless, but it can be removed with
+`npm dist-tag rm @preprio/toolkit rc`.
 
 ## Breaking changes
 
-### 0.2.0-beta.4 — `activeSegment` / `activeVariant` are optional
+A breaking change ships as a **major** bump (see [Version policy](#version-policy)).
+Every one gets an entry here, newest first, with the diff a consumer applies to
+upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
-Not a break: it widens the type, so existing code that passes both keeps
-compiling. Preview-only apps can now omit them.
+### 0.3.3 — no breaking changes
 
-```diff
- <PreprPreview
--  activeSegment={null}
--  activeVariant={null}
-   options={{ features: { segments: false, abTesting: false } }}
- />
-```
+Bugfix and a backward-compatible option; nothing to migrate. Listed here only
+because the auto-clean behaviour it changes is worth knowing about.
 
-Both carry a server-resolved value that only exists when the matching feature
-is on, so a preview/Visual-Editing-only integration had to pass `null` twice as
-pure ceremony. The runtime already tolerated their absence (`props?.activeSegment
-?? cookieSegment ?? null`, gated on the feature being enabled) — only the type
-demanded them. With a feature enabled and the prop omitted, the persisted cookie
-is used, as before.
+Stega auto-cleaning dropped whole batches of mutations when they arrived faster
+than its 50ms debounce — each restart cancelled the pending flush while the
+nodes it covered were held in a local set that went out of scope. On a page that
+streams or hydrates in bursts, most encoded text stayed unstripped and untagged.
+Nodes are now accumulated across debounce restarts.
 
-Affects `PreprToolbarProps`, so every framework wrapper picks it up.
+New `autoClean` option on `createPreprPreview` (default `true`, matching prior
+behaviour) turns the text stripping off for sites that strip the payload
+themselves. Click-to-edit tagging is unaffected either way.
 
-### 0.2.0-beta.2 — one preview runtime
+### 0.3.2 — click-to-edit skips elements that render no box
 
-> `v0.2.0-beta.1` was tagged but never published — its release run failed at
-> `pnpm typecheck` before the publish step. Tag deletion is blocked by a repository
-> ruleset, so that tag remains in the history pointing at a commit that never shipped.
-> `0.2.0-beta.2` is the first release of this change.
+> `v0.3.0` and `v0.3.1` were both tagged against a commit whose tree still held the
+> previous version — `main` had not yet merged the bump either time — so the release
+> run failed its version check before publishing. The ruleset blocks tag deletion, so
+> both remain in the history pointing at commits that never shipped. `0.3.2` is the
+> first release of this change.
 
-`createPreprToolbar` and `createPreprScrollSync` were replaced by a single
-`createPreprPreview`. Both old names are **removed**, not deprecated — pre-1.0, and
-`createPreprScrollSync` had no known consumers.
+No API changed. Edit mode now refuses to tag an element that cannot be hovered or
+outlined, so a site that hides the stega payload in a `display: none` /
+`visibility: hidden` / `hidden` element loses a tag it was previously given.
 
-```diff
--import { createPreprToolbar } from '@preprio/toolkit'
--createPreprToolbar({ props })
-+import { createPreprPreview } from '@preprio/toolkit'
-+createPreprPreview({ props })
-```
+Nothing observable breaks: those elements were tagged and permanently inert. The
+overlay measures `getBoundingClientRect()` and hover resolves through `closest()`
+from the moused-over element, so an element with no layout box could never receive
+either. The tag existed and did nothing.
 
-`createPreprScrollSync()` becomes an explicit opt-out of everything else:
+`data-prepr-edit-target` is how a hidden payload becomes editable — put it on the
+visible ancestor that should take the outline and the click:
 
 ```diff
--createPreprScrollSync()
-+createPreprPreview({
-+  options: {
-+    ui: false,
-+    features: { segments: false, abTesting: false, editMode: false },
-+  },
-+})
+-<p>Product title<span hidden>{encodedPayload}</span></p>
++<p data-prepr-edit-target>Product title<span hidden>{encodedPayload}</span></p>
 ```
 
-Renamed types: `PreprToolbarController` → `PreprPreviewController`,
-`CreatePreprToolbarOptions` → `CreatePreprPreviewOptions`. `PreprScrollSync` is gone.
-`PreprToolbarOptions` still exists; `PreprPreviewOptions` extends it with `ui` and
-`allowedEditorOrigins`.
+The attribute is not new — `createStegaAutoClean` already honoured it while the
+click-to-edit tagging pass did not, so the two passes disagreed about which element
+was editable for the same markup. Both now resolve the target the same way.
 
-The `<PreprToolbar>` components are unchanged in every framework — only the core
-function was renamed. Apps using the wrappers need no changes.
-
-The minor bump (rather than another `0.1.0-beta.x`) is deliberate: the break should
-be legible in the version.
+Sites that render encoded text normally (the overwhelmingly common case, where the
+payload rides on the visible text node) are unaffected.
 
 ## When something goes wrong
 
 ### The tag didn't trigger anything
 
-You forgot `--follow-tags`, or pushed the tag to the wrong remote. Check with
+You never pushed the tag (`git push origin vX.Y.Z`), or pushed it to the wrong remote. Check with
 `git ls-remote --tags origin`.
 
 ### "Tag X != package.json Y"
 
-Your tag and `package.json` disagree. Delete the tag, fix the version, tag again:
+Your tag and `package.json` disagree. The usual cause is tagging `main` before the
+release PR that carries the version bump was merged, so the tag points at a tree
+still holding the previous version.
 
-```bash
-git tag -d v0.1.1
-git push origin :refs/tags/v0.1.1
+**The tag cannot be reused.** Deleting it locally works, but the ruleset rejects the
+remote delete:
+
+```
+! [remote rejected] v0.3.0 (push declined due to repository rule violations)
 ```
 
-Then redo steps 2–4.
+So the burned version number is gone for good. Recover by releasing the next patch:
+
+```bash
+git checkout main && git pull          # confirm the bump is actually on main
+```
+
+Bump both version locations to the next patch, commit, and tag that. Add a note to
+the new version's [Breaking changes](#breaking-changes) entry recording which tag was
+stranded and why — `v0.2.0-beta.1` and `v0.3.0` both have one.
+
+To avoid it entirely: merge the release PR first, then `git checkout main && git
+pull`, confirm `package.json` reads the version you are about to tag, and only then
+create the tag.
+
+### A tag exists that was never published
+
+`v0.2.0-beta.1` is tagged but never reached npm — its release run failed at
+`pnpm typecheck` before the publish step. A repository ruleset blocks tag deletion, so
+it stays in the history pointing at a commit that never shipped. Skip the version and
+tag the next one; do not try to reuse it.
 
 ### The workflow failed after publishing
 

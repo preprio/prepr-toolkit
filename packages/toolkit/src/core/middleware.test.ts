@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { VERSION } from '../index';
-import { processPreprRequest } from './middleware';
+import { processFrameworkRequest, processPreprRequest } from './middleware';
 
 function makeRequest(
   url: string,
@@ -113,15 +113,14 @@ describe('processPreprRequest', () => {
       );
     });
 
-    it('forwards user-agent as Prepr-User-Agent', () => {
+    it('forwards user-agent under the standard User-Agent header', () => {
       const request = makeRequest('https://example.com/', {
         headers: { 'user-agent': 'Mozilla/5.0 Test' },
       });
       const result = processPreprRequest(request);
 
-      expect(result.requestHeaders.get('Prepr-User-Agent')).toBe(
-        'Mozilla/5.0 Test',
-      );
+      expect(result.requestHeaders.get('User-Agent')).toBe('Mozilla/5.0 Test');
+      expect(result.requestHeaders.has('Prepr-User-Agent')).toBe(false);
     });
 
     it('sets Prepr-Package to @preprio/toolkit@<version>', () => {
@@ -129,7 +128,20 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request);
 
       expect(result.requestHeaders.get('Prepr-Package')).toBe(
-        `@preprio/toolkit@${VERSION}`,
+        `@preprio/toolkit@${VERSION}; preview=false`,
+      );
+    });
+
+    it('reports framework and preview mode in Prepr-Package', () => {
+      const request = makeRequest('https://example.com/');
+      const result = processFrameworkRequest(
+        request,
+        { version: '9.9.9', preview: true },
+        'nextjs',
+      );
+
+      expect(result.requestHeaders.get('Prepr-Package')).toBe(
+        '@preprio/toolkit@9.9.9; framework=nextjs; preview=true',
       );
     });
 
@@ -138,7 +150,7 @@ describe('processPreprRequest', () => {
       const result = processPreprRequest(request, { version: '9.9.9' });
 
       expect(result.requestHeaders.get('Prepr-Package')).toBe(
-        '@preprio/toolkit@9.9.9',
+        '@preprio/toolkit@9.9.9; preview=false',
       );
     });
 

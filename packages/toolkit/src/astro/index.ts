@@ -6,7 +6,7 @@ import {
   getToolbarPropsFromHeaders,
 } from '../core/server';
 import {
-  processPreprRequest,
+  processFrameworkRequest,
   serializeCookie,
   type PreprMiddlewareOptions,
 } from '../core/middleware';
@@ -44,9 +44,10 @@ export async function onPreprRequest(
   next: AstroNext,
   options?: PreprMiddlewareOptions,
 ): Promise<Response> {
-  const { requestHeaders, responseCookies } = processPreprRequest(
+  const { requestHeaders, responseCookies } = processFrameworkRequest(
     context.request,
     options,
+    'astro',
   );
 
   // processPreprRequest returns a copy, so fold it back onto the original

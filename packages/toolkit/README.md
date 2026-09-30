@@ -1,9 +1,14 @@
 # @preprio/toolkit
 
-> **Beta — pre-1.0.** The package is published to `latest` and is safe to use, but the
-> public API can still change between minor versions (`0.2.x` → `0.3.0`). Every change
-> is documented in [Breaking changes](https://github.com/preprio/prepr-toolkit/blob/main/RELEASING.md#breaking-changes). Pin an exact
-> version in production, or use a tilde range (`~0.2.0`) so you only pick up patches.
+> **Stable, pre-1.0.** The core is stable and published to `latest`. The package follows
+> semver: minor and patch releases never break the public API, and any breaking change
+> ships as a major bump with a migration entry in
+> [Breaking changes](https://github.com/preprio/prepr-toolkit/blob/main/RELEASING.md#breaking-changes).
+>
+> **Framework support.** The Next.js and Astro integrations are tested end to end. The
+> Nuxt, SvelteKit, and vanilla wrappers share the same core but have seen less real-world
+> use. If you hit a problem with any of them, please
+> [open an issue](https://github.com/preprio/prepr-toolkit/issues).
 
 A framework-agnostic TypeScript library that provides preview functionality, visual editing, and A/B testing for [Prepr CMS](https://prepr.io). Ships thin wrappers for Next.js, Nuxt, Astro, and SvelteKit on top of a vanilla core that runs anywhere.
 
@@ -631,14 +636,14 @@ controller.destroy();
 | Option       | Type                     | Description                                                                                                                                                                                                                                                                                      |
 | ------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `props`      | `PreprToolbarProps`      | From `getToolbarProps`. Optional — a headless preview has no segment list to pass.                                                                                                                                                                                                               |
-| `options`    | `PreprPreviewOptions`    | `{ debug?, locale?, features?, ui?, allowedEditorOrigins? }`. See [Preview options](#preview-options).                                                                                                                                                                                           |
+| `options`    | `PreprPreviewOptions`    | `{ debug?, locale?, features?, ui?, allowedEditorOrigins?, autoClean? }`. See [Preview options](#preview-options).                                                                                                                                                                               |
 | `navigation` | `PreprNavigationAdapter` | How segment/variant switches navigate. Optional — omitted, the toolbar uses `window.location.assign` (a full page load). `reload` is optional too, runs after a preview-mode toggle, and defaults to `window.location.reload()`. The Next.js and SvelteKit wrappers wire all of this up for you. |
 
 `createPreprPreview` is a no-op outside a browser (no `window`/`document`) and returns a controller whose `destroy()` does nothing, so it is safe to call during SSR. Call it **once per page** — two calls start two bridges and announce the preview twice.
 
 #### Tracking
 
-- **`loadTrackingPixel(id, config?)`** — installs the CDN tracking pixel. Idempotent, and a no-op outside a browser. A typed facade over Prepr's existing CDN pixel (`https://cdn.tracking.prepr.io/js/prepr-v2.min.js`), reproducing the legacy `<script>` snippet's queue-stub semantics: calls made before the CDN script loads are queued and flushed once it is ready.
+- **`loadTrackingPixel(id, config?)`** — installs the CDN tracking pixel. Idempotent, and a no-op outside a browser. A typed facade over Prepr's existing CDN pixel (`https://cdn.tracking.prepr.io/js/prepr.min.js`), reproducing the legacy `<script>` snippet's queue-stub semantics: calls made before the CDN script loads are queued and flushed once it is ready.
 - **`trackEvent(name, data?)`** — sends a custom tracking event: `trackEvent('add_to_cart', { productId: 'abc123' })`.
 - **`setTrackingParam(key, value)`** — sets a persistent tracking parameter: `setTrackingParam('user_type', 'returning')`.
 
@@ -689,13 +694,14 @@ createPreprMiddleware(request, response, { preview });
 createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 ```
 
-| Option                 | Type            | Default       | Description                                                                                         |
-| ---------------------- | --------------- | ------------- | --------------------------------------------------------------------------------------------------- |
-| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                               |
-| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                         |
-| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                            |
-| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                 |
-| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard. |
+| Option                 | Type            | Default       | Description                                                                                              |
+| ---------------------- | --------------- | ------------- | -------------------------------------------------------------------------------------------------------- |
+| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                                    |
+| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                              |
+| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                 |
+| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                      |
+| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard.      |
+| `autoClean`            | `boolean`       | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning). |
 
 `features` and `ui` are independent: `features` decides _what runs_, `ui` decides _whether the toolbar is visible_.
 
@@ -819,6 +825,12 @@ createPreprPreview({ props, options: { locale: 'nl' } });
 - **Confirm the middleware matcher**: if `config.matcher` excludes the current path, no Prepr headers were set for it. `getPreprUUID()` returning `null` confirms this.
 - **Check for `prepr_hide_bar=true`** in the URL, which suppresses the bar by design.
 
+### Click-to-edit not working on some elements
+
+- **Check the token permissions**: "Enable edit mode" must be checked on the token in Prepr.
+- **Check whether the encoded text sits in a hidden element.** The parent of the encoded text node is what becomes editable, and a parent that renders no box (`display: none`, `visibility: hidden`, the `hidden` attribute) is skipped — it cannot be hovered or clicked. Put `data-prepr-edit-target` on the visible ancestor that should be editable instead. See [Choosing the element that becomes editable](#choosing-the-element-that-becomes-editable).
+- **Inspect the tagged elements**: `document.querySelectorAll('[data-prepr-encoded]')` in the console lists everything edit mode found. An element you expected to be in that list points at one of the two cases above.
+
 ### Headers not working
 
 - **Middleware setup**: confirm `middleware.ts` sits in the project root (or `src/`) and its matcher covers the route.
@@ -890,7 +902,62 @@ The toolbar renders with Preact into a shadow-DOM custom element (`<prepr-toolba
 
 With edit mode enabled, the toolkit scans for stega-encoded content, strips the invisible Unicode characters after load so they cannot cause layout shifts, highlights editable elements by cursor proximity, and talks to the Prepr editor over a `postMessage` bridge when running inside the live-preview iframe.
 
-Stega cleaning is automatic. There is no need to call `vercelStegaSplit` or hand-manage hidden spans — the data attributes the toolkit relies on survive the clean, so edit mode still activates instantly.
+Stega cleaning is automatic. There is no need to call `vercelStegaSplit` or to strip the payload yourself before rendering — the data attributes the toolkit relies on survive the clean, so edit mode still activates instantly.
+
+#### Stega auto-cleaning
+
+Preview content carries its edit payload inside the text itself, as a run of invisible Unicode characters. The toolkit strips them from the DOM after load and keeps stripping them as your framework re-renders.
+
+Leaving them in place is not cosmetic. The characters are real string content: they inflate `String.length`, break text measurement and truncation, and are announced by screen readers.
+
+Turn the stripping off with `autoClean: false`:
+
+```typescript
+createPreprPreview({ props, options: { autoClean: false } });
+```
+
+Only do this when your app already strips the payload itself — for example by passing every field through `stegaClean` as it renders:
+
+```typescript
+import { stegaClean } from '@preprio/toolkit';
+
+<h1>{stegaClean(page.title)}</h1>;
+```
+
+Click-to-edit is unaffected by this option. Elements are still tagged from the payload, so the overlay, tooltip and edit bridge keep working either way.
+
+#### Choosing the element that becomes editable
+
+The element that gets the outline, the tooltip and the click handler is the **parent of the encoded text node**. Rendering `{title}` inside an `<h2>` makes the `<h2>` editable, which is what you want almost every time.
+
+Two rules govern the choice:
+
+- A parent that renders no box is skipped. An element hidden with `display: none`, `visibility: hidden`, or the `hidden` attribute cannot be hovered or outlined, so tagging it would produce an element that looks editable to the code and is unreachable to the visitor. Nothing is tagged for it.
+- `data-prepr-edit-target` overrides the parent. The closest ancestor carrying it becomes the editable element instead.
+
+That attribute is the supported way to separate _where the payload lives_ from _what the visitor clicks_. It is what makes the hidden-payload pattern work:
+
+```html
+<!-- The payload rides in a visually hidden span; the <article> is what
+     gets outlined and clicked. -->
+<article data-prepr-edit-target>
+  <h2>Product title</h2>
+  <span hidden>{encodedPayload}</span>
+</article>
+```
+
+Without the attribute that span is skipped entirely — it renders no box, so there is nothing to click.
+
+It is equally useful when the encoded text sits deep inside markup you do not control, and the natural click target is an ancestor:
+
+```html
+<figure data-prepr-edit-target>
+  <img src="..." alt="..." />
+  <figcaption><em>{encodedCaption}</em></figcaption>
+</figure>
+```
+
+Without it the `<em>` would be the editable element; with it the whole figure is.
 
 ## Examples
 

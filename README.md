@@ -12,6 +12,8 @@ npm install @preprio/toolkit
 
 Then follow the [Quick Start](./packages/toolkit/README.md#quick-start-nextjs) for your framework: [Next.js](./packages/toolkit/README.md#nextjs), [Astro](./packages/toolkit/README.md#astro), [SvelteKit](./packages/toolkit/README.md#sveltekit), [Nuxt](./packages/toolkit/README.md#nuxt), [React](./packages/toolkit/README.md#react-no-framework), or [anything else](./packages/toolkit/README.md#any-other-framework).
 
+Upgrading from the old Next.js-only `@preprio/prepr-nextjs` package? See the [migration guide](./MIGRATION.md).
+
 ## What's In Here
 
 | Path                 | Description                                                                                                    |
@@ -22,6 +24,7 @@ Then follow the [Quick Start](./packages/toolkit/README.md#quick-start-nextjs) f
 | `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, the `.svelte` components.                                              |
 | `examples/nuxt`      | Nitro middleware, `runtimeConfig`, the `.vue` components.                                                      |
 | `examples/express`   | Vanilla core — a hand-written adapter for an unsupported framework.                                            |
+| `MIGRATION.md`       | Upgrading from `@preprio/prepr-nextjs` to `@preprio/toolkit`.                                                  |
 
 A pnpm workspace (`packages/*`, `examples/*`) built with Turborepo.
 

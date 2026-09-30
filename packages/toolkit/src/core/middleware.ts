@@ -144,6 +144,17 @@ export function processPreprRequest(
   request: Request,
   opts?: PreprMiddlewareOptions,
 ): PreprMiddlewareResult {
+  return processFrameworkRequest(request, opts);
+}
+
+// Same as `processPreprRequest`, plus the framework wrapper to report in
+// Prepr-Package. Only the wrappers call this; it is not re-exported from any
+// entry point, so the framework tag is never part of the public options.
+export function processFrameworkRequest(
+  request: Request,
+  opts?: PreprMiddlewareOptions,
+  framework?: 'nextjs' | 'nuxt' | 'sveltekit' | 'astro',
+): PreprMiddlewareResult {
   const requestHeaders = new Headers(request.headers);
   const responseCookies: CookieSpec[] = [];
 
@@ -198,16 +209,20 @@ export function processPreprRequest(
     );
   }
 
-  // The API does device detection off this.
+  // The API does device detection off the standard User-Agent header, so the
+  // visitor's value is forwarded under that name, not a `Prepr-*` alias.
   const userAgent = request.headers.get('user-agent');
   if (userAgent) {
-    requestHeaders.set('Prepr-User-Agent', sanitizeHeaderValue(userAgent));
+    requestHeaders.set('User-Agent', sanitizeHeaderValue(userAgent));
   }
 
-  requestHeaders.set(
-    'Prepr-Package',
-    `@preprio/toolkit@${opts?.version ?? VERSION}`,
-  );
+  // `<package>@<version>` first, then `; key=value` pairs, so a parser that
+  // only knows the original bare form still reads the version. Every value is
+  // toolkit-controlled, never request-derived.
+  const packageParts = [`@preprio/toolkit@${opts?.version ?? VERSION}`];
+  if (framework) packageParts.push(`framework=${framework}`);
+  packageParts.push(`preview=${opts?.preview ? 'true' : 'false'}`);
+  requestHeaders.set('Prepr-Package', packageParts.join('; '));
 
   // Cf-Connecting-Ip wins over x-real-ip.
   const ip =

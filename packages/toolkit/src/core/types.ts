@@ -66,6 +66,20 @@ export interface PreprPreviewOptions extends PreprToolbarOptions {
    * Intended for self-hosted editors; when set, the wildcard no longer applies.
    */
   allowedEditorOrigins?: string[];
+  /**
+   * Strip the invisible stega characters out of visible text at runtime.
+   * Default `true`.
+   *
+   * Preview content carries an encoded payload inside the text itself. Left in
+   * place it is invisible but real: it inflates `String.length`, breaks text
+   * measurement and truncation, and is announced by screen readers.
+   *
+   * Set `false` only when the site already strips the characters itself — for
+   * example by passing every field through `stegaClean` as it renders.
+   * Click-to-edit is unaffected either way: elements are still tagged from the
+   * payload, so the overlay keeps working.
+   */
+  autoClean?: boolean;
 }
 
 export interface PreprToolbarProps {
@@ -100,6 +114,8 @@ export type PreprHeaderName =
   | 'prepr-customer-id'
   | 'Prepr-Segments'
   | 'Prepr-ABtesting'
+  | 'User-Agent'
+  // Accepted for backward compatibility; the API reads `User-Agent`.
   | 'Prepr-User-Agent';
 
 export type PreprVariant = 'A' | 'B';
@@ -131,7 +147,11 @@ export interface PreprHeaders {
   readonly 'Prepr-Visitor-IP'?: string;
   readonly 'Prepr-Hubspot-Id'?: string;
   readonly 'Prepr-Customer-Id-Created'?: 'true';
+  /** The visitor's browser User-Agent, used by the API for device detection. */
+  readonly 'User-Agent'?: string;
+  /** @deprecated Never populated; the visitor's value is under `User-Agent`. */
   readonly 'Prepr-User-Agent'?: string;
+  readonly 'Prepr-Package'?: string;
 }
 
 export type PreprErrorCode =

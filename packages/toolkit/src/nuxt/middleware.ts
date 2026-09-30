@@ -1,5 +1,5 @@
 import {
-  processPreprRequest,
+  processFrameworkRequest,
   serializeCookie,
   type PreprMiddlewareOptions,
 } from '../core/middleware';
@@ -68,9 +68,10 @@ export function handlePreprRequest(
     }
   }
 
-  const { requestHeaders, responseCookies } = processPreprRequest(
+  const { requestHeaders, responseCookies } = processFrameworkRequest(
     request,
     options,
+    'nuxt',
   );
 
   requestHeaders.forEach((value, key) => {

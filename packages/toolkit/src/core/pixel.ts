@@ -12,7 +12,9 @@
  *     `Math.ceil(Date.now() / cacheTime) * cacheTime`.
  */
 
-const PIXEL_SCRIPT_URL = 'https://cdn.tracking.prepr.io/js/prepr-v2.min.js';
+import { VERSION } from '../version';
+
+const PIXEL_SCRIPT_URL = 'https://cdn.tracking.prepr.io/js/prepr.min.js';
 const CACHE_BUST_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /** Config accepted by the CDN pixel. */
@@ -105,6 +107,7 @@ export function loadTrackingPixel(
   } else {
     queueFn('init', trackingId);
   }
+  queueFn('param', 'pp', VERSION);
   queueFn('event', 'pageload');
 }
 

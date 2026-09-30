@@ -104,7 +104,8 @@ instead.
 
 The old `getToolbarProps` called `isPreviewMode()` internally and returned empty data
 outside preview. The toolkit's does not gate itself — you decide when preview is on and
-pass it to the middleware, and you decide whether to call `getToolbarProps` at all.
+pass it to the middleware, and you decide whether to call `getToolbarProps` and render
+`<PreprToolbar />` at all.
 
 ```typescript
 // middleware.ts — resolve `preview` however your deployment already does.
@@ -112,12 +113,23 @@ const preview = process.env.VERCEL_ENV !== 'production';
 return createPreprMiddleware(request, { preview });
 ```
 
-```typescript
-// layout.tsx — skip the fetch entirely outside preview.
+```tsx
+// layout.tsx — skip the fetch and the toolbar entirely outside preview.
+const preview = process.env.VERCEL_ENV !== 'production';
 const toolbarProps = preview
   ? await getToolbarProps(process.env.PREPR_GRAPHQL_URL!)
-  : { segments: [], data: [] };
+  : null;
+
+return (
+  <body>
+    {children}
+    {toolbarProps && <PreprToolbar {...toolbarProps} />}
+  </body>
+);
 ```
+
+`<PreprToolbar />` does not read the middleware's `preview` flag: it mounts whenever it
+renders. Rendering it conditionally is what keeps the toolbar out of production.
 
 The toolkit reads **no environment variables of its own** — not `PREPR_ENV`, not
 `PREPR_GRAPHQL_URL`. Every value is passed in explicitly.
@@ -168,18 +180,32 @@ middleware and on the component. Pass the same object to both.
 const preprFeatures = { segments: true, abTesting: true, editMode: false };
 ```
 
+```typescript
+createPreprMiddleware(request, { preview, features: preprFeatures });
+const toolbarProps = await getToolbarProps(
+  process.env.PREPR_GRAPHQL_URL!,
+  preprFeatures,
+);
+```
+
 ```tsx
 <PreprToolbar {...toolbarProps} options={{ features: preprFeatures }} />
 ```
 
+Passing the object to `getToolbarProps` as well skips the segments request entirely when
+segments are disabled.
+
 ## Verify
 
-1. `curl -I` a page and confirm the `Prepr-Segments` / `Prepr-ABtesting` request
-   headers still reach your GraphQL calls.
+1. Log `await getPreprHeaders()` in a Server Component, switch a segment and a variant
+   in the toolbar, and confirm `Prepr-Segments` / `Prepr-ABtesting` appear. These are
+   request headers forwarded to your server code, so they do not show up in the
+   response (`curl -I` will not list them).
 2. Load a page with `preview: true` and confirm the toolbar mounts.
 3. Switch a segment and a variant; the page should navigate and the content change.
 4. Confirm the tracking pixel fires a `pageload` event.
-5. Deploy with `preview` resolving to `false` and confirm no toolbar renders.
+5. Deploy with `preview` resolving to `false` and confirm no toolbar renders (this relies
+   on the conditional render from step 4).
 
 A full working integration lives in
 [`examples/nextjs`](https://github.com/preprio/prepr-toolkit/tree/main/examples/nextjs).

@@ -26,6 +26,7 @@
   font-size: 12px;
   line-height: 1;
   padding: 4px 8px;
+  /* flat edge faces the labelled element; flipped below, the flat edge is on top */
   border-radius: 4px 4px 0 0;
   white-space: nowrap;
   z-index: 10001;
@@ -34,6 +35,10 @@
   pointer-events: auto;
   cursor: pointer;
   transition: opacity 0.2s ease-in-out;
+}
+
+.prepr-tooltip[data-prepr-placement='below'] {
+  border-radius: 0 0 4px 4px;
 }
 
 .prepr-tooltip:hover {
