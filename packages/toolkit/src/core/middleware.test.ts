@@ -113,15 +113,14 @@ describe('processPreprRequest', () => {
       );
     });
 
-    it('forwards user-agent as Prepr-User-Agent', () => {
+    it('forwards user-agent under the standard User-Agent header', () => {
       const request = makeRequest('https://example.com/', {
         headers: { 'user-agent': 'Mozilla/5.0 Test' },
       });
       const result = processPreprRequest(request);
 
-      expect(result.requestHeaders.get('Prepr-User-Agent')).toBe(
-        'Mozilla/5.0 Test',
-      );
+      expect(result.requestHeaders.get('User-Agent')).toBe('Mozilla/5.0 Test');
+      expect(result.requestHeaders.has('Prepr-User-Agent')).toBe(false);
     });
 
     it('sets Prepr-Package to @preprio/toolkit@<version>', () => {

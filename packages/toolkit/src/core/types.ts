@@ -114,6 +114,8 @@ export type PreprHeaderName =
   | 'prepr-customer-id'
   | 'Prepr-Segments'
   | 'Prepr-ABtesting'
+  | 'User-Agent'
+  // Accepted for backward compatibility; the API reads `User-Agent`.
   | 'Prepr-User-Agent';
 
 export type PreprVariant = 'A' | 'B';
@@ -145,6 +147,9 @@ export interface PreprHeaders {
   readonly 'Prepr-Visitor-IP'?: string;
   readonly 'Prepr-Hubspot-Id'?: string;
   readonly 'Prepr-Customer-Id-Created'?: 'true';
+  /** The visitor's browser User-Agent, used by the API for device detection. */
+  readonly 'User-Agent'?: string;
+  /** @deprecated Never populated; the visitor's value is under `User-Agent`. */
   readonly 'Prepr-User-Agent'?: string;
   readonly 'Prepr-Package'?: string;
 }

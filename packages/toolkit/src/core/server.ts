@@ -52,7 +52,7 @@ const PREPR_HEADER_KEYS: readonly (keyof PreprHeaders)[] = [
   'Prepr-Visitor-IP',
   'Prepr-Hubspot-Id',
   'Prepr-Customer-Id-Created',
-  'Prepr-User-Agent',
+  'User-Agent',
   'Prepr-Package',
 ];
 
