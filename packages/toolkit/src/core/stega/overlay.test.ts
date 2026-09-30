@@ -17,7 +17,10 @@ describe('StegaOverlay', () => {
     overlay.create();
 
     const el = document.createElement('h1');
-    el.setAttribute('data-prepr-href', 'https://app.prepr.io/x?f=title');
+    el.setAttribute(
+      'data-prepr-href',
+      'https://app.prepr.io/content/edit/e9?field=seo.meta_title',
+    );
     el.setAttribute('data-prepr-origin', 'https://app.prepr.io');
     el.setAttribute('data-prepr-id', 'e9');
     el.setAttribute('data-prepr-field', 'seo.meta_title');
@@ -27,7 +30,7 @@ describe('StegaOverlay', () => {
     overlay.getTooltip()?.click();
 
     expect(onEdit).toHaveBeenCalledWith({
-      href: 'https://app.prepr.io/x?f=title',
+      href: 'https://app.prepr.io/content/edit/e9?field=seo.meta_title',
       origin: 'https://app.prepr.io',
       id: 'e9',
       field: 'seo.meta_title',

@@ -129,6 +129,9 @@ describe('createStegaController', () => {
     expect(onEdit).toHaveBeenCalledWith({
       href: 'https://edit.example.com/entry/123',
       origin: 'https://cms.example.com',
+      id: '123',
+      field: undefined,
+      locale: undefined,
     });
 
     controller.stop();
@@ -136,9 +139,12 @@ describe('createStegaController', () => {
 
   it('tooltip: false — no overlay/tooltip chrome, cursor-only styles, clicking the element fires onEdit', () => {
     const p = document.createElement('p');
-    p.textContent = encode('Editable heading');
-    p.setAttribute('data-prepr-id', 'entity-1');
-    p.setAttribute('data-prepr-field', 'heading');
+    // id, field, and locale are parsed out of the encoded edit URL, so the
+    // click payload carries them without the page setting any attribute.
+    p.textContent = encode(
+      'Editable heading',
+      'https://edit.example.com/content/edit/entity-1?field=heading&locale=en-GB',
+    );
     document.body.appendChild(p);
 
     const onEdit = vi.fn();
@@ -159,10 +165,11 @@ describe('createStegaController', () => {
     p.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     expect(onEdit).toHaveBeenCalledWith({
-      href: 'https://edit.example.com/entry/123',
+      href: 'https://edit.example.com/content/edit/entity-1?field=heading&locale=en-GB',
       origin: 'https://cms.example.com',
       id: 'entity-1',
       field: 'heading',
+      locale: 'en-GB',
     });
 
     controller.stop();

@@ -3,10 +3,14 @@ import type { StegaDecodedData } from './clean';
 
 const debug = createScopedLogger('stega:overlay');
 
-/** `id` + `field` are present only when the stega payload carried them. */
+/**
+ * `id`, `field`, and `locale` are parsed out of the edit URL, and are absent
+ * when that URL did not carry them.
+ */
 export interface StegaEditPayload extends StegaDecodedData {
   id?: string;
   field?: string;
+  locale?: string;
 }
 
 /**
@@ -71,6 +75,7 @@ export class StegaOverlay {
     const origin = element.getAttribute('data-prepr-origin');
     const id = element.getAttribute('data-prepr-id') ?? undefined;
     const field = element.getAttribute('data-prepr-field') ?? undefined;
+    const locale = element.getAttribute('data-prepr-locale') ?? undefined;
 
     debug.log('showing overlay', { href, origin });
 
@@ -113,7 +118,7 @@ export class StegaOverlay {
       });
 
       tooltip.onclick = () => {
-        this.onEdit({ href, origin, id, field });
+        this.onEdit({ href, origin, id, field, locale });
       };
     }
 

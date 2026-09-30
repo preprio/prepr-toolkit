@@ -10,7 +10,7 @@ import { resolveFeatures } from './features';
 import { isLocale, t as translate, type Locale } from './i18n';
 import { createIframeBridge } from './iframe-bridge';
 import { createStegaAutoClean, type StegaAutoClean } from './stega/auto-clean';
-import { createStegaController, stegaClean } from './stega';
+import { createStegaController, scrollToField, stegaClean } from './stega';
 import {
   createToolbarStore,
   type ToolbarState,
@@ -221,20 +221,22 @@ export function createPreprPreview(
     tooltip: mountUi,
     // In the editor, ask the parent to focus the field instead of opening a new
     // tab. Standalone previews keep the window.open behaviour.
-    onEdit: ({ href, origin, id, field }) => {
-      // Validated on both branches: the editor follows this href too, so a
-      // hostile value must not be laundered through postMessage either.
+    onEdit: ({ href, id, field, locale: contentLocale }) => {
+      // Validated even though only the standalone branch opens the URL: a
+      // href the browser would refuse is a malformed payload, and must not
+      // become a field-focus request either.
       const safeHref = href ? safeEditUrl(href) : null;
       if (href && !safeHref) {
         debug.warn('ignored edit request with unsupported href scheme');
         return;
       }
       if (isIframe) {
+        // The editor resolves the content item itself, so only the focus
+        // target crosses the bridge — no href or origin.
         sendPreprEvent('field_edit_requested', {
-          href: safeHref ?? undefined,
-          origin,
           id,
           field,
+          locale: contentLocale,
         });
       } else if (safeHref) {
         // `noopener` — without it the opened tab keeps a live `window.opener`
@@ -278,6 +280,14 @@ export function createPreprPreview(
   // --- Iframe messaging -----------------------------------------------------
   const bridge = createIframeBridge(store, {
     allowedEditorOrigins: options?.allowedEditorOrigins,
+    // The editor selecting a field scrolls the matching element into view. The
+    // lookup relies on the attributes the stega scan writes, so it finds
+    // nothing until encoded content has been tagged.
+    onScrollToField: ({ field, id }) => {
+      if (!scrollToField({ field, id })) {
+        debug.log('no element on this page renders field', field);
+      }
+    },
   });
 
   // Mount-time scroll handshake. Fired even outside an iframe, with the

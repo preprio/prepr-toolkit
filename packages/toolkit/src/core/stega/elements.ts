@@ -119,6 +119,9 @@ export class StegaElements {
       element.removeAttribute('data-prepr-encoded');
       element.removeAttribute('data-prepr-href');
       element.removeAttribute('data-prepr-origin');
+      element.removeAttribute('data-prepr-id');
+      element.removeAttribute('data-prepr-field');
+      element.removeAttribute('data-prepr-locale');
       element.classList.remove('prepr-overlay-active');
     });
     this.elements = undefined;

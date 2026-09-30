@@ -64,6 +64,7 @@ export function createStegaController(
       origin: encoded.getAttribute('data-prepr-origin') ?? '',
       id: encoded.getAttribute('data-prepr-id') ?? undefined,
       field: encoded.getAttribute('data-prepr-field') ?? undefined,
+      locale: encoded.getAttribute('data-prepr-locale') ?? undefined,
     });
   };
 

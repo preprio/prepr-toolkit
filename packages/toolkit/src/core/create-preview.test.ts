@@ -121,6 +121,47 @@ describe('createPreprPreview', () => {
     vi.restoreAllMocks();
   });
 
+  it('posts only the focus target for a field edit request in the editor', () => {
+    const controller = createPreprPreview({ props: PROPS });
+    // sendPreprEvent targets the parent only once the handshake has run.
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { event: 'prepr:initVE' },
+        origin: 'https://acme.prepr.io',
+      }),
+    );
+
+    const el = document.createElement('h1');
+    el.setAttribute('data-prepr-encoded', '');
+    el.setAttribute(
+      'data-prepr-href',
+      'https://acme.prepr.io/content/edit/item-1?field=title&locale=en-GB',
+    );
+    el.setAttribute('data-prepr-origin', 'https://acme.prepr.io');
+    el.setAttribute('data-prepr-id', 'item-1');
+    el.setAttribute('data-prepr-field', 'title');
+    el.setAttribute('data-prepr-locale', 'en-GB');
+    document.body.appendChild(el);
+
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const posted = postMessageSpy.mock.calls
+      .map(([message]) => message as Record<string, unknown>)
+      .find((message) => message?.event === 'field_edit_requested');
+
+    // The wire shape is frozen: the editor resolves the content item from
+    // id + field + locale, so href and origin must not be sent.
+    expect(posted).toEqual({
+      name: 'prepr_preview_bar',
+      event: 'field_edit_requested',
+      id: 'item-1',
+      field: 'title',
+      locale: 'en-GB',
+    });
+
+    controller.destroy();
+  });
+
   it('mounts a <prepr-toolbar> element on the document body (top level)', () => {
     stubTopLevel();
     const controller = createPreprPreview({ props: PROPS });

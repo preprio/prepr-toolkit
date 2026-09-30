@@ -25,9 +25,53 @@ export function walkTextNodes(root: Node, visit: (node: Text) => void): void {
 }
 
 /**
- * Tag an element with the attribute triple the click-to-edit overlay looks for.
- * Always overwrites so re-cleans pick up a changed href — callers that must not
- * re-tag check `hasAttribute('data-prepr-encoded')` themselves.
+ * Pull the focus target out of an edit URL shaped
+ * `<editor>/content/edit/<id>?field=<path>&locale=<locale>`. The editor needs
+ * all three to open the right content item and put the cursor in the field the
+ * visitor clicked.
+ *
+ * Never throws: the href arrives from decoded page content, and a value that
+ * does not parse must still leave the element tagged and hoverable — it just
+ * loses auto-focus.
+ */
+function parseEditHref(href: string): {
+  id?: string;
+  field?: string;
+  locale?: string;
+} {
+  try {
+    const url = new URL(href, window.location.origin);
+    return {
+      id: url.pathname.split('/').pop() || undefined,
+      field: url.searchParams.get('field') || undefined,
+      locale: url.searchParams.get('locale') || undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function setOrRemove(
+  element: Element,
+  name: string,
+  value: string | undefined,
+): void {
+  if (value) {
+    element.setAttribute(name, value);
+  } else {
+    element.removeAttribute(name);
+  }
+}
+
+/**
+ * Tag an element with the attributes the click-to-edit overlay looks for: the
+ * encoded marker, the edit URL and its origin, and the content item id, field
+ * path, and locale parsed out of that URL.
+ *
+ * Always overwrites, and removes the parsed attributes a new href does not
+ * carry — a re-clean after the href changed must not leave a stale field path
+ * pointing the editor at the wrong field. Callers that must not re-tag check
+ * `hasAttribute('data-prepr-encoded')` themselves.
  */
 export function tagEncodedElement(
   element: Element,
@@ -36,4 +80,9 @@ export function tagEncodedElement(
   element.setAttribute('data-prepr-encoded', '');
   element.setAttribute('data-prepr-href', decoded.href);
   element.setAttribute('data-prepr-origin', decoded.origin);
+
+  const { id, field, locale } = parseEditHref(decoded.href);
+  setOrRemove(element, 'data-prepr-id', id);
+  setOrRemove(element, 'data-prepr-field', field);
+  setOrRemove(element, 'data-prepr-locale', locale);
 }

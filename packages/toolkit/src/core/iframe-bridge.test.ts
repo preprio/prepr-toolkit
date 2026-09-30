@@ -135,6 +135,82 @@ describe('createIframeBridge — editor origin validation', () => {
   });
 });
 
+describe('createIframeBridge — prepr:scrollToField', () => {
+  const FIELD = 'sections.items.000.items.value';
+
+  it('forwards the requested field and content item to the handler', () => {
+    const onScrollToField = vi.fn();
+    const bridge = createIframeBridge(null, { onScrollToField });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(EDITOR, {
+      event: 'prepr:scrollToField',
+      field: FIELD,
+      id: 'item-1',
+    });
+
+    expect(onScrollToField).toHaveBeenCalledWith({
+      field: FIELD,
+      id: 'item-1',
+    });
+    bridge.stop();
+  });
+
+  it('ignores the request from an untrusted origin', () => {
+    const onScrollToField = vi.fn();
+    const bridge = createIframeBridge(null, { onScrollToField });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(ATTACKER, { event: 'prepr:scrollToField', field: FIELD });
+
+    expect(onScrollToField).not.toHaveBeenCalled();
+    bridge.stop();
+  });
+
+  it('ignores the request before the editor handshake completes', () => {
+    const onScrollToField = vi.fn();
+    const bridge = createIframeBridge(null, { onScrollToField });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:scrollToField', field: FIELD });
+
+    expect(onScrollToField).not.toHaveBeenCalled();
+    bridge.stop();
+  });
+
+  it('ignores a request whose field is missing or not a string', () => {
+    const onScrollToField = vi.fn();
+    const bridge = createIframeBridge(null, { onScrollToField });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(EDITOR, { event: 'prepr:scrollToField' });
+    postFrom(EDITOR, { event: 'prepr:scrollToField', field: 42 });
+    postFrom(EDITOR, { event: 'prepr:scrollToField', field: FIELD, id: 42 });
+
+    expect(onScrollToField).not.toHaveBeenCalled();
+    bridge.stop();
+  });
+
+  it('survives a handler that throws, so one bad scroll cannot break the bridge', () => {
+    const onScrollToField = vi.fn(() => {
+      throw new Error('boom');
+    });
+    const bridge = createIframeBridge(null, { onScrollToField });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    expect(() =>
+      postFrom(EDITOR, { event: 'prepr:scrollToField', field: FIELD }),
+    ).not.toThrow();
+
+    expect(onScrollToField).toHaveBeenCalled();
+    bridge.stop();
+  });
+});
+
 describe('createIframeBridge — loaded payload', () => {
   /** Capture the same-window `prepr_preview_bar` events `start()` fans out. */
   function captureLoaded(store: ReturnType<typeof createToolbarStore> | null) {

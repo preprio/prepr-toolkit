@@ -6,3 +6,4 @@ export {
 } from './scan';
 export { type StegaEditPayload } from './overlay';
 export { createStegaAutoClean, type StegaAutoClean } from './auto-clean';
+export { scrollToField, type ScrollToFieldRequest } from './scroll-to-field';

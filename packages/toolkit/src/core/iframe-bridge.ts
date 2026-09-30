@@ -1,11 +1,25 @@
 import type { ToolbarStore } from './store';
-import { sendPreprEvent, setTrustedParentOrigin } from './utils';
+import {
+  createScopedLogger,
+  sendPreprEvent,
+  setTrustedParentOrigin,
+} from './utils';
+
+const debug = createScopedLogger('iframe-bridge');
 
 // Message shapes the Prepr editor posts into the preview iframe.
 interface EditorMessage {
   event?: string;
   scrollPosition?: number;
   editMode?: boolean;
+  field?: unknown;
+  id?: unknown;
+}
+
+/** Which field the editor asked the preview to bring on screen. */
+export interface ScrollToFieldMessage {
+  field: string;
+  id?: string;
 }
 
 export interface IframeBridge {
@@ -68,6 +82,12 @@ export interface IframeBridgeOptions {
    * self-hosted editors; when set, the wildcard no longer applies.
    */
   allowedEditorOrigins?: string[];
+  /**
+   * Called when the editor selects a field and wants the preview to scroll to
+   * it. Only fires for messages from the handshaked editor origin. The bridge
+   * stays free of DOM lookups: the preview runtime supplies `scrollToField`.
+   */
+  onScrollToField?: (message: ScrollToFieldMessage) => void;
 }
 
 /**
@@ -84,6 +104,8 @@ export interface IframeBridgeOptions {
  *   the editor-saved scroll position and seeds preview + edit mode. `editMode`
  *   defaults to true; the editor may send false for preview-only.
  * - `prepr:getScrollPosition`: replies with the current scroll offset.
+ * - `prepr:scrollToField`: brings the element rendering a given field on
+ *   screen, via the `onScrollToField` option.
  * - Outbound `loaded` reports the resolved feature flags, so the editor can
  *   hide controls for features the site disabled.
  * - Ctrl/Cmd+S/P/L are swallowed — the browser save/print dialogs break the
@@ -94,6 +116,7 @@ export function createIframeBridge(
   options: IframeBridgeOptions = {},
 ): IframeBridge {
   const allowedOrigins = options.allowedEditorOrigins;
+  const onScrollToField = options.onScrollToField;
   let parentOrigin: string | null = null;
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -127,6 +150,19 @@ export function createIframeBridge(
       const currentScrollY =
         window.scrollY || document.documentElement.scrollTop;
       sendPreprEvent('getScrollPosition', { value: currentScrollY });
+    }
+    if (data?.event === 'prepr:scrollToField') {
+      // Both values reach a DOM selector, so a non-string is dropped here
+      // rather than stringified further down.
+      if (typeof data.field !== 'string' || !data.field) return;
+      if (data.id !== undefined && typeof data.id !== 'string') return;
+      try {
+        onScrollToField?.({ field: data.field, id: data.id });
+      } catch (error) {
+        // A throwing handler must not take down the message listener and with
+        // it the rest of the editor integration.
+        debug.warn('scrollToField handler failed', error as object);
+      }
     }
   };
 
