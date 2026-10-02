@@ -179,9 +179,9 @@ describe('document resolution', () => {
   it('infers data from a TypedDocumentNode-shaped document', async () => {
     const { client } = setup(respond({ data: { Page: { _id: 'p1' } } }));
     const document = parse(PAGE_QUERY) as DocumentNode & {
-      __apiType?: (variables: {
-        slug: string;
-      }) => { Page: { _id: string } | null };
+      __apiType?: (variables: { slug: string }) => {
+        Page: { _id: string } | null;
+      };
     };
 
     const { data } = await client.query(document, { slug: '/' });
@@ -305,7 +305,10 @@ describe('query personalization and caching', () => {
 
     await client.query(PAGE_QUERY, undefined, {
       headers: { 'Prepr-Segments': 'vip' },
-      init: { cache: 'force-cache', next: { revalidate: 60 } } as RequestInit & {
+      init: {
+        cache: 'force-cache',
+        next: { revalidate: 60 },
+      } as RequestInit & {
         next?: unknown;
       },
     });

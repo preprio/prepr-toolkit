@@ -35,10 +35,11 @@ const URL_KEY = /(url|slug|link|href)$/i;
  */
 export type PreprDocument<TResult, TVariables> =
   | string
-  | ({ __apiType?: (variables: TVariables) => TResult } & (
-      | String
-      | DocumentNode
-    ));
+  | ({ __apiType?: (variables: TVariables) => TResult } &
+      // `String`, not `string`: codegen's TypedDocumentString is a `String`
+      // subclass instance, which the primitive type does not accept.
+      // eslint-disable-next-line @typescript-eslint/no-wrapper-object-types
+      (String | DocumentNode));
 
 /**
  * How stega markers are stripped from the response:
@@ -203,10 +204,7 @@ function cleanUrlStrings(key: string, value: unknown): unknown {
  * stega pay no per-string cost.
  */
 function parseBody(text: string, stega: PreprStegaMode): unknown {
-  if (
-    stega === 'none' ||
-    !(STEGA_RAW.test(text) || STEGA_ESCAPED.test(text))
-  ) {
+  if (stega === 'none' || !(STEGA_RAW.test(text) || STEGA_ESCAPED.test(text))) {
     return JSON.parse(text);
   }
   return JSON.parse(text, stega === 'all' ? cleanEveryString : cleanUrlStrings);

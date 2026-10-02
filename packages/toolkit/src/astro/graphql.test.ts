@@ -21,9 +21,7 @@ describe('astro createPreprClient', () => {
       event: { request },
     });
 
-    const sent = new Headers(
-      (fetch.mock.calls[0]?.[1] as RequestInit).headers,
-    );
+    const sent = new Headers((fetch.mock.calls[0]?.[1] as RequestInit).headers);
     expect(sent.get('Prepr-Segments')).toBe('vip');
     expect(sent.get('X-Internal')).toBeNull();
   });
