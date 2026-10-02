@@ -1,27 +1,19 @@
 // Import the client wrapper that renders the sections with live-edit wiring
 import PageContent from '@/components/page-content';
-import { getClient } from '@/apollo-client';
-import { GetPageBySlugDocument, GetPageBySlugQuery } from '@/gql/graphql';
+import { prepr } from '@/prepr-client';
+import { GetPageBySlugDocument } from '@/gql/graphql';
 import { notFound } from 'next/navigation';
-import { getPreprHeaders } from '@preprio/toolkit/nextjs';
-
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
 
 async function getData(slug: string) {
-  const { data } = await getClient().query<GetPageBySlugQuery>({
-    query: GetPageBySlugDocument,
-    variables: {
-      slug: slug,
-    },
-    context: {
-      // Call the getPreprHeaders function to get the appropriate headers
-      headers: await getPreprHeaders(),
-    },
-    fetchPolicy: 'no-cache',
-  });
+  // personalize: true forwards this visitor's segment / A-B headers and keeps
+  // the response out of the Data Cache; the route renders per request.
+  const { data } = await prepr().query(
+    GetPageBySlugDocument,
+    { slug },
+    { personalize: true },
+  );
 
-  if (!data?.Page) {
+  if (!data.Page) {
     return notFound();
   }
 
