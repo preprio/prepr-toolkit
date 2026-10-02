@@ -2,7 +2,11 @@ import { VERCEL_STEGA_REGEX } from '@vercel/stega';
 import { print, type DocumentNode } from 'graphql';
 
 import { isPersonalizedResponse } from './personalization';
-import { PreprError, validatePreprToken } from './server';
+import {
+  PreprError,
+  getPreprHeadersFromHeaders,
+  validatePreprToken,
+} from './server';
 import { stegaClean } from './stega/clean';
 import type { PreprHeaders } from './types';
 
@@ -324,6 +328,100 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       }
 
       return { data, personalized: isPersonalizedResponse(response) };
+    },
+  };
+}
+
+/**
+ * @internal Request Prepr headers with caller-supplied ones layered on top.
+ */
+export function mergePreprHeaders(
+  base: PreprHeaders,
+  extra?: PreprHeaders | HeadersInit,
+): Headers {
+  const merged = new Headers(base as Record<string, string>);
+  new Headers(extra as HeadersInit | undefined).forEach((value, key) => {
+    merged.set(key, value);
+  });
+  return merged;
+}
+
+/** @internal How a framework wrapper reaches the current request. */
+export interface PreprEventAdapter<TEvent> {
+  /** Request headers; only the Prepr ones are forwarded. */
+  headers(event: TEvent): Headers;
+  /** Request-scoped fetch, when the framework provides one. */
+  fetch?(event: TEvent): typeof fetch | undefined;
+}
+
+/**
+ * Query options for frameworks without an implicit request scope.
+ * `personalize: true` requires the request `event`; the compiler enforces it.
+ */
+export type PreprEventQueryOptions<TEvent> = PreprQueryOptions &
+  (
+    | { personalize?: false; event?: TEvent }
+    | { personalize: true; event: TEvent }
+  );
+
+export interface PreprEventClient<TEvent> {
+  /**
+   * Run a GraphQL query against Prepr. With `personalize: true`, the Prepr
+   * headers of `event` are forwarded and the request is `no-store`; without
+   * it the request is identical for every visitor.
+   *
+   * @throws PreprError — as `PreprClient.query`, plus `CONTEXT_ERROR` when
+   *   `personalize` is true and no `event` is passed.
+   */
+  query<TResult, TVariables>(
+    document: PreprDocument<TResult, TVariables>,
+    variables?: TVariables,
+    options?: PreprEventQueryOptions<TEvent>,
+  ): Promise<PreprQueryResult<TResult>>;
+}
+
+/** @internal Shared implementation of the Nuxt, SvelteKit and Astro clients. */
+export function createEventClient<TEvent>(
+  options: PreprClientOptions,
+  adapter: PreprEventAdapter<TEvent>,
+): PreprEventClient<TEvent> {
+  const client = createPreprClient(options);
+
+  return {
+    async query<TResult, TVariables>(
+      document: PreprDocument<TResult, TVariables>,
+      variables?: TVariables,
+      queryOptions: PreprEventQueryOptions<TEvent> = {},
+    ): Promise<PreprQueryResult<TResult>> {
+      const { personalize, event, ...rest } = queryOptions;
+
+      // Throwing beats a silent headerless fetch: the caller asked for this
+      // visitor's variant and would otherwise get the default one.
+      if (personalize && event === undefined) {
+        throw new PreprError(
+          'personalize: true requires the request event',
+          'CONTEXT_ERROR',
+          'createPreprClient',
+        );
+      }
+
+      const fetchImpl =
+        rest.fetch ??
+        (event === undefined ? undefined : adapter.fetch?.(event));
+      // Filtering through getPreprHeadersFromHeaders keeps cookies and other
+      // request headers from ever reaching the Prepr API.
+      const headers = personalize
+        ? mergePreprHeaders(
+            getPreprHeadersFromHeaders(adapter.headers(event as TEvent)),
+            rest.headers,
+          )
+        : rest.headers;
+
+      return client.query(document, variables, {
+        ...rest,
+        headers,
+        fetch: fetchImpl,
+      });
     },
   };
 }
