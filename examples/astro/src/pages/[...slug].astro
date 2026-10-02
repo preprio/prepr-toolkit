@@ -1,20 +1,21 @@
 ---
-import { print } from 'graphql';
 import Layout from '../layouts/Layout.astro';
-import { Prepr } from '../lib/prepr';
+import { prepr } from '../lib/prepr';
 import { GetPageBySlugDocument } from '../gql/graphql';
-import type { GetPageBySlugQuery } from '../gql/graphql';
 import Hero from '../components/sections/Hero.astro';
 import Feature from '../components/sections/Feature.astro';
 
-// GetPageBySlugDocument is a TypedDocumentNode; print() it to the raw query
-// string the fetch helper needs.
 const slug = Astro.params.slug ?? '/';
 
-const response = await Prepr(print(GetPageBySlugDocument), { slug }, Astro.request.headers);
-const { data } = (await response.json()) as { data: GetPageBySlugQuery };
+// personalize: true forwards the Prepr headers onPreprRequest set on this
+// request, so the response carries this visitor's segment / A-B variant.
+const { data } = await prepr.query(
+  GetPageBySlugDocument,
+  { slug },
+  { personalize: true, event: Astro },
+);
 
-if (!data?.Page) {
+if (!data.Page) {
   return new Response('Not found', { status: 404 });
 }
 
