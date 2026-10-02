@@ -1,11 +1,24 @@
+import { VERCEL_STEGA_REGEX } from '@vercel/stega';
 import { print, type DocumentNode } from 'graphql';
 
 import { isPersonalizedResponse } from './personalization';
 import { PreprError, validatePreprToken } from './server';
+import { stegaClean } from './stega/clean';
 import type { PreprHeaders } from './types';
 
 const OPERATION_NAME =
   /\b(?:query|mutation|subscription)\s+([_A-Za-z][_0-9A-Za-z]*)/;
+
+// Non-global copy: `.test` on a global regex keeps `lastIndex` between calls.
+const STEGA_RAW = new RegExp(
+  VERCEL_STEGA_REGEX.source,
+  VERCEL_STEGA_REGEX.flags.replace('g', ''),
+);
+// The same zero-width characters written as JSON escapes; U+D834 is the high
+// surrogate of the astral characters stega also uses.
+const STEGA_ESCAPED = /\\u(?:200[bcd]|206[0-3]|feff|d834)/i;
+// Markers under these keys get percent-encoded inside href/src and break links.
+const URL_KEY = /(url|slug|link|href)$/i;
 
 /**
  * A GraphQL document accepted by `query`: a plain string, graphql-codegen's
@@ -170,6 +183,31 @@ function isFrameworkSignal(error: unknown): boolean {
   );
 }
 
+function cleanEveryString(_key: string, value: unknown): unknown {
+  return typeof value === 'string' ? stegaClean(value) : value;
+}
+
+function cleanUrlStrings(key: string, value: unknown): unknown {
+  return typeof value === 'string' && URL_KEY.test(key)
+    ? stegaClean(value)
+    : value;
+}
+
+/**
+ * One scan of the raw body decides whether any marker is present; a body
+ * without markers parses without a reviver, so tokens that do not encode
+ * stega pay no per-string cost.
+ */
+function parseBody(text: string, stega: PreprStegaMode): unknown {
+  if (
+    stega === 'none' ||
+    !(STEGA_RAW.test(text) || STEGA_ESCAPED.test(text))
+  ) {
+    return JSON.parse(text);
+  }
+  return JSON.parse(text, stega === 'all' ? cleanEveryString : cleanUrlStrings);
+}
+
 /**
  * Create a GraphQL client for the Prepr API.
  *
@@ -193,6 +231,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       'createPreprClient',
     );
   }
+  const stega = options.stega ?? (preview ? 'urls' : 'all');
 
   return {
     async query<TResult, TVariables>(
@@ -242,7 +281,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
 
       let body: unknown;
       try {
-        body = JSON.parse(await response.text());
+        body = parseBody(await response.text(), stega);
       } catch (error) {
         throw new PreprError(
           `Prepr GraphQL response for ${operation} is not valid JSON`,

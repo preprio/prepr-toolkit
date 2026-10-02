@@ -2,11 +2,13 @@
 //
 // The client builds real `Headers`/`Response` objects; happy-dom's versions
 // accept values undici rejects, so this suite runs under node.
+import { vercelStegaCombine } from '@vercel/stega';
 import { parse, print, type DocumentNode } from 'graphql';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { createPreprClient } from './graphql';
 import { PreprError } from './server';
+import { stegaClean } from './stega/clean';
 
 // Wrap print so a test can count calls; behavior is unchanged.
 vi.mock('graphql', async (importOriginal) => {
@@ -350,5 +352,82 @@ describe('query personalization and caching', () => {
     const { client } = setup(signal);
 
     await expect(client.query(PAGE_QUERY)).rejects.toBe(signal);
+  });
+});
+
+describe('stega cleaning', () => {
+  const payload = { origin: 'prepr.io', href: 'https://prepr.io/edit/1' };
+  // `false` forces encoding; the default skips values that look like URLs.
+  const title = vercelStegaCombine('Hello', payload, false);
+  const imageUrl = vercelStegaCombine(
+    'https://cdn.prepr.io/a.jpg',
+    payload,
+    false,
+  );
+  const body = {
+    data: { Page: { title, imageUrl, _slug: title, href: title } },
+  };
+
+  type Page = {
+    Page: { title: string; imageUrl: string; _slug: string; href: string };
+  };
+
+  it('strips every string by default outside preview', async () => {
+    const { client } = setup(respond(body));
+
+    const { data } = await client.query<Page, undefined>(PAGE_QUERY);
+
+    expect(data.Page).toEqual({
+      title: 'Hello',
+      imageUrl: 'https://cdn.prepr.io/a.jpg',
+      _slug: 'Hello',
+      href: 'Hello',
+    });
+  });
+
+  it('strips only URL-like keys by default in preview', async () => {
+    const { client } = setup(respond(body), { preview: true });
+
+    const { data } = await client.query<Page, undefined>(PAGE_QUERY);
+
+    expect(data.Page.imageUrl).toBe('https://cdn.prepr.io/a.jpg');
+    expect(data.Page._slug).toBe('Hello');
+    expect(data.Page.href).toBe('Hello');
+    expect(data.Page.title).not.toBe('Hello');
+    expect(stegaClean(data.Page.title)).toBe('Hello');
+  });
+
+  it("leaves markers in place with stega: 'none'", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => respond(body));
+    const client = createPreprClient({
+      url: GRAPHQL_URL,
+      fetch,
+      stega: 'none',
+    });
+
+    const { data } = await client.query<Page, undefined>(PAGE_QUERY);
+
+    expect(data.Page.imageUrl).toBe(imageUrl);
+  });
+
+  it('cleans markers written as JSON unicode escapes', async () => {
+    const escaped = JSON.stringify(body).replace(
+      /[\u200b-\u200d\u2060-\u2063\ufeff]/g,
+      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    );
+    const { client } = setup(respond(escaped));
+
+    const { data } = await client.query<Page, undefined>(PAGE_QUERY);
+
+    expect(data.Page.title).toBe('Hello');
+  });
+
+  it('returns identical data for a body without markers', async () => {
+    const plain = {
+      data: { Page: { title: 'Hello', imageUrl: 'https://x/a.jpg' } },
+    };
+    const { client } = setup(respond(plain));
+
+    expect((await client.query(PAGE_QUERY)).data).toEqual(plain.data);
   });
 });
