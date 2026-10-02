@@ -42,13 +42,16 @@ export default defineConfig([
       // a matching `./json-script` export, not just inlining into the barrel.
       'json-script': 'src/core/json-script.ts',
       'nextjs/components': 'src/nextjs/components.ts',
+      // Imports the optional `graphql` peer, so it must never be folded into
+      // the main barrel; scripts/check-exports.mjs enforces that.
+      graphql: 'src/graphql.ts',
     },
     // No `clean` on any config here: tsup runs this array concurrently, so a
     // clean in one races the output of the others — it silently ate
     // dist/{astro,sveltekit}/index.d.ts, whose DTS pass finishes later than
     // this config's wipe. `dist/` is cleared by the prebuild script instead.
     clean: false,
-    external: ['next', 'react', 'react-dom'],
+    external: ['next', 'react', 'react-dom', 'graphql'],
   },
   {
     ...sharedOptions,

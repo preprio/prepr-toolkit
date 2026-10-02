@@ -39,6 +39,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./graphql": {
+      "types": "./dist/graphql.d.ts",
+      "import": "./dist/graphql.js",
+      "require": "./dist/graphql.cjs"
+    },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js",
@@ -109,6 +114,7 @@
     "preact": "^10.29.7"
   },
   "peerDependencies": {
+    "graphql": ">=16",
     "next": ">=13",
     "react": ">=17",
     "react-dom": ">=17",
@@ -116,6 +122,9 @@
     "vue": ">=3.3"
   },
   "peerDependenciesMeta": {
+    "graphql": {
+      "optional": true
+    },
     "next": {
       "optional": true
     },
