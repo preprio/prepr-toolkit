@@ -1,32 +1,22 @@
-import { print } from 'graphql';
 import { error } from '@sveltejs/kit';
-import { Prepr } from '$lib/prepr.server';
+import { prepr } from '$lib/prepr.server';
 import { GetPageBySlugDocument } from '../../gql/graphql';
-import type { GetPageBySlugQuery } from '../../gql/graphql';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, request }) => {
-  const slug = params.slug || '/';
+export const load: PageServerLoad = async (event) => {
+  const slug = event.params.slug || '/';
 
-  // DEBUG
-  const _debug = {
-    segments: request.headers.get('Prepr-Segments'),
-    ab: request.headers.get('Prepr-ABtesting'),
-    url: request.url,
-  };
-
-  // GetPageBySlugDocument is a TypedDocumentNode; print() it to the raw query
-  // string the fetch helper needs.
-  const response = await Prepr(
-    print(GetPageBySlugDocument),
+  // personalize: true forwards the Prepr headers preprHandle computed for this
+  // visitor; passing the event also routes the request through event.fetch.
+  const { data } = await prepr().query(
+    GetPageBySlugDocument,
     { slug },
-    request.headers,
+    { personalize: true, event },
   );
-  const { data } = (await response.json()) as { data: GetPageBySlugQuery };
 
-  if (!data?.Page) {
+  if (!data.Page) {
     throw error(404, 'Not found');
   }
 
-  return { page: data.Page, _debug };
+  return { page: data.Page };
 };

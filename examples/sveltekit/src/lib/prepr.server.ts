@@ -1,5 +1,9 @@
 import { env } from '$env/dynamic/private';
-import { getPreprHeaders } from '@preprio/toolkit/sveltekit';
+import {
+  createPreprClient,
+  type PreprEventClient,
+  type PreprSvelteKitEvent,
+} from '@preprio/toolkit/sveltekit/graphql';
 import { preprGraphqlUrl } from './prepr';
 
 // The `.server.ts` suffix keeps `$env/dynamic/private` out of the client bundle —
@@ -8,19 +12,9 @@ import { preprGraphqlUrl } from './prepr';
 /** GraphQL endpoint, overridable per deployment. */
 export const graphqlUrl = () => env.PREPR_GRAPHQL_URL || preprGraphqlUrl();
 
-// Forward the Prepr request headers (segments / A-B variant / customer id) so
-// the GraphQL response is personalized for this request.
-export async function Prepr(
-  query: string,
-  variables: Record<string, unknown>,
-  headers: Headers,
-): Promise<Response> {
-  return fetch(graphqlUrl(), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(getPreprHeaders(headers) as Record<string, string>),
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+let client: PreprEventClient<PreprSvelteKitEvent> | undefined;
+
+/** Created on first use, so builds without a `.env` still succeed. */
+export function prepr(): PreprEventClient<PreprSvelteKitEvent> {
+  return (client ??= createPreprClient({ url: graphqlUrl() }));
 }
