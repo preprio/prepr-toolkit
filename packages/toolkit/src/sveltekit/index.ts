@@ -24,3 +24,8 @@ export {
   extractAccessToken,
   PreprError,
 } from '../core/server';
+
+// --- Personalization -----------------------------------------------------------
+// The GraphQL client itself is on the `/graphql` subpath; this helper needs no
+// `graphql` package and serves projects with their own client.
+export { isPersonalizedResponse } from '../core/personalization';

@@ -100,13 +100,13 @@ export default defineConfig([
     // (esbuild has no `.astro` loader). They're published verbatim via
     // package.json's `files` field and resolved via the
     // `./astro/components/*` export map entry.
-    entry: { index: 'src/astro/index.ts' },
+    entry: { index: 'src/astro/index.ts', graphql: 'src/astro/graphql.ts' },
     outDir: 'dist/astro',
     clean: false,
-    // No astro/react/next imports in this module — it's typed structurally
-    // against a minimal `AstroLikeContext`, so there is nothing to
-    // externalize here.
-    external: [],
+    // No astro/react/next imports — it's typed structurally against a minimal
+    // `AstroLikeContext`. The only external is the optional `graphql` peer
+    // used by the graphql entry.
+    external: ['graphql'],
   },
   {
     ...sharedOptions,
@@ -114,12 +114,15 @@ export default defineConfig([
     // source and are compiled by the *consumer's* Vite/Svelte pipeline (tsup
     // has no `.svelte` loader). Published verbatim via package.json's `files`
     // field, resolved via the `./sveltekit/components/*` export map entry.
-    entry: { index: 'src/sveltekit/index.ts' },
+    entry: {
+      index: 'src/sveltekit/index.ts',
+      graphql: 'src/sveltekit/graphql.ts',
+    },
     outDir: 'dist/sveltekit',
     clean: false,
-    // Typed structurally against a minimal `SvelteKitRequestEvent` — nothing
-    // to externalize.
-    external: [],
+    // Typed structurally against a minimal `SvelteKitRequestEvent`; the only
+    // external is the optional `graphql` peer used by the graphql entry.
+    external: ['graphql'],
   },
   {
     ...sharedOptions,
@@ -127,11 +130,11 @@ export default defineConfig([
     // and are compiled by the *consumer's* Vite/Vue pipeline (tsup has no
     // `.vue` loader). Published verbatim via package.json's `files` field,
     // resolved via the `./nuxt/components/*` export map entry.
-    entry: { index: 'src/nuxt/index.ts' },
+    entry: { index: 'src/nuxt/index.ts', graphql: 'src/nuxt/graphql.ts' },
     outDir: 'dist/nuxt',
     clean: false,
-    // Typed structurally against a minimal `H3EventLike` — nothing to
-    // externalize.
-    external: [],
+    // Typed structurally against a minimal `H3EventLike`; the only external
+    // is the optional `graphql` peer used by the graphql entry.
+    external: ['graphql'],
   },
 ]);

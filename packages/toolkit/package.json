@@ -79,17 +79,32 @@
       "import": "./dist/astro/index.js",
       "require": "./dist/astro/index.cjs"
     },
+    "./astro/graphql": {
+      "types": "./dist/astro/graphql.d.ts",
+      "import": "./dist/astro/graphql.js",
+      "require": "./dist/astro/graphql.cjs"
+    },
     "./astro/components/*": "./src/astro/*.astro",
     "./sveltekit": {
       "types": "./dist/sveltekit/index.d.ts",
       "import": "./dist/sveltekit/index.js",
       "require": "./dist/sveltekit/index.cjs"
     },
+    "./sveltekit/graphql": {
+      "types": "./dist/sveltekit/graphql.d.ts",
+      "import": "./dist/sveltekit/graphql.js",
+      "require": "./dist/sveltekit/graphql.cjs"
+    },
     "./sveltekit/components/*": "./src/sveltekit/*.svelte",
     "./nuxt": {
       "types": "./dist/nuxt/index.d.ts",
       "import": "./dist/nuxt/index.js",
       "require": "./dist/nuxt/index.cjs"
+    },
+    "./nuxt/graphql": {
+      "types": "./dist/nuxt/graphql.d.ts",
+      "import": "./dist/nuxt/graphql.js",
+      "require": "./dist/nuxt/graphql.cjs"
     },
     "./nuxt/components/*": "./src/nuxt/*.vue"
   },
