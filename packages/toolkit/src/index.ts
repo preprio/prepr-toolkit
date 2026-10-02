@@ -38,6 +38,9 @@ export type { IframeBridgeOptions } from './core/iframe-bridge';
 // --- Stega ------------------------------------------------------------------
 export { stegaClean } from './core/stega';
 
+// --- Personalization --------------------------------------------------------
+export { isPersonalizedResponse } from './core/personalization';
+
 // --- Server -----------------------------------------------------------------
 export {
   PreprError,

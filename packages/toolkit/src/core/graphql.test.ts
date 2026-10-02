@@ -273,3 +273,82 @@ describe('query errors', () => {
     }
   });
 });
+
+describe('query personalization and caching', () => {
+  it('reports personalized from the response Vary header', async () => {
+    const { client } = setup(respond({ data: {} }, { Vary: 'Prepr-Segments' }));
+
+    expect((await client.query(PAGE_QUERY)).personalized).toBe(true);
+  });
+
+  it('reports not personalized for a plain response', async () => {
+    const { client } = setup(respond({ data: {} }));
+
+    expect((await client.query(PAGE_QUERY)).personalized).toBe(false);
+  });
+
+  it('leaves the cache alone and keeps init.next for a headerless query', async () => {
+    const { client, init } = setup(respond({ data: {} }));
+
+    await client.query(PAGE_QUERY, undefined, {
+      init: { next: { tags: ['x'] } } as RequestInit & { next?: unknown },
+    });
+
+    expect(init().cache).toBeUndefined();
+    expect((init() as { next?: unknown }).next).toEqual({ tags: ['x'] });
+  });
+
+  it('forwards headers and forces no-store, dropping init.next', async () => {
+    const { client, init } = setup(respond({ data: {} }));
+
+    await client.query(PAGE_QUERY, undefined, {
+      headers: { 'Prepr-Segments': 'vip' },
+      init: { cache: 'force-cache', next: { revalidate: 60 } } as RequestInit & {
+        next?: unknown;
+      },
+    });
+
+    expect(new Headers(init().headers).get('Prepr-Segments')).toBe('vip');
+    expect(init().cache).toBe('no-store');
+    expect((init() as { next?: unknown }).next).toBeUndefined();
+  });
+
+  it('forces no-store for an empty headers object', async () => {
+    const { client, init } = setup(respond({ data: {} }));
+
+    await client.query(PAGE_QUERY, undefined, { headers: {} });
+
+    expect(init().cache).toBe('no-store');
+  });
+
+  it('forces no-store in preview', async () => {
+    const { client, init } = setup(respond({ data: {} }), { preview: true });
+
+    await client.query(PAGE_QUERY, undefined, {
+      init: { cache: 'force-cache' },
+    });
+
+    expect(init().cache).toBe('no-store');
+  });
+
+  it('keeps Content-Type even when the caller sends another one', async () => {
+    const { client, init } = setup(respond({ data: {} }));
+
+    await client.query(PAGE_QUERY, undefined, {
+      headers: { 'Content-Type': 'text/plain' },
+    });
+
+    expect(new Headers(init().headers).get('content-type')).toBe(
+      'application/json',
+    );
+  });
+
+  it('rethrows a fetch error carrying a digest untouched', async () => {
+    const signal = Object.assign(new Error('Dynamic server usage'), {
+      digest: 'DYNAMIC_SERVER_USAGE',
+    });
+    const { client } = setup(signal);
+
+    await expect(client.query(PAGE_QUERY)).rejects.toBe(signal);
+  });
+});

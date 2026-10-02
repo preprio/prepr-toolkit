@@ -1,5 +1,6 @@
 import { print, type DocumentNode } from 'graphql';
 
+import { isPersonalizedResponse } from './personalization';
 import { PreprError, validatePreprToken } from './server';
 import type { PreprHeaders } from './types';
 
@@ -139,6 +140,37 @@ function isParseableUrl(url: string): boolean {
 }
 
 /**
+ * Next.js's fetch extension `next` is dropped together with the cache
+ * override: `revalidate` alongside `no-store` is a conflict whose winner
+ * depends on the Next version, and the no-store guarantee must hold.
+ */
+function cacheInit(
+  init: RequestInit | undefined,
+  noStore: boolean,
+): RequestInit {
+  const result: RequestInit & { next?: unknown } = { ...init };
+  if (noStore) {
+    result.cache = 'no-store';
+    delete result.next;
+  }
+  return result;
+}
+
+/**
+ * Frameworks signal control flow by throwing from inside `fetch`: Next.js
+ * marks dynamic-rendering bailouts and prerender interrupts with a string
+ * `digest`. Wrapping those in `PreprError` would stop the framework from
+ * recognizing them.
+ */
+function isFrameworkSignal(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    typeof (error as { digest?: unknown }).digest === 'string'
+  );
+}
+
+/**
  * Create a GraphQL client for the Prepr API.
  *
  * Reach for it on the server, to fetch content with codegen types and get
@@ -151,7 +183,7 @@ function isParseableUrl(url: string): boolean {
  * @throws PreprError `MISSING_TOKEN` or `INVALID_TOKEN` for a bad `url`.
  */
 export function createPreprClient(options: PreprClientOptions): PreprClient {
-  const { url } = options;
+  const { url, preview = false } = options;
   validatePreprToken(url);
   if (!isParseableUrl(url)) {
     // The message deliberately omits the url: it contains the access token.
@@ -177,7 +209,10 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       headers.set('Content-Type', 'application/json');
 
       const init: RequestInit = {
-        ...queryOptions.init,
+        ...cacheInit(
+          queryOptions.init,
+          preview || queryOptions.headers !== undefined,
+        ),
         method: 'POST',
         headers,
         body: JSON.stringify({ query, variables }),
@@ -188,6 +223,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       try {
         response = await (fetchImpl ? fetchImpl(url, init) : fetch(url, init));
       } catch (error) {
+        if (isFrameworkSignal(error)) throw error;
         throw new PreprError(
           `Prepr GraphQL request failed for ${operation}`,
           'FETCH_ERROR',
@@ -248,7 +284,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
         );
       }
 
-      return { data, personalized: false };
+      return { data, personalized: isPersonalizedResponse(response) };
     },
   };
 }
