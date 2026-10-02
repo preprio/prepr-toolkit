@@ -160,4 +160,6 @@ export type PreprErrorCode =
   | 'HTTP_ERROR'
   | 'FETCH_ERROR'
   | 'INVALID_RESPONSE'
-  | 'CONTEXT_ERROR';
+  | 'CONTEXT_ERROR'
+  | 'GRAPHQL_ERROR'
+  | 'INVALID_DOCUMENT';
