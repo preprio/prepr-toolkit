@@ -11,6 +11,10 @@ export {
   getToolbarProps,
 } from './server';
 
+// The GraphQL client is on `@preprio/toolkit/nextjs/graphql`; this helper
+// needs no `graphql` package and serves projects with their own client.
+export { isPersonalizedResponse } from '../core/personalization';
+
 export {
   validatePreprToken,
   extractAccessToken,

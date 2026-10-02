@@ -59,6 +59,11 @@
       "import": "./dist/nextjs/index.js",
       "require": "./dist/nextjs/index.cjs"
     },
+    "./nextjs/graphql": {
+      "types": "./dist/nextjs/graphql.d.ts",
+      "import": "./dist/nextjs/graphql.js",
+      "require": "./dist/nextjs/graphql.cjs"
+    },
     "./json-script": {
       "types": "./dist/json-script.d.ts",
       "import": "./dist/json-script.js",

@@ -79,6 +79,9 @@ export default defineConfig([
       // entry (not folded into the barrel) so it stays a bare default-export
       // module and Next inlines nothing unexpected.
       'image-loader': 'src/nextjs/image-loader.ts',
+      // Imports the optional `graphql` peer; kept off the main barrel so
+      // toolbar-only projects never need it installed.
+      graphql: 'src/nextjs/graphql.ts',
     },
     outDir: 'dist/nextjs',
     clean: false,
@@ -89,7 +92,7 @@ export default defineConfig([
     // Next's RSC boundary detection needs that directive on the module where
     // the client-only hooks (`useEffect`/`useRouter`) actually run.
     // Externalized (and format-suffixed) by the esbuild plugin.
-    external: ['next', 'react', 'react-dom'],
+    external: ['next', 'react', 'react-dom', 'graphql'],
     esbuildPlugins: [externalSiblingComponents],
   },
   {
