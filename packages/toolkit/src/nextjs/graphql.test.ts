@@ -83,16 +83,48 @@ describe('nextjs createPreprClient', () => {
     expect(sentInit(fetch).next).toBeUndefined();
   });
 
-  it('reads headers() in preview so the render turns dynamic before fetching', async () => {
+  // headers() is forbidden inside 'use cache'; preview must not call it, or
+  // previewing a cached function throws. The no-store fetch alone makes Next
+  // render dynamically, and draft mode bypasses 'use cache' entries.
+  it('does not read headers() in preview, so it works inside use cache', async () => {
     const { createPreprClient } = await load();
     const fetch = fetchStub();
 
     await createPreprClient({ url: URL_, fetch, preview: true }).query(QUERY);
 
-    expect(headersMock).toHaveBeenCalled();
+    expect(headersMock).not.toHaveBeenCalled();
+    expect(sentInit(fetch).next).toBeUndefined();
     expect(sentInit(fetch).cache).toBe('no-store');
     expect(
       new Headers(sentInit(fetch).headers).get('Prepr-Segments'),
     ).toBeNull();
+  });
+});
+
+describe('nextjs createPreprClient custom headers', () => {
+  it('keeps tagging queries that only carry client-level headers', async () => {
+    const { createPreprClient } = await load();
+    const fetch = fetchStub();
+
+    await createPreprClient({
+      url: URL_,
+      fetch,
+      headers: { 'X-Api-Version': '2' },
+    }).query(QUERY);
+
+    expect(sentInit(fetch).next).toEqual({ tags: ['prepr'] });
+    expect(new Headers(sentInit(fetch).headers).get('X-Api-Version')).toBe('2');
+  });
+
+  it('drops the cache tags when per-query headers force no-store', async () => {
+    const { createPreprClient } = await load();
+    const fetch = fetchStub();
+
+    await createPreprClient({ url: URL_, fetch }).query(QUERY, undefined, {
+      headers: { 'X-Trace': 'abc' },
+    });
+
+    expect(sentInit(fetch).cache).toBe('no-store');
+    expect(sentInit(fetch).next).toBeUndefined();
   });
 });

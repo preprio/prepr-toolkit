@@ -229,6 +229,18 @@ To serve pages from the cache until you publish, set `revalidate: false` and cal
 
 In preview, pass `preview: true`: queries skip the cache and stega markers stay in text for click-to-edit. They are always stripped from URL-like fields.
 
+Custom headers go in two places. Client-level `headers` (`createPreprClient({ url, headers })`) are sent with every request and keep queries cacheable, so use them for fixed values such as a header your proxy requires. Per-query `headers` (or `init.headers`) may carry per-visitor values, so they make that request `no-store`.
+
+With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components), run headerless queries inside `'use cache'` and tag the entry there with `cacheTag('prepr')`. Run `personalize: true` queries inside `<Suspense>`, because they read request headers, which `'use cache'` does not allow. `preview: true` works inside `'use cache'`, but the result is still cached unless [draft mode](https://nextjs.org/docs/app/guides/draft-mode) is enabled.
+
+```tsx
+async function getPage(slug: string) {
+  'use cache';
+  cacheTag('prepr');
+  return prepr.query(GetPageBySlugDocument, { slug }); // { data, personalized }
+}
+```
+
 Do not catch and swallow errors from `query` without [`unstable_rethrow`](https://nextjs.org/docs/app/api-reference/functions/unstable_rethrow): Next.js signals dynamic rendering by throwing from inside `fetch`, and the client passes those signals through.
 
 ### Image loader
@@ -621,10 +633,11 @@ Each wrapper exposes the same five helpers, differing only in how they reach the
 | `preview`              | `false`                           | Every query is `no-store`; stega defaults to `'urls'`.                          |
 | `stega`                | `'urls'` in preview, else `'all'` | Which strings get stega markers stripped: URL-like keys only, all, or `'none'`. |
 | `fetch`                | global `fetch`                    | Custom fetch. Also accepted per query.                                          |
+| `headers`              | —                                 | Sent with every request. Fixed per client, so queries stay cacheable.           |
 | `cacheTags` (Next.js)  | `['prepr']`                       | Tags on cacheable fetches.                                                      |
 | `revalidate` (Next.js) | unset                             | `next.revalidate` on cacheable fetches.                                         |
 
-`query(document, variables?, options?)` takes a query string, a `TypedDocumentString` or a `DocumentNode`, and resolves to `{ data, personalized }`. Per-query options: `headers`, `init`, `fetch`, plus `personalize` (framework versions) and `event` (Nuxt, SvelteKit, Astro). Any request carrying headers is `no-store`.
+`query(document, variables?, options?)` takes a query string, a `TypedDocumentString` or a `DocumentNode`, and resolves to `{ data, personalized }`. Per-query options: `headers`, `init`, `fetch`, plus `personalize` (framework versions) and `event` (Nuxt, SvelteKit, Astro). A request carrying per-query headers or `init.headers` is `no-store`; client-level `headers` are not.
 
 Import `PreprError` from the same subpath as the client when checking `instanceof`: CommonJS entry points do not share classes. `error.code` works from anywhere.
 

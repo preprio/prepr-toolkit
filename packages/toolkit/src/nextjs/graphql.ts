@@ -1,5 +1,3 @@
-import { headers } from 'next/headers';
-
 import {
   createPreprClient as createCoreClient,
   mergePreprHeaders,
@@ -57,8 +55,13 @@ type NextFetchInit = RequestInit & {
  *
  * Headerless queries go through the Data Cache with `cacheTags`; queries with
  * `personalize: true` forward the visitor's Prepr headers and are never
- * cached. Inside a `'use cache'` scope only headerless queries work, because
- * `personalize` reads request headers.
+ * cached.
+ *
+ * With Cache Components, run headerless queries inside `'use cache'` (tag the
+ * entry with `cacheTag('prepr')` there) and `personalize: true` queries inside
+ * `<Suspense>`: `personalize` reads request headers, which `'use cache'`
+ * forbids. `preview: true` works inside `'use cache'`, but the entry is still
+ * cached unless draft mode is enabled, which makes Next skip cached entries.
  *
  * Requires the `graphql` package, which graphql-codegen already installs.
  */
@@ -76,28 +79,11 @@ export function createPreprClient(
     ): Promise<PreprQueryResult<TResult>> {
       const { personalize = false, ...rest } = queryOptions;
 
-      if (personalize) {
-        // getPreprHeaders reads headers(), which also switches the render to
-        // dynamic before the no-store fetch runs.
-        return client.query(document, variables, {
-          ...rest,
-          headers: mergePreprHeaders(await getPreprHeaders(), rest.headers),
-        });
-      }
-
-      if (coreOptions.preview) {
-        // A no-store fetch inside a static render throws; reading request
-        // headers first opts into dynamic rendering on every Next version.
-        await headers();
-        return client.query(document, variables, rest);
-      }
-
-      if (rest.headers !== undefined) {
-        return client.query(document, variables, rest);
-      }
-
+      // Tags are attached unconditionally; the core client drops them again
+      // whenever the request ends up `no-store` (personalized, per-request
+      // headers, or preview).
       const init = rest.init as NextFetchInit | undefined;
-      return client.query(document, variables, {
+      const tagged: PreprQueryOptions = {
         ...rest,
         init: {
           ...init,
@@ -107,6 +93,14 @@ export function createPreprClient(
             ...init?.next,
           },
         } as NextFetchInit,
+      };
+
+      if (!personalize) return client.query(document, variables, tagged);
+
+      // getPreprHeaders reads headers(), which makes the route dynamic.
+      return client.query(document, variables, {
+        ...tagged,
+        headers: mergePreprHeaders(await getPreprHeaders(), rest.headers),
       });
     },
   };

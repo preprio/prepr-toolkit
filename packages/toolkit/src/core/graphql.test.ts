@@ -3,7 +3,8 @@
 // The client builds real `Headers`/`Response` objects; happy-dom's versions
 // accept values undici rejects, so this suite runs under node.
 import { vercelStegaCombine } from '@vercel/stega';
-import { parse, print, type DocumentNode } from 'graphql';
+import { parse, type DocumentNode } from 'graphql';
+import { print } from 'graphql/language/printer.js';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { createEventClient, createPreprClient } from './graphql';
@@ -11,8 +12,9 @@ import { PreprError } from './server';
 import { stegaClean } from './stega/clean';
 
 // Wrap print so a test can count calls; behavior is unchanged.
-vi.mock('graphql', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('graphql')>();
+vi.mock('graphql/language/printer.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('graphql/language/printer.js')>();
   return { ...actual, print: vi.fn(actual.print) };
 });
 
@@ -516,5 +518,57 @@ describe('createEventClient', () => {
 
     expect(eventFetch).toHaveBeenCalledTimes(1);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('custom headers', () => {
+  it('sends client-level headers and keeps the request cacheable', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      respond({ data: {} }),
+    );
+    const client = createPreprClient({
+      url: GRAPHQL_URL,
+      fetch,
+      headers: { 'X-Api-Version': '2' },
+    });
+
+    await client.query(PAGE_QUERY);
+
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(init.headers).get('X-Api-Version')).toBe('2');
+    expect(init.cache).toBeUndefined();
+  });
+
+  it('merges init.headers instead of dropping them, and forces no-store', async () => {
+    const { client, init } = setup(respond({ data: {} }));
+
+    await client.query(PAGE_QUERY, undefined, {
+      init: { headers: { 'X-Trace': 'abc' } },
+    });
+
+    expect(new Headers(init().headers).get('X-Trace')).toBe('abc');
+    expect(init().cache).toBe('no-store');
+  });
+
+  it('layers client, init and query headers, query winning', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      respond({ data: {} }),
+    );
+    const client = createPreprClient({
+      url: GRAPHQL_URL,
+      fetch,
+      headers: { 'X-Layer': 'client', 'X-Client': '1' },
+    });
+
+    await client.query(PAGE_QUERY, undefined, {
+      init: { headers: { 'X-Layer': 'init', 'X-Init': '1' } },
+      headers: { 'X-Layer': 'query', 'Content-Type': 'text/plain' },
+    });
+
+    const sent = new Headers((fetch.mock.calls[0]?.[1] as RequestInit).headers);
+    expect(sent.get('X-Layer')).toBe('query');
+    expect(sent.get('X-Client')).toBe('1');
+    expect(sent.get('X-Init')).toBe('1');
+    expect(sent.get('content-type')).toBe('application/json');
   });
 });

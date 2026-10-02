@@ -1,5 +1,8 @@
 import { VERCEL_STEGA_REGEX } from '@vercel/stega';
-import { print, type DocumentNode } from 'graphql';
+import type { DocumentNode } from 'graphql';
+// The printer module alone, not the `graphql` barrel: resolved as CommonJS,
+// the barrel loads the whole package (~260 KB minified) for this one function.
+import { print } from 'graphql/language/printer.js';
 
 import { isPersonalizedResponse } from './personalization';
 import {
@@ -66,6 +69,13 @@ export interface PreprClientOptions {
   preview?: boolean;
   /** Default: `'urls'` when `preview` is true, otherwise `'all'`. */
   stega?: PreprStegaMode;
+  /**
+   * Headers sent with every request, such as a header a proxy in front of the
+   * API requires. They are fixed when the client is created, so they cannot
+   * vary per visitor and do not stop responses from being cached. Put
+   * per-request values in the query's `headers` instead.
+   */
+  headers?: HeadersInit;
 }
 
 export interface PreprQueryOptions {
@@ -76,8 +86,9 @@ export interface PreprQueryOptions {
    */
   headers?: PreprHeaders | HeadersInit;
   /**
-   * Extra fetch options such as `signal`. `method`, `headers` and `body` are
-   * set by the client and cannot be overridden here.
+   * Extra fetch options such as `signal`. `method` and `body` are set by the
+   * client. `init.headers` are merged like `headers`, and also make the
+   * request `no-store`.
    */
   init?: RequestInit;
   /** Per-query fetch, overriding the client's (e.g. SvelteKit's `event.fetch`). */
@@ -234,6 +245,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
     );
   }
   const stega = options.stega ?? (preview ? 'urls' : 'all');
+  const clientHeaders = new Headers(options.headers);
 
   return {
     async query<TResult, TVariables>(
@@ -244,16 +256,23 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       const query = resolveQuery(document);
       const operation = OPERATION_NAME.exec(query)?.[1] ?? 'anonymous';
 
-      const headers = new Headers(
-        queryOptions.headers as HeadersInit | undefined,
-      );
+      // Later layers win: client, then `init.headers`, then `headers`.
+      // Content-Type is set last because the body is always JSON.
+      const headers = new Headers(clientHeaders);
+      for (const layer of [queryOptions.init?.headers, queryOptions.headers]) {
+        new Headers(layer as HeadersInit | undefined).forEach((value, key) => {
+          headers.set(key, value);
+        });
+      }
       headers.set('Content-Type', 'application/json');
 
+      // Per-request headers may carry visitor data; client-level ones cannot.
+      const perRequestHeaders =
+        queryOptions.headers !== undefined ||
+        queryOptions.init?.headers !== undefined;
+
       const init: RequestInit = {
-        ...cacheInit(
-          queryOptions.init,
-          preview || queryOptions.headers !== undefined,
-        ),
+        ...cacheInit(queryOptions.init, preview || perRequestHeaders),
         method: 'POST',
         headers,
         body: JSON.stringify({ query, variables }),
