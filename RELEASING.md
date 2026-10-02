@@ -200,6 +200,17 @@ A breaking change ships as a **major** bump (see [Version policy](#version-polic
 Every one gets an entry here, newest first, with the diff a consumer applies to
 upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
+### 0.5.0 — no breaking changes
+
+Adds `createPreprClient` on new `/graphql` subpaths (`@preprio/toolkit/graphql`,
+`/nextjs/graphql`, `/nuxt/graphql`, `/sveltekit/graphql`, `/astro/graphql`), and
+`isPersonalizedResponse` on every entry point. The subpaths need `graphql`
+(`>=16`), declared as an optional peer; no existing entry point imports it.
+
+`PreprErrorCode` gains `GRAPHQL_ERROR` and `INVALID_DOCUMENT`. Code that
+switches exhaustively over the union (with a `never` check) needs the two new
+cases; everything else is unaffected.
+
 ### 0.3.3 — no breaking changes
 
 Bugfix and a backward-compatible option; nothing to migrate. Listed here only

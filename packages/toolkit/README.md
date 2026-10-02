@@ -200,24 +200,36 @@ To skip Prepr for some routes entirely, return early with `NextResponse.next()` 
 
 The pixel collects the interaction data that powers personalization and A/B testing. Include it in **all** environments, preview and production alike — the Quick Start layout already does. `PreprTrackingPixel` renders nothing and loads the CDN script on mount, so its position in the tree does not matter.
 
-### With Apollo Client
+### Fetching content
+
+`createPreprClient` sends codegen-typed queries to Prepr and returns Prepr's personalization verdict next to the data. It lives on its own subpath and needs the `graphql` package, which graphql-codegen already installs (otherwise: `npm install graphql`).
 
 ```typescript
-import { getClient } from '@/lib/client';
+import { createPreprClient } from '@preprio/toolkit/nextjs/graphql';
 import { GetPageBySlugDocument } from '@/gql/graphql';
-import { getPreprHeaders } from '@preprio/toolkit/nextjs';
 
-async function getPage(slug: string) {
-  const { data } = await getClient().query({
-    query: GetPageBySlugDocument,
-    variables: { slug },
-    context: { headers: await getPreprHeaders() },
-    fetchPolicy: 'no-cache',
-  });
+const prepr = createPreprClient({ url: process.env.PREPR_GRAPHQL_URL! });
 
-  return data;
-}
+// Same response for every visitor: goes through the Data Cache, tagged 'prepr'.
+const { data } = await prepr.query(GetPageBySlugDocument, { slug });
+
+// This visitor's segment / A-B variant: forwards the Prepr headers, never cached.
+const { data, personalized } = await prepr.query(
+  GetPageBySlugDocument,
+  { slug },
+  { personalize: true },
+);
 ```
+
+Codegen's default client-preset output works as is; `documentMode: 'string'` works too.
+
+`personalized` is `true` when the queried fields contain segment variants or A/B tests, at any depth. Use it to decide whether a page can be served statically.
+
+To serve pages from the cache until you publish, set `revalidate: false` and call `revalidateTag('prepr')` from a Prepr publish webhook. With `revalidate` unset, the installed Next version's fetch caching default applies.
+
+In preview, pass `preview: true`: queries skip the cache and stega markers stay in text for click-to-edit. They are always stripped from URL-like fields.
+
+Do not catch and swallow errors from `query` without [`unstable_rethrow`](https://nextjs.org/docs/app/api-reference/functions/unstable_rethrow): Next.js signals dynamic rendering by throwing from inside `fetch`, and the client passes those signals through.
 
 ### Image loader
 
@@ -295,6 +307,19 @@ import { getPreprHeaders } from '@preprio/toolkit/astro';
 const headers = getPreprHeaders(Astro.request.headers);
 ```
 
+Or let the client forward the headers (needs `graphql`, see [Fetching content](#fetching-content)):
+
+```typescript
+import { createPreprClient } from '@preprio/toolkit/astro/graphql';
+
+const prepr = createPreprClient({ url: import.meta.env.PREPR_GRAPHQL_URL });
+const { data } = await prepr.query(
+  GetPageBySlugDocument,
+  { slug },
+  { personalize: true, event: Astro },
+);
+```
+
 `import.meta.env.DEV` is Astro's own dev flag; swap in whatever signal marks preview in your deployment.
 
 The `.astro` components ship as source, compiled by your own Astro/Vite pipeline. They use full-page navigation by default, matching Astro's MPA model — switching segment or variant re-runs the server-rendered output.
@@ -357,6 +382,23 @@ import { getPreprHeadersFromLocals } from '@preprio/toolkit/sveltekit';
 const preprHeaders = getPreprHeadersFromLocals(event.locals);
 ```
 
+Or let the client forward them (needs `graphql`, see [Fetching content](#fetching-content)). Passing the event also routes the request through `event.fetch`:
+
+```typescript
+import { createPreprClient } from '@preprio/toolkit/sveltekit/graphql';
+
+const prepr = createPreprClient({ url: env.PREPR_GRAPHQL_URL });
+
+export const load: PageServerLoad = async (event) => {
+  const { data } = await prepr.query(
+    GetPageBySlugDocument,
+    { slug: event.params.slug },
+    { personalize: true, event },
+  );
+  return { page: data.Page };
+};
+```
+
 The `.svelte` components ship as source (compiled by your own Vite/Svelte pipeline) and mount client-side via `onMount`, so they never run during SSR.
 
 See the runnable example at `examples/sveltekit` for the full source of truth.
@@ -407,6 +449,26 @@ import { getPreprHeadersFromEvent } from '@preprio/toolkit/nuxt';
 
 const preprHeaders = getPreprHeadersFromEvent(event);
 ```
+
+Or let the client forward them from a server route (needs `graphql`, see [Fetching content](#fetching-content)):
+
+```typescript
+// server/api/page.get.ts
+import { createPreprClient } from '@preprio/toolkit/nuxt/graphql';
+
+const prepr = createPreprClient({ url: useRuntimeConfig().preprGraphqlUrl });
+
+export default defineEventHandler(async (event) => {
+  const { data } = await prepr.query(
+    GetPageBySlugDocument,
+    { slug: getQuery(event).slug },
+    { personalize: true, event },
+  );
+  return data;
+});
+```
+
+`personalize: true` needs the h3 event. During client-side navigation there is none and the query throws `CONTEXT_ERROR`, so run personalized queries in server routes.
 
 The `.vue` components ship as source (compiled by your own Vite/Vue pipeline) and mount client-side via `onMounted`, so they never run during SSR.
 
@@ -548,6 +610,25 @@ Each wrapper exposes the same five helpers, differing only in how they reach the
 | `getToolbarProps`  | `await getToolbarProps(token)` | `await getToolbarProps(headers, token)` | `{ activeSegment, activeVariant, segments }`. Never throws — failures degrade to an empty segment list. |
 
 `getPreprUUID()` returning `null` is a useful check when headers seem to be missing — it means the middleware did not cover the route.
+
+### GraphQL client
+
+`createPreprClient(options)` ships on `@preprio/toolkit/graphql` and on each framework's `/graphql` subpath (`@preprio/toolkit/nextjs/graphql`, `/nuxt/graphql`, `/sveltekit/graphql`, `/astro/graphql`). These subpaths need the `graphql` package (`>=16`); nothing else in the toolkit does. The core version takes explicit `headers`; the framework versions add `personalize`.
+
+| Option                 | Default                           | Effect                                                                          |
+| ---------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
+| `url`                  | —                                 | Full `https://graphql.prepr.io/<token>` URL. Throws `PreprError` when invalid.  |
+| `preview`              | `false`                           | Every query is `no-store`; stega defaults to `'urls'`.                          |
+| `stega`                | `'urls'` in preview, else `'all'` | Which strings get stega markers stripped: URL-like keys only, all, or `'none'`. |
+| `fetch`                | global `fetch`                    | Custom fetch. Also accepted per query.                                          |
+| `cacheTags` (Next.js)  | `['prepr']`                       | Tags on cacheable fetches.                                                      |
+| `revalidate` (Next.js) | unset                             | `next.revalidate` on cacheable fetches.                                         |
+
+`query(document, variables?, options?)` takes a query string, a `TypedDocumentString` or a `DocumentNode`, and resolves to `{ data, personalized }`. Per-query options: `headers`, `init`, `fetch`, plus `personalize` (framework versions) and `event` (Nuxt, SvelteKit, Astro). Any request carrying headers is `no-store`.
+
+Import `PreprError` from the same subpath as the client when checking `instanceof`: CommonJS entry points do not share classes. `error.code` works from anywhere.
+
+`isPersonalizedResponse(response)`, exported from every entry point, reads the same verdict from a response fetched with your own client. It does not need `graphql`.
 
 ### Token helpers
 
@@ -839,7 +920,7 @@ createPreprPreview({ props, options: { locale: 'nl' } });
 
 ### Segments switch but content does not change
 
-The toolbar sets the segment; your data fetch decides what to do with it. Check that the fetch forwards `getPreprHeaders()` and is not being served from cache — use `cache: 'no-store'`, or Apollo's `fetchPolicy: 'no-cache'`, on personalized queries.
+The toolbar sets the segment; your data fetch decides what to do with it. Check that the fetch forwards `getPreprHeaders()` and is not being served from cache — use `cache: 'no-store'`, or Apollo's `fetchPolicy: 'no-cache'`, on personalized queries. `createPreprClient` with `personalize: true` does both.
 
 ### Build issues
 
@@ -865,7 +946,7 @@ try {
 }
 ```
 
-Codes: `INVALID_TOKEN`, `MISSING_TOKEN`, `HTTP_ERROR`, `FETCH_ERROR`, `INVALID_RESPONSE`, `CONTEXT_ERROR`.
+Codes: `INVALID_TOKEN`, `MISSING_TOKEN`, `HTTP_ERROR`, `FETCH_ERROR`, `INVALID_RESPONSE`, `CONTEXT_ERROR`, `GRAPHQL_ERROR`, `INVALID_DOCUMENT`.
 
 `getToolbarProps` is the exception — it swallows these and returns an empty segment list, so a bad token cannot crash your app.
 
@@ -965,7 +1046,7 @@ Runnable examples live in the repository root:
 
 | Example              | What it shows                                                      |
 | -------------------- | ------------------------------------------------------------------ |
-| `examples/nextjs`    | App Router, middleware, Apollo, custom image loader                |
+| `examples/nextjs`    | App Router, middleware, `createPreprClient`, custom image loader   |
 | `examples/astro`     | Astro middleware and `.astro` components                           |
 | `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components       |
 | `examples/nuxt`      | `server/middleware`, `useAsyncData`, `.vue` components             |
