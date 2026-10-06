@@ -17,12 +17,13 @@ import {
   type PreprQueryResult,
 } from '../core/graphql';
 import {
+  preprVariantProps,
   resolveVariants,
   splitStack,
   type PreprDecisions,
 } from '../core/variants';
 import { applyPreprAbBucket } from './ab-switch';
-import { PreprAbSwitch } from './components';
+import { PreprAbSwitch, PreprVariantTracking } from './components';
 import { getPreprHeaders } from './server';
 
 export interface PreprNextClientOptions extends PreprClientOptions {
@@ -194,6 +195,19 @@ export interface PreprStackProps<T> {
   bucket?: string;
   /** Nonce for the inline A/B switch script, under a strict CSP. */
   nonce?: string;
+  /**
+   * Tag each personalization and A/B variant for Prepr's tracking pixel, so
+   * it counts impressions (and clicks on `data-prepr-variant-event` elements
+   * inside) without `data-prepr-variant-key` in your components. Default
+   * `false`.
+   *
+   * Each item's key goes on the element `render` returns for it, in order,
+   * once the page has hydrated. Each variant gets a wrapper with
+   * `display: contents`: it takes no box, but CSS child combinators (`>`) and
+   * `:first-child` from the stack's parent no longer reach the sections. Lists
+   * nested inside an item are not tagged; use `preprVariantProps` there.
+   */
+  trackVariants?: boolean;
 }
 
 const AB_ATTRIBUTE = 'data-prepr-ab';
@@ -214,6 +228,13 @@ const AB_SWITCH_SCRIPT = `(${applyPreprAbBucket.toString()})()`;
  */
 type StackRender<T> = PreprStackProps<T>['render'];
 
+function variantKeysOf(items: unknown[]): string[] {
+  return items.flatMap((item) => {
+    const key = preprVariantProps(item)['data-prepr-variant-key'];
+    return key ? [key] : [];
+  });
+}
+
 function renderBuckets<T>(
   items: T[],
   render: StackRender<T>,
@@ -222,19 +243,27 @@ function renderBuckets<T>(
     decisions?: PreprDecisions;
     abTest: boolean;
     index: number;
+    track?: boolean;
   },
 ): ReactNode {
-  const { bucket, decisions, abTest, index } = options;
-  if (!abTest || bucket) {
-    return render(resolveVariants(items, { decisions, bucket }), { index });
-  }
-  return AB_BUCKETS.map((variant) =>
-    createElement(
-      'div',
-      { key: variant, [AB_ATTRIBUTE]: variant },
-      render(resolveVariants(items, { decisions, bucket: variant }), { index }),
-    ),
-  );
+  const { bucket, decisions, abTest, index, track } = options;
+  const renderVariant = (variant: string | undefined, key?: string) => {
+    const resolved = resolveVariants(items, { decisions, bucket: variant });
+    const content = render(resolved, { index });
+    const variantKeys = track ? variantKeysOf(resolved) : [];
+    const ab = abTest && !bucket ? variant : undefined;
+    if (variantKeys.length > 0) {
+      return createElement(
+        PreprVariantTracking,
+        { key, variantKeys, ab },
+        content,
+      );
+    }
+    if (ab) return createElement('div', { key, [AB_ATTRIBUTE]: ab }, content);
+    return content;
+  };
+  if (!abTest || bucket) return renderVariant(bucket);
+  return AB_BUCKETS.map((variant) => renderVariant(variant, variant));
 }
 
 async function PersonalizedBlock<T>({
@@ -244,6 +273,7 @@ async function PersonalizedBlock<T>({
   abTest,
   index,
   render,
+  track,
 }: {
   items: T[];
   decisions: Promise<PreprDecisions>;
@@ -251,6 +281,7 @@ async function PersonalizedBlock<T>({
   abTest: boolean;
   index: number;
   render: StackRender<T>;
+  track?: boolean;
 }): Promise<ReactNode> {
   const decided = await decisions.catch((error: unknown) => {
     // Next.js control flow must reach Next; anything else degrades to the
@@ -263,6 +294,7 @@ async function PersonalizedBlock<T>({
     decisions: decided,
     abTest,
     index,
+    track,
   });
 }
 
@@ -294,6 +326,7 @@ export function PreprStack<T>({
   render,
   bucket,
   nonce,
+  trackVariants = false,
 }: PreprStackProps<T>): ReactElement {
   // Blocks that never wait would leave a rejection unobserved.
   decisions.catch(() => undefined);
@@ -318,10 +351,13 @@ export function PreprStack<T>({
         createElement(PreprAbSwitch),
       ),
     ...blocks.map((block) => {
+      // A fallback is only on screen until the visitor's variant arrives, so
+      // it is tagged only where it is final: blocks that never stream.
       const fallback = renderBuckets(block.items, render, {
         bucket,
         abTest: block.abTest,
         index: block.index,
+        track: trackVariants && !block.personalized,
       });
       if (!block.personalized) {
         return createElement(Fragment, { key: block.key }, fallback);
@@ -336,6 +372,7 @@ export function PreprStack<T>({
           abTest: block.abTest,
           index: block.index,
           render,
+          track: trackVariants,
         }),
       );
     }),
@@ -346,10 +383,12 @@ export { isPersonalizedResponse } from '../core/personalization';
 export { PreprError } from '../core/server';
 export {
   PREPR_DEFAULT_VARIANT,
+  preprVariantProps,
   resolveVariants,
   splitStack,
   type PreprDecisions,
   type PreprStackBlock,
+  type PreprVariantProps,
   type ResolveVariantsOptions,
 } from '../core/variants';
 export type {

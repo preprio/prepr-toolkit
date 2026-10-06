@@ -1,7 +1,14 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import {
+  createElement,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
 import { isReactHydrated } from '../react/hydration';
@@ -75,4 +82,59 @@ export function PreprAbSwitch(): null {
     applyPreprAbBucket();
   });
   return null;
+}
+
+const VARIANT_KEY_ATTRIBUTE = 'data-prepr-variant-key';
+
+/**
+ * Wraps one rendered variant and, once hydrated, puts the variant keys on the
+ * elements inside, where Prepr's tracking pixel counts impressions and the
+ * clicks of any `data-prepr-variant-event` element in them. The wrapper itself
+ * takes no box (`display: contents`), and the pixel only counts an element it
+ * can see scroll into view, so the keys belong on the sections. The pixel
+ * watches for attributes added after load.
+ *
+ * A variant can hold several items, each with its own key. When the wrapper
+ * holds one element per key they are paired in order; otherwise only the
+ * first element is tagged, with the first key. An element that already
+ * carries a variant key is left alone. Rendered by `PreprStack` with
+ * `trackVariants`; you do not need it yourself.
+ */
+export function PreprVariantTracking({
+  variantKeys,
+  ab,
+  children,
+}: {
+  variantKeys: string[];
+  /** The A/B bucket wrapper this also serves as; its CSS decides `display`. */
+  ab?: string;
+  children?: ReactNode;
+}): ReactElement {
+  const ref = useRef<HTMLDivElement>(null);
+  const keys = variantKeys.join(' ');
+  useLayoutEffect(() => {
+    const elements = [...(ref.current?.children ?? [])];
+    const list = keys.split(' ');
+    const pairs =
+      elements.length === list.length
+        ? elements.map((element, i) => [element, list[i]!] as const)
+        : elements.slice(0, 1).map((element) => [element, list[0]!] as const);
+    const tagged = pairs.filter(([element, key]) => {
+      if (element.hasAttribute(VARIANT_KEY_ATTRIBUTE)) return false;
+      element.setAttribute(VARIANT_KEY_ATTRIBUTE, key);
+      return true;
+    });
+    return () => {
+      for (const [element] of tagged) {
+        element.removeAttribute(VARIANT_KEY_ATTRIBUTE);
+      }
+    };
+  }, [keys]);
+  return createElement(
+    'div',
+    ab === undefined
+      ? { ref, style: { display: 'contents' } }
+      : { ref, 'data-prepr-ab': ab },
+    children,
+  );
 }

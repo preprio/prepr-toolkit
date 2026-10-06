@@ -116,13 +116,17 @@ function selectionSet(selections: SelectionNode[]): SelectionSetNode {
   return { kind: 'SelectionSet', selections } as unknown as SelectionSetNode;
 }
 
-function contextField(): FieldNode {
+// `variant_key` is what the tracking pixel counts impressions by; only the
+// variants query needs it.
+function contextField(withKey: boolean): FieldNode {
+  const fields = ['kind', 'group_id', 'variant_id'];
+  if (withKey) fields.push('variant_key');
   return {
     kind: 'Field',
     alias: name(PREPR_CONTEXT_ALIAS),
     name: name('_context'),
     selectionSet: selectionSet(
-      ['kind', 'group_id', 'variant_id'].map(
+      fields.map(
         (field) => ({ kind: 'Field', name: name(field) }) as FieldNode,
       ),
     ),
@@ -152,7 +156,8 @@ function inlineFragment(
  * `_context` (and the type name) for every item type a personalizable field
  * can return: models and components alike, whatever the schema calls them.
  * With `onlyTypes`, only those members of a union or interface. Decision
- * queries leave the type name out: only the variants query needs it.
+ * queries leave the type name and variant key out: only the variants query
+ * needs them.
  */
 function contextSelections(
   typeName: string,
@@ -161,7 +166,7 @@ function contextSelections(
   withType = true,
 ): SelectionNode[] {
   const fields = () =>
-    withType ? [contextField(), typenameField()] : [contextField()];
+    withType ? [contextField(true), typenameField()] : [contextField(false)];
   const type = schema.types[typeName];
   if (!type) return [];
   if (type.possibleTypes.length > 0) {
@@ -570,6 +575,7 @@ interface ItemContext {
   kind?: string | null;
   group_id?: string | null;
   variant_id?: string | null;
+  variant_key?: string | null;
 }
 
 function contextOf(item: unknown): ItemContext | null {
@@ -656,6 +662,29 @@ function containsKind(value: unknown, kind: string): boolean {
   if (!value || typeof value !== 'object') return false;
   if (contextOf(value)?.kind === kind) return true;
   return Object.values(value).some((child) => containsKind(child, kind));
+}
+
+/** The attribute Prepr's tracking pixel reads impressions and conversions from. */
+export interface PreprVariantProps {
+  'data-prepr-variant-key'?: string;
+}
+
+/**
+ * Attributes that let Prepr's tracking pixel count impressions of this item's
+ * variant, for an item from a query run with `variants: true`. Spread them on
+ * the element that shows the item; an item outside any personalization or A/B
+ * group gets none.
+ *
+ * Items rendered by the Next.js `PreprStack` are tagged for you. Reach for this
+ * for items nested inside them (cards, buttons, models in a section) and in
+ * frameworks without `PreprStack`.
+ *
+ * @example
+ * <article {...preprVariantProps(card)}>…</article>
+ */
+export function preprVariantProps(item: unknown): PreprVariantProps {
+  const key = contextOf(item)?.variant_key;
+  return key ? { 'data-prepr-variant-key': key } : {};
 }
 
 /** A run of stack items that renders the same way: see {@link splitStack}. */

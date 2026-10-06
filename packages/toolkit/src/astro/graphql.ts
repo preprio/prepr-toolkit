@@ -34,9 +34,11 @@ export type {
 } from '../core/graphql';
 export {
   PREPR_DEFAULT_VARIANT,
+  preprVariantProps,
   resolveVariants,
   splitStack,
   type PreprDecisions,
   type PreprStackBlock,
+  type PreprVariantProps,
   type ResolveVariantsOptions,
 } from '../core/variants';

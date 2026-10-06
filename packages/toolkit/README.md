@@ -304,14 +304,38 @@ A group takes one position, whichever variant shows. A group that shows nothing 
 
 ##### Fitting your page
 
-| Your page has…                                                              | Do this                                                                                |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| One page-builder list (`content`, `sections`, `stack`)                      | One `PreprStack` around it.                                                            |
-| Personalized lists inside sections (cards, buttons, models in a section)    | Nothing. They are narrowed down with the section they sit in.                          |
-| Several lists (hero, body, sidebar)                                         | One `PreprStack` per list, all with the same `decisions`.                              |
-| A personalized list outside any list you already wrap (e.g. `Page.buttons`) | Its own `PreprStack`.                                                                  |
-| Data used outside rendering (`generateMetadata`, JSON-LD)                   | `resolveVariants(data)` gives the default variants and A.                              |
-| No personalization on a page                                                | Nothing to change. `PreprStack` renders it statically and `decide()` sends no request. |
+| Your page has…                                                              | Do this                                                                                           |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| One page-builder list (`content`, `sections`, `stack`)                      | One `PreprStack` around it.                                                                       |
+| Personalized lists inside sections (cards, buttons, models in a section)    | Nothing. They are narrowed down with the section they sit in.                                     |
+| Several lists (hero, body, sidebar)                                         | One `PreprStack` per list, all with the same `decisions`.                                         |
+| A personalized list outside any list you already wrap (e.g. `Page.buttons`) | Its own `PreprStack`.                                                                             |
+| Data used outside rendering (`generateMetadata`, JSON-LD)                   | `resolveVariants(data)` gives the default variants and A.                                         |
+| Impression tracking for Prepr's metrics                                     | `trackVariants` on `PreprStack`; see [Impressions and conversions](#impressions-and-conversions). |
+| No personalization on a page                                                | Nothing to change. `PreprStack` renders it statically and `decide()` sends no request.            |
+
+##### Impressions and conversions
+
+Prepr's tracking pixel counts impressions of an element carrying `data-prepr-variant-key`, and clicks on any `data-prepr-variant-event` element inside it ([Prepr docs](https://docs.prepr.io/personalization/setting-up-personalization#track-impressions-and-conversions)). The client already fetches every variant's key, so you never select `_context { variant_key }` yourself.
+
+Opt in with `trackVariants`, and `PreprStack` puts the key on the section each personalized and A/B variant renders:
+
+```tsx
+<PreprStack items={data.Page.content} decisions={decisions} trackVariants render={…} />
+```
+
+For variants nested inside a section (cards, buttons, models), and outside Next.js, spread `preprVariantProps(item)` on the element that shows the item:
+
+```tsx
+<article {...preprVariantProps(card)}>…</article>
+```
+
+Conversions stay your choice: put `data-prepr-variant-event` (or `data-prepr-variant-event="QuoteRequest"`) on the element that counts, for example once in your button component.
+
+- Keys are added after the page hydrates; the pixel picks them up then. Each item of a variant tags the element it renders, in order. A variant that renders a different number of elements than it has items (a section with several root elements, or one rendering nothing) tags only its first element.
+- With `trackVariants`, each variant sits in a `display: contents` wrapper. It takes no box, but CSS child combinators (`>`) and `:first-child` from the stack's parent no longer reach the sections.
+- An element that already has `data-prepr-variant-key` keeps it, so existing manual tagging keeps working.
+- A hidden A/B variant never scrolls into view, so it records no impression.
 
 ##### A/B tests
 

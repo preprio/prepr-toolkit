@@ -7,6 +7,7 @@ import {
   PREPR_CONTEXT_ALIAS as CTX,
   PREPR_DEFAULT_VARIANT,
   decisionsFrom,
+  preprVariantProps,
   personalizationPaths,
   resolveVariants,
   splitStack,
@@ -155,7 +156,7 @@ describe('toVariantsDocument', () => {
 
   it('selects _context under an alias on every item type, models included', () => {
     const ctxOf = (type: string) =>
-      `... on ${type} { ${CTX}: _context { kind group_id variant_id } _preprType: __typename }`;
+      `... on ${type} { ${CTX}: _context { kind group_id variant_id variant_key } _preprType: __typename }`;
     expect(printed).toContain(ctxOf('Post'));
     expect(printed).toContain(ctxOf('Product'));
     expect(printed).toContain(ctxOf('Hero'));
@@ -182,6 +183,10 @@ describe('toDecisionDocument', () => {
     expect(printed).toContain('Page(slug: $slug)');
     expect(printed).toContain(`buttons { ${CTX}: _context`);
     expect(printed).toContain(`... on Post { ${CTX}: _context`);
+  });
+
+  it('leaves the variant key out: only rendering needs it', () => {
+    expect(printed).toContain(`${CTX}: _context { kind group_id variant_id }`);
   });
 
   it('inlines fragments and drops unused variables', () => {
@@ -377,5 +382,23 @@ describe('toAbProbeDocument', () => {
     expect(compact(toAbProbeDocument(query))).toBe(
       'query GetPageAbCheck($slug: String) { __typename Page(slug: $slug) { __typename cover { __typename } content { __typename ... on Cards { __typename cards { __typename } } } } }',
     );
+  });
+});
+
+describe('preprVariantProps', () => {
+  it('gives a grouped item its variant key, and anything else nothing', () => {
+    const item = {
+      [CTX]: {
+        kind: 'PERSONALIZATION',
+        group_id: 'g',
+        variant_id: 'X',
+        variant_key: 'key-x',
+      },
+    };
+    expect(preprVariantProps(item)).toEqual({
+      'data-prepr-variant-key': 'key-x',
+    });
+    expect(preprVariantProps({ _id: 'plain' })).toEqual({});
+    expect(preprVariantProps(null)).toEqual({});
   });
 });

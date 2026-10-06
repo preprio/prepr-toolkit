@@ -18,9 +18,11 @@ export { PreprError } from './core/server';
 export type { PreprErrorCode, PreprHeaders } from './core/types';
 export {
   PREPR_DEFAULT_VARIANT,
+  preprVariantProps,
   resolveVariants,
   splitStack,
   type PreprDecisions,
   type PreprStackBlock,
+  type PreprVariantProps,
   type ResolveVariantsOptions,
 } from './core/variants';
