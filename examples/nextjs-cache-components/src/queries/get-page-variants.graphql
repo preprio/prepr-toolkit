@@ -1,0 +1,25 @@
+# Every variant of every personalization and A/B group (`personalize: false`):
+# the same for every visitor, so it can be cached.
+query GetPageVariants($slug: String) {
+  Page(slug: $slug) {
+    title
+    _id
+    content(personalize: false) {
+      __typename
+      ... on Component {
+        _id
+        _context {
+          kind
+          group_id
+          variant_id
+        }
+      }
+      ... on Hero {
+        ...Hero
+      }
+      ... on Feature {
+        ...Feature
+      }
+    }
+  }
+}

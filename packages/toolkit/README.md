@@ -265,7 +265,7 @@ export default async function Page({
 - **`personalize: true` belongs in `<Suspense>`.** It reads request headers, which `'use cache'` does not allow.
 - **`preview: true` works inside `'use cache'`,** but the result is cached like any other unless [draft mode](https://nextjs.org/docs/app/guides/draft-mode) is enabled, which makes Next skip cached entries.
 
-To re-render less per visitor, stream only the parts that vary: Prepr sets `_context.group_id` on every element of a personalization or A/B group, so each group can get its own `<Suspense>` boundary while the rest of the page stays cached. `examples/nextjs-cache-components` does this.
+To re-render less per visitor, stream only the parts that vary. Query the page once with `content(personalize: false)` inside `'use cache'`: Prepr returns every variant of every group, tagged with `_context { kind group_id variant_id }`. Per visitor, a tiny `personalize: true` query returning only `_context` decides which variant each group shows. Each segment group gets its own `<Suspense>` boundary; A/B groups are resolved from the visitor's bucket without streaming. `examples/nextjs-cache-components` does all of this.
 
 Do not catch and swallow errors from `query` without [`unstable_rethrow`](https://nextjs.org/docs/app/api-reference/functions/unstable_rethrow): Next.js signals dynamic rendering by throwing from inside `fetch`, and the client passes those signals through.
 

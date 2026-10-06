@@ -8,33 +8,35 @@ visitor render on request.
 
 ## How it works
 
-- [`src/app/[[...slug]]/page.tsx`](./src/app/%5B%5B...slug%5D%5D/page.tsx) —
-  `getPage` runs the headerless query inside `'use cache'`. The result carries
-  Prepr's `personalized` verdict, and every element that belongs to a
-  personalization or A/B group carries `_context.group_id`.
-- Only those groups render per visitor. Each one sits in its own `<Suspense>`
-  boundary with the group's default variant as the fallback, and is replaced
-  by the variant this visitor gets. A visitor can be in several segments, so
-  each group resolves on its own: one section can target small companies while
-  another targets a specific company. All groups share one personalized query
-  per request (React `cache()`); everything outside a group is the cached
-  shell and never re-renders.
-- [`src/lib/personalization.ts`](./src/lib/personalization.ts) — splits the
-  page into plain runs and groups. A group is swapped as a whole because a
-  variant can hold a different number of sections than the default.
-- [`src/app/[[...slug]]/layout.tsx`](./src/app/%5B%5B...slug%5D%5D/layout.tsx) —
-  the preview toolbar reads request headers, so it sits in its own
-  `<Suspense>` boundary instead of making the whole route dynamic.
-- [`src/prepr-client.ts`](./src/prepr-client.ts) — one client, with `preview`
-  on in development so the toolbar's click-to-edit keeps its markers.
+Two queries per page, one shared and cached, one per visitor and tiny:
 
-The cached entry is tagged `prepr` by the client itself, so a Prepr publish
-webhook that calls `revalidateTag('prepr')` refreshes it; no `cacheTag()` call
-is needed.
+- **All variants, cached.** `getPageVariants` queries the page with
+  `content(personalize: false)` inside `'use cache'`. Prepr returns every
+  variant of every personalization and A/B group, each tagged with
+  `_context { kind group_id variant_id }`. The result is the same for every
+  visitor. Because it holds every variant, a group that shows nothing to "all
+  other users" (say, a banner only for small companies) still gets its place
+  on the page.
+- **The decision, per visitor.** `getDecisions` asks Prepr which variant of
+  each group this visitor gets: ids only, about 0.7 KB. Prepr decides from
+  everything the middleware forwards (customer profile, UTM parameters,
+  visitor IP, HubSpot id), so segments that depend on this request resolve
+  correctly. One query per request serves every group (React `cache()`).
+- **Segment groups stream.** Each sits in its own `<Suspense>` boundary; the
+  default variant (possibly empty) is the fallback. A visitor in several
+  segments gets the right variant per group.
+- **A/B tests never stream.** [`src/proxy.ts`](./src/proxy.ts) learns the
+  visitor's bucket once from Prepr's `x-prepr-customer-bucket` header, keeps
+  it in a cookie, and rewrites every page to `/ab/<bucket>/<slug>`. Pages are
+  prerendered per bucket and pick the A/B variant from the cached data, so the
+  right variant is in the first byte.
+- The preview toolbar reads request headers, so it sits in its own
+  `<Suspense>` boundary.
 
-Every group needs a default ("all other users") variant: a group whose
-default is empty is absent from the cached result, so the page cannot place a
-boundary for it.
+Grouping and variant selection live in
+[`src/lib/personalization.ts`](./src/lib/personalization.ts);
+`node --experimental-strip-types scripts/check-personalization.ts` checks it,
+including a group without a default variant.
 
 ## Run
 

@@ -8,8 +8,6 @@ fragment Hero on Hero {
   }
   _context {
     variant_key
-    kind
-    group_id
   }
   heading
   buttons {

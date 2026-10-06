@@ -1,0 +1,14 @@
+# Per visitor and tiny: which variant of each group this visitor gets.
+query GetPageDecision($slug: String) {
+  Page(slug: $slug) {
+    content {
+      ... on Component {
+        _context {
+          kind
+          group_id
+          variant_id
+        }
+      }
+    }
+  }
+}

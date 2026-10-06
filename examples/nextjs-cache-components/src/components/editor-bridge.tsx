@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
-import { GetPageBySlugQuery } from '@/gql/graphql';
+import { GetPageVariantsQuery } from '@/gql/graphql';
 
-type Page = NonNullable<GetPageBySlugQuery['Page']>;
+type Page = NonNullable<GetPageVariantsQuery['Page']>;
 
 /**
  * Hands the page data to a parent editor (e.g. examples/editor-demo) so it
