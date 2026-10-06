@@ -7,6 +7,8 @@ fragment Feature on Feature {
   }
   _context {
     variant_key
+    kind
+    group_id
   }
   image_position
   image {
