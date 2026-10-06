@@ -231,19 +231,22 @@ In preview, pass `preview: true`: queries skip the cache and stega markers stay 
 
 Custom headers go in two places. Client-level `headers` (`createPreprClient({ url, headers })`) are sent with every request and keep queries cacheable, so use them for fixed values such as a header your proxy requires. Per-query `headers` (or `init.headers`) may carry per-visitor values, so they make that request `no-store`.
 
-#### With Cache Components
+#### Personalization with Cache Components
 
-With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), the page can be a cached shell where only the personalized parts render per visitor. You keep your own page query; the client derives the rest from it.
+With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), a personalized page is still served from the cache: what never varies and every A/B test are in the static shell, and only the parts that differ per segment stream in. You keep your own query and your own components.
+
+**Do you need this?** Only if your pages are cached. A page that renders per request already gets this visitor's variants from `query(..., { personalize: true })`; render the result as is and skip this section.
+
+A normal page needs three changes:
 
 ```tsx
 import { PreprStack } from '@preprio/toolkit/nextjs/graphql';
 
-// Every variant of every personalization and A/B group: the same for every
-// visitor, so it is cached.
+// 1. Fetch every variant, in a cached function. Same query, one extra option.
 async function getPage(slug: string) {
   'use cache';
   const { data } = await prepr.query(
-    GetPageBySlugDocument,
+    PageDocument,
     { slug },
     { variants: true },
   );
@@ -255,57 +258,93 @@ export default async function Page({
 }: {
   params: Promise<{ slug?: string[] }>;
 }) {
-  const { slug: segments } = await params;
-  const slug = segments?.join('/') || '/';
+  const slug = (await params).slug?.join('/') || '/';
   const data = await getPage(slug);
 
+  // 2. Ask which variants this visitor gets. Do not await it.
+  const decisions = prepr.decide(PageDocument, { slug }, { from: data });
+
+  // 3. Render the list through PreprStack instead of directly.
   return (
     <PreprStack
       items={data.Page.content}
-      // Not awaited. `from` limits it to the groups this page has.
-      decisions={prepr.decide(GetPageBySlugDocument, { slug }, { from: data })}
-      render={(items, { index }) => (
-        <Sections sections={items} offset={index} />
-      )}
+      decisions={decisions}
+      render={(items) => <Sections items={items} />}
     />
   );
 }
 ```
 
-- **`variants: true`** adds `personalize: false` to every personalizable field in your query, at any depth (page stacks, nested stacks of models, personalized buttons), and selects each item's `_context`. The client learns which fields are personalizable from one schema introspection request per client.
-- **`decide()`** sends your query cut down to the personalizable paths, selecting only `_context`, per visitor and never cached. With `from: data` it asks only about the fields that actually hold segment groups on this page, and makes no request at all on pages without them (including pages with only A/B tests). Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id.
-- **`PreprStack`** renders everything that never varies in the static shell. Each segment-personalized group gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant (shown only to one segment) still gets its place.
-- **A/B tests never stream or swap.** `PreprStack` renders both variants of each A/B test in the static shell, and a tiny inline script shows the visitor's bucket before first paint. A is the default, also for crawlers and visitors without JavaScript. A hidden variant never becomes visible, so the tracking pixel records no impression for it. The bucket comes from a cookie that `resolvePreprBucket` (from `@preprio/toolkit/nextjs`) sets in your middleware, asking Prepr once per visitor:
+##### Your components stay the same
 
-  ```ts
-  const response = createPreprMiddleware(request, { preview });
-  await resolvePreprBucket(request, response, {
-    url,
-    preview,
-    // Only pages with an A/B test need the bucket; others skip the lookup.
-    onlyIf: () => prepr.hasAbTests(GetPageBySlugDocument, { slug }),
-  });
-  return response;
-  ```
+`render` receives items exactly as a query without personalization would return them: one item per personalization or A/B group (the variant this visitor gets), and every list nested inside an item already narrowed down the same way. `Sections` is the component you already have:
 
-  Prepr assigns the bucket; the toolkit only asks once, for visitors without a bucket cookie, on pages where `prepr.hasAbTests` (your query without its leaf fields, CDN-cached, answered from the `Vary` header without downloading the schema, and reused for a minute) finds an A/B test. Sites without A/B tests can skip the call. In-app navigation is covered too: `PreprStack` applies the bucket before the browser paints the new page. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
+```tsx
+// Before
+<Sections items={data.Page.content} />
 
+// After
+<PreprStack items={data.Page.content} decisions={decisions} render={(items) => <Sections items={items} />} />
+```
+
+**The one rule:** a `variants: true` result holds every variant. Every list you render from it goes through `PreprStack`, or visitors see all variants at once.
+
+##### Fitting your page
+
+| Your page has…                                                                         | Do this                                                                                                |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| One page-builder list (`content`, `sections`, `stack`)                                 | One `PreprStack` around it.                                                                            |
+| Personalized lists inside sections (cards, buttons, models in a section)               | Nothing. They are narrowed down with the section they sit in.                                          |
+| Several lists (hero, body, sidebar)                                                    | One `PreprStack` per list, all with the same `decisions`.                                              |
+| A personalized list outside any list you already wrap (e.g. `Page.buttons`)            | Its own `PreprStack`.                                                                                  |
+| Sections that depend on their position (which one owns the `<h1>`, the priority image) | Use `index` from `render={(items, { index }) => …}`: the position of the first item in the whole list. |
+| Data used outside rendering (`generateMetadata`, JSON-LD)                              | `resolveVariants(data)` gives the default variants and A.                                              |
+| No personalization on a page                                                           | Nothing to change. `PreprStack` renders it statically and `decide()` sends no request.                 |
+
+##### A/B tests
+
+`PreprStack` renders both variants of an A/B test in the static shell and shows the visitor's one before first paint; A is the default, also for crawlers. The visitor's bucket comes from a cookie set in your middleware. Prepr assigns the bucket, once per visitor, and only on pages that have an A/B test:
+
+```ts
+// proxy.ts
+const response = createPreprMiddleware(request, { preview });
+await resolvePreprBucket(request, response, {
+  url: process.env.PREPR_GRAPHQL_URL!,
+  preview,
+  onlyIf: () => prepr.hasAbTests(PageDocument, { slug }),
+});
+return response;
+```
+
+Sites without A/B tests leave this out. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
+
+##### Preview
+
+Run preview in [draft mode](https://nextjs.org/docs/app/guides/draft-mode), so editors see an edit on the next load instead of the cached page:
+
+```ts
+// app/api/prepr/draft/route.ts
+export const GET = createPreprDraftRoute({ preview });
+
+// proxy.ts, before anything else
+const draft = preprDraftRedirect(request, { preview });
+if (draft) return draft;
+```
+
+Outside preview both do nothing (the route answers 404). Keep the route out of your proxy `matcher`, or pass its path as `route` when it lives elsewhere. Inside the Prepr editor, browsers that refuse the draft cookie get the cached page instead, so keep a publish webhook calling `revalidateTag('prepr')`.
+
+<details>
+<summary>How it works</summary>
+
+- **`variants: true`** adds `personalize: false` to every personalizable field in your query, at any depth, and selects each item's `_context`. The client learns which fields are personalizable from one schema introspection request per client, kept in the Data Cache.
+- **`decide()`** sends your query cut down to the lists that hold segment groups on this page (`from: data`), selecting only `_context`, with the visitor's headers and never cached. Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id. A page without segment groups makes no request.
+- **`PreprStack`** renders items that never vary in the static shell. Each segment group, and each item with a segment group nested inside it, gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant still gets its place. A failed decision falls back to the defaults.
+- **A/B variants** are both in the HTML, each in a `display: contents` wrapper; an inline script (and a layout effect after in-app navigation) shows the bucket from the cookie. A hidden variant never becomes visible, so the tracking pixel records no impression for it.
+- **`hasAbTests`** sends your query without its leaf fields and no visitor headers, so Prepr's CDN caches it, and reads the answer from the `Vary` header. Answers are reused for a minute.
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
-- **Outside `'use cache'`, set `revalidate`.** With `revalidate: false` (or a number of seconds) on the client, Next treats the fetch as cached and the route still prerenders. With `revalidate` unset, a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
-- **Run preview in draft mode.** `preview: true` works inside `'use cache'`, but the result is cached like any other; [draft mode](https://nextjs.org/docs/app/guides/draft-mode) makes Next render per request and skip `'use cache'` entries and the Data Cache, so editors see an edit on the next load without a publish webhook. Two helpers from `@preprio/toolkit/nextjs` set it up: `preprDraftRedirect` sends a preview visitor through a draft route once, and `createPreprDraftRoute` is that route.
+- **Outside `'use cache'`, set `revalidate`** on the client (`false` or seconds). Otherwise a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
 
-  ```ts
-  // app/api/prepr/draft/route.ts
-  export const GET = createPreprDraftRoute({ preview });
-
-  // proxy.ts, first thing
-  const draft = preprDraftRedirect(request, { preview });
-  if (draft) return draft;
-  ```
-
-  Outside preview both do nothing (the route answers 404). Keep the route out of your proxy `matcher`, or pass its path as `route` when it lives elsewhere. Inside the Prepr editor the site is a cross-site iframe, so on https the draft cookie is set `Partitioned` (`SameSite=None`), which browsers that block third-party cookies still accept. A browser that refuses it anyway gets the cached page rather than a redirect loop, so keep your publish webhook calling `revalidateTag` as the fallback.
-
-Without Cache Components, `resolveVariants(data, { decisions, bucket })` applies a visitor's decisions to a variants result anywhere.
+</details>
 
 `examples/nextjs-cache-components` is a runnable version.
 
@@ -993,6 +1032,10 @@ createPreprPreview({ props, options: { locale: 'nl' } });
 - **Check the token permissions**: "Enable edit mode" must be checked on the token in Prepr.
 - **Check whether the encoded text sits in a hidden element.** The parent of the encoded text node is what becomes editable, and a parent that renders no box (`display: none`, `visibility: hidden`, the `hidden` attribute) is skipped — it cannot be hovered or clicked. Put `data-prepr-edit-target` on the visible ancestor that should be editable instead. See [Choosing the element that becomes editable](#choosing-the-element-that-becomes-editable).
 - **Inspect the tagged elements**: `document.querySelectorAll('[data-prepr-encoded]')` in the console lists everything edit mode found. An element you expected to be in that list points at one of the two cases above.
+
+### Every variant shows at once
+
+The list came from a `variants: true` query but was rendered directly. Pass it through `PreprStack` (or `resolveVariants`); see [Personalization with Cache Components](#personalization-with-cache-components).
 
 ### Headers not working
 
