@@ -263,18 +263,22 @@ describe('resolving variants', () => {
     expect(ids(resolved[3]!.cards!)).toEqual(['post-small']);
   });
 
-  it('splits a stack into blocks, streaming only what varies per visitor', () => {
+  it('splits a stack into blocks: segment groups stream, A/B groups switch', () => {
     const blocks = splitStack(content);
     expect(
-      blocks.map((block) => [block.key, ids(block.items), block.personalized]),
+      blocks.map((block) => [
+        block.key,
+        ids(block.items),
+        block.personalized,
+        block.abTest,
+      ]),
     ).toEqual([
-      ['group:g-hero', ['hero-default', 'hero-acme'], true],
-      ['group:g-banner', ['banner-small'], true],
-      // A/B items resolve from the bucket, so they join the static run...
-      ['items:3', ['cta-a', 'cta-b'], false],
-      // ...but an item with a personalized nested stack varies per visitor.
-      ['items:5', ['cards'], true],
-      ['items:6', ['plain'], false],
+      ['group:g-hero', ['hero-default', 'hero-acme'], true, false],
+      ['group:g-banner', ['banner-small'], true, false],
+      ['group:g-cta', ['cta-a', 'cta-b'], false, true],
+      // An item with a personalized nested stack varies per visitor.
+      ['items:5', ['cards'], true, false],
+      ['items:6', ['plain'], false, false],
     ]);
   });
 });

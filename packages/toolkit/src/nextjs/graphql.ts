@@ -20,6 +20,7 @@ import {
   splitStack,
   type PreprDecisions,
 } from '../core/variants';
+import { PREPR_BUCKET_COOKIE } from './bucket';
 import { getPreprHeaders } from './server';
 
 export interface PreprNextClientOptions extends PreprClientOptions {
@@ -155,63 +156,136 @@ export interface PreprStackProps<T> {
   items: readonly T[];
   /**
    * The visitor's decisions, as a promise from `decide()`. Only the parts
-   * that vary per visitor wait for it; a failed decision falls back to the
+   * that vary per segment wait for it; a failed decision falls back to the
    * default variants instead of failing the page.
    */
   decisions: Promise<PreprDecisions>;
-  /** The visitor's A/B bucket; see `resolvePreprBucket`. Default `A`. */
-  bucket?: string;
   /** Renders resolved stack items, e.g. your section switch. */
   render: (items: T[]) => ReactNode;
+  /**
+   * The visitor's A/B bucket, when the route already knows it (for example
+   * from a URL segment). Leave it out to render both variants of each A/B
+   * test and pick the visitor's in the browser before first paint.
+   */
+  bucket?: string;
+  /** Nonce for the inline A/B switch script, under a strict CSP. */
+  nonce?: string;
+}
+
+const AB_ATTRIBUTE = 'data-prepr-ab';
+const AB_BUCKETS = ['A', 'B'] as const;
+
+// The variant wrappers never affect layout, and only A shows by default: what
+// visitors without JavaScript, crawlers and anonymous visitors get.
+const AB_BASE_CSS = `[${AB_ATTRIBUTE}]{display:contents}[${AB_ATTRIBUTE}]:not([${AB_ATTRIBUTE}="A"]){display:none}`;
+
+// Runs while the HTML is parsed, so the visitor's variant is the first one
+// painted: the bucket cookie (set by resolvePreprBucket) adds one rule. The
+// rule goes in a constructable stylesheet, not a <style> element: React
+// hydrates <head>, and an element it did not render there is a hydration
+// error. A hidden variant never reaches 50% visibility, so the tracking pixel
+// never records an impression for it.
+const AB_SWITCH_SCRIPT = `(function(){var m=document.cookie.match(/(?:^|; )${PREPR_BUCKET_COOKIE}=([AB])(?:;|$)/);if(!m||m[1]==="A"||window.__preprAbBucket)return;window.__preprAbBucket=m[1];var css='[${AB_ATTRIBUTE}="A"]{display:none!important}[${AB_ATTRIBUTE}="'+m[1]+'"]{display:contents!important}';try{var sheet=new CSSStyleSheet();sheet.replaceSync(css);document.adoptedStyleSheets=document.adoptedStyleSheets.concat(sheet)}catch(e){var s=document.createElement("style");s.textContent=css;document.head.appendChild(s)}})()`;
+
+/**
+ * Renders items for every A/B bucket the visitor might have, each in a
+ * wrapper the switch script shows or hides; or for the known bucket only.
+ */
+function renderBuckets<T>(
+  items: T[],
+  render: (items: T[]) => ReactNode,
+  options: { bucket?: string; decisions?: PreprDecisions; abTest: boolean },
+): ReactNode {
+  const { bucket, decisions, abTest } = options;
+  if (!abTest || bucket) {
+    return render(resolveVariants(items, { decisions, bucket }));
+  }
+  return AB_BUCKETS.map((variant) =>
+    createElement(
+      'div',
+      { key: variant, [AB_ATTRIBUTE]: variant },
+      render(resolveVariants(items, { decisions, bucket: variant })),
+    ),
+  );
 }
 
 async function PersonalizedBlock<T>({
   items,
   decisions,
   bucket,
+  abTest,
   render,
-}: Omit<PreprStackProps<T>, 'items'> & { items: T[] }): Promise<ReactNode> {
+}: {
+  items: T[];
+  decisions: Promise<PreprDecisions>;
+  bucket?: string;
+  abTest: boolean;
+  render: (items: T[]) => ReactNode;
+}): Promise<ReactNode> {
   const decided = await decisions.catch((error: unknown) => {
     // Next.js control flow must reach Next; anything else degrades to the
     // default variant rather than an error page.
     if (isFrameworkSignal(error)) throw error;
     return undefined;
   });
-  return render(resolveVariants(items, { decisions: decided, bucket }));
+  return renderBuckets(items, render, { bucket, decisions: decided, abTest });
 }
 
 /**
  * Renders a personalized stack with Cache Components / Partial Prerendering.
  *
- * Parts that never vary, and A/B tests (resolved from `bucket`), render in
- * the static shell. Each segment-personalized group, and each item with
- * personalized content nested inside it, gets its own `<Suspense>` boundary:
- * the default variant (possibly empty) is the fallback, and this visitor's
- * variant streams in once `decisions` resolves. Because `items` holds every
- * variant, a group with no default variant still gets its place.
+ * - Items that never vary render in the static shell.
+ * - A/B tests render in the static shell too, once per bucket; a tiny inline
+ *   script shows the visitor's bucket (from `resolvePreprBucket`'s cookie)
+ *   before first paint, so no variant streams or swaps in. `A` is the
+ *   default. Pass `bucket` instead when the route already knows it.
+ * - Each segment-personalized group, and each item with segment content
+ *   nested inside it, gets its own `<Suspense>` boundary: the default
+ *   variant (possibly empty) is the fallback, and this visitor's variant
+ *   streams in once `decisions` resolves. Because `items` holds every
+ *   variant, a group with no default variant still gets its place.
  *
  * @example
- * const { data } = await getPage(slug); // 'use cache' + query(..., { variants: true })
+ * const page = await getPage(slug); // 'use cache' + query(..., { variants: true })
  * <PreprStack
- *   items={data.Page.content}
+ *   items={page.content}
  *   decisions={prepr.decide(PageDocument, { slug })}
- *   bucket={bucket}
  *   render={(items) => <Sections sections={items} />}
  * />
  */
 export function PreprStack<T>({
   items,
   decisions,
-  bucket,
   render,
+  bucket,
+  nonce,
 }: PreprStackProps<T>): ReactElement {
   // Blocks that never wait would leave a rejection unobserved.
   decisions.catch(() => undefined);
+  const blocks = splitStack(items);
+  const needsSwitch = !bucket && blocks.some((block) => block.abTest);
+
   return createElement(
     Fragment,
     null,
-    ...splitStack(items).map((block) => {
-      const fallback = render(resolveVariants(block.items, { bucket }));
+    needsSwitch &&
+      createElement(
+        Fragment,
+        { key: 'prepr-ab' },
+        createElement('style', {
+          nonce,
+          dangerouslySetInnerHTML: { __html: AB_BASE_CSS },
+        }),
+        createElement('script', {
+          nonce,
+          dangerouslySetInnerHTML: { __html: AB_SWITCH_SCRIPT },
+        }),
+      ),
+    ...blocks.map((block) => {
+      const fallback = renderBuckets(block.items, render, {
+        bucket,
+        abTest: block.abTest,
+      });
       if (!block.personalized) {
         return createElement(Fragment, { key: block.key }, fallback);
       }
@@ -222,6 +296,7 @@ export function PreprStack<T>({
           items: block.items,
           decisions,
           bucket,
+          abTest: block.abTest,
           render,
         }),
       );

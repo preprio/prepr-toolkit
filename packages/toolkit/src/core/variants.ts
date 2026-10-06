@@ -462,11 +462,12 @@ export function resolveVariants<T>(
   return resolve(data) as T;
 }
 
-function variesPerVisitor(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(variesPerVisitor);
+function containsKind(value: unknown, kind: string): boolean {
+  if (Array.isArray(value))
+    return value.some((item) => containsKind(item, kind));
   if (!value || typeof value !== 'object') return false;
-  if (contextOf(value)?.kind === 'PERSONALIZATION') return true;
-  return Object.values(value).some(variesPerVisitor);
+  if (contextOf(value)?.kind === kind) return true;
+  return Object.values(value).some((child) => containsKind(child, kind));
 }
 
 /** A run of stack items that renders the same way: see {@link splitStack}. */
@@ -475,34 +476,43 @@ export interface PreprStackBlock<T> {
   items: T[];
   /**
    * Some item in the block (or nested inside one) is a segment variant, so
-   * the block depends on the visitor. A/B variants alone do not count: they
-   * resolve from the bucket.
+   * the block depends on the visitor and is decided per request.
    */
   personalized: boolean;
+  /**
+   * Some item in the block (or nested inside one) is an A/B variant. Without
+   * a known bucket, such a block renders once per bucket and the visitor's
+   * bucket is picked in the browser before first paint.
+   */
+  abTest: boolean;
 }
 
 /**
- * Splits a variants-query stack into blocks: each personalization group
- * becomes one block (a variant can hold a different number of items than the
- * default), consecutive items that never vary are merged.
+ * Splits a variants-query stack into blocks. Each personalization or A/B
+ * group becomes one block (a variant can hold a different number of items
+ * than the default); consecutive items that never vary are merged.
  */
 export function splitStack<T>(items: readonly T[]): PreprStackBlock<T>[] {
   const blocks: PreprStackBlock<T>[] = [];
   items.forEach((item, index) => {
     const ctx = contextOf(item);
-    const groupKey =
-      ctx?.kind === 'PERSONALIZATION' ? `group:${ctx.group_id}` : null;
-    const personalized = groupKey !== null || variesPerVisitor(item);
+    const groupKey = ctx ? `group:${ctx.group_id}` : null;
+    const personalized = containsKind(item, 'PERSONALIZATION');
+    const abTest = containsKind(item, 'AB_TEST');
     const last = blocks.at(-1);
+    const plain = !groupKey && !personalized && !abTest;
     if (groupKey && last?.key === groupKey) {
+      last.personalized ||= personalized;
+      last.abTest ||= abTest;
       last.items.push(item);
-    } else if (!groupKey && !personalized && last && !last.personalized) {
+    } else if (plain && last && !last.personalized && !last.abTest) {
       last.items.push(item);
     } else {
       blocks.push({
         key: groupKey ?? `items:${index}`,
         items: [item],
         personalized,
+        abTest,
       });
     }
   });

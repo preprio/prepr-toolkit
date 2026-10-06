@@ -253,9 +253,9 @@ async function getPage(slug: string) {
 export default async function Page({
   params,
 }: {
-  params: Promise<{ bucket: string; slug?: string[] }>;
+  params: Promise<{ slug?: string[] }>;
 }) {
-  const { bucket, slug: segments } = await params;
+  const { slug: segments } = await params;
   const slug = segments?.join('/') || '/';
   const page = await getPage(slug);
 
@@ -263,7 +263,6 @@ export default async function Page({
     <PreprStack
       items={page.content}
       decisions={prepr.decide(GetPageBySlugDocument, { slug })} // not awaited
-      bucket={bucket}
       render={(items) => <Sections sections={items} />}
     />
   );
@@ -272,17 +271,16 @@ export default async function Page({
 
 - **`variants: true`** adds `personalize: false` to every personalizable field in your query, at any depth (page stacks, nested stacks of models, personalized buttons), and selects each item's `_context`. The client learns which fields are personalizable from one schema introspection request per client.
 - **`decide()`** sends your query cut down to the personalizable paths, selecting only `_context`: a few hundred bytes, per visitor, never cached. Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id.
-- **`PreprStack`** renders everything that never varies, and every A/B test, in the static shell. Each segment-personalized group gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant (shown only to one segment) still gets its place.
-- **A/B tests never stream.** `resolvePreprBucket` (from `@preprio/toolkit/nextjs`) learns the visitor's bucket from Prepr once and keeps it in a cookie. Put it in the URL with a middleware rewrite so the page is prerendered per bucket:
+- **`PreprStack`** renders everything that never varies in the static shell. Each segment-personalized group gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant (shown only to one segment) still gets its place.
+- **A/B tests never stream or swap.** `PreprStack` renders both variants of each A/B test in the static shell, and a tiny inline script shows the visitor's bucket before first paint. A is the default, also for crawlers and visitors without JavaScript. A hidden variant never becomes visible, so the tracking pixel records no impression for it. The bucket comes from a cookie that `resolvePreprBucket` (from `@preprio/toolkit/nextjs`) sets in your middleware, asking Prepr once per visitor:
 
   ```ts
   const response = createPreprMiddleware(request, { preview });
-  const bucket = await resolvePreprBucket(request, response, { url, preview });
-  response.headers.set(
-    'x-middleware-rewrite',
-    new URL(`/ab/${bucket}${request.nextUrl.pathname}`, request.url).toString(),
-  );
+  await resolvePreprBucket(request, response, { url, preview });
+  return response;
   ```
+
+  Sites without A/B tests can skip it. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
 
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
 - **Outside `'use cache'`, set `revalidate`.** With `revalidate: false` (or a number of seconds) on the client, Next treats the fetch as cached and the route still prerenders. With `revalidate` unset, a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".

@@ -24,10 +24,11 @@ The page uses its ordinary query ([`get-page-by-slug.graphql`](./src/queries/get
   static shell; each segment group gets its own `<Suspense>` boundary with
   the default variant as fallback, and a visitor in several segments gets the
   right variant per group.
-- **A/B tests never stream.** [`src/proxy.ts`](./src/proxy.ts) gets the
-  visitor's bucket with `resolvePreprBucket` (asked from Prepr once, then a
-  cookie) and rewrites every page to `/ab/<bucket>/<slug>`, which is
-  prerendered per bucket.
+- **A/B tests never stream or swap.** Both variants are in the cached page;
+  [`src/proxy.ts`](./src/proxy.ts) stores the visitor's bucket in a cookie
+  with `resolvePreprBucket` (asked from Prepr once), and a tiny inline script
+  from `PreprStack` shows that bucket's variant before first paint. A is the
+  default, also for crawlers and visitors without JavaScript.
 - The preview toolbar reads request headers, so it sits in its own
   `<Suspense>` boundary.
 

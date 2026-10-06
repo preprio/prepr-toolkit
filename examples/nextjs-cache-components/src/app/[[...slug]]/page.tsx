@@ -21,21 +21,17 @@ async function getPage(slug: string) {
   return data.Page;
 }
 
-// src/proxy.ts rewrites every page to /ab/<bucket>/<slug>, with the visitor's
-// A/B bucket from Prepr. Prerender the home page for both buckets.
+// Prerender the home page; other slugs render on first request.
 export function generateStaticParams() {
-  return [
-    { bucket: 'A', slug: [] },
-    { bucket: 'B', slug: [] },
-  ];
+  return [{ slug: [] }];
 }
 
 export default async function Page({
   params,
 }: {
-  params: Promise<{ bucket: string; slug?: string[] }>;
+  params: Promise<{ slug?: string[] }>;
 }) {
-  const { bucket, slug: segments } = await params;
+  const { slug: segments } = await params;
   const slug = segments?.join('/') || '/';
 
   const page = await getPage(slug);
@@ -46,12 +42,12 @@ export default async function Page({
       <meta property="prepr:id" content={page._id} />
       {/* Serializes the whole page for the editor; preview only. */}
       {isPreview && <EditorBridge page={page} />}
-      {/* Static: everything that never varies, and A/B tests (from the
-          bucket). Streamed per group: this visitor's segment variants. */}
+      {/* Static: everything that never varies, and A/B tests (both variants;
+          the visitor's bucket is shown before first paint). Streamed per
+          group: this visitor's segment variants. */}
       <PreprStack
         items={page.content}
         decisions={prepr().decide(GetPageBySlugDocument, { slug })}
-        bucket={bucket}
         render={(elements) => <Sections elements={elements} />}
       />
     </div>
