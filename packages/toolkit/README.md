@@ -231,15 +231,41 @@ In preview, pass `preview: true`: queries skip the cache and stega markers stay 
 
 Custom headers go in two places. Client-level `headers` (`createPreprClient({ url, headers })`) are sent with every request and keep queries cacheable, so use them for fixed values such as a header your proxy requires. Per-query `headers` (or `init.headers`) may carry per-visitor values, so they make that request `no-store`.
 
-With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components), run headerless queries inside `'use cache'` and tag the entry there with `cacheTag('prepr')`. Run `personalize: true` queries inside `<Suspense>`, because they read request headers, which `'use cache'` does not allow. `preview: true` works inside `'use cache'`, but the result is still cached unless [draft mode](https://nextjs.org/docs/app/guides/draft-mode) is enabled.
+#### With Cache Components
+
+With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), cache the headerless query and render the per-visitor part inside `<Suspense>`. `personalized` decides at prerender time whether a page needs that part at all:
 
 ```tsx
 async function getPage(slug: string) {
   'use cache';
-  cacheTag('prepr');
   return prepr.query(GetPageBySlugDocument, { slug }); // { data, personalized }
 }
+
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ slug?: string[] }>;
+}) {
+  const slug = (await params).slug?.join('/') || '/';
+  const { data, personalized } = await getPage(slug);
+  if (!personalized) return <PageContent page={data.Page} />;
+
+  // The default variant is the static fallback; this visitor's variant
+  // streams in over it.
+  return (
+    <Suspense fallback={<PageContent page={data.Page} />}>
+      <PersonalizedPage slug={slug} /> {/* query with personalize: true */}
+    </Suspense>
+  );
+}
 ```
+
+- **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
+- **Outside `'use cache'`, set `revalidate`.** With `revalidate: false` (or a number of seconds) on the client, Next treats the fetch as cached and the route still prerenders. With `revalidate` unset, a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
+- **`personalize: true` belongs in `<Suspense>`.** It reads request headers, which `'use cache'` does not allow.
+- **`preview: true` works inside `'use cache'`,** but the result is cached like any other unless [draft mode](https://nextjs.org/docs/app/guides/draft-mode) is enabled, which makes Next skip cached entries.
+
+`examples/nextjs-cache-components` is a runnable version.
 
 Do not catch and swallow errors from `query` without [`unstable_rethrow`](https://nextjs.org/docs/app/api-reference/functions/unstable_rethrow): Next.js signals dynamic rendering by throwing from inside `fetch`, and the client passes those signals through.
 
@@ -1057,13 +1083,14 @@ Without it the `<em>` would be the editable element; with it the whole figure is
 
 Runnable examples live in the repository root:
 
-| Example              | What it shows                                                      |
-| -------------------- | ------------------------------------------------------------------ |
-| `examples/nextjs`    | App Router, middleware, `createPreprClient`, custom image loader   |
-| `examples/astro`     | Astro middleware and `.astro` components                           |
-| `examples/sveltekit` | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components       |
-| `examples/nuxt`      | `server/middleware`, `useAsyncData`, `.vue` components             |
-| `examples/express`   | Vanilla core — a hand-written adapter for an unsupported framework |
+| Example                            | What it shows                                                      |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `examples/nextjs`                  | App Router, middleware, `createPreprClient`, custom image loader   |
+| `examples/nextjs-cache-components` | Cache Components: cached page shell, personalized `<Suspense>`     |
+| `examples/astro`                   | Astro middleware and `.astro` components                           |
+| `examples/sveltekit`               | `hooks.server.ts`, `+layout.server.ts`, `.svelte` components       |
+| `examples/nuxt`                    | `server/middleware`, `useAsyncData`, `.vue` components             |
+| `examples/express`                 | Vanilla core — a hand-written adapter for an unsupported framework |
 
 ## Migrating from `@preprio/prepr-nextjs`
 

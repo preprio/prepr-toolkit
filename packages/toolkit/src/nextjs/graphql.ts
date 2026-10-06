@@ -57,10 +57,11 @@ type NextFetchInit = RequestInit & {
  * `personalize: true` forward the visitor's Prepr headers and are never
  * cached.
  *
- * With Cache Components, run headerless queries inside `'use cache'` (tag the
- * entry with `cacheTag('prepr')` there) and `personalize: true` queries inside
- * `<Suspense>`: `personalize` reads request headers, which `'use cache'`
- * forbids. `preview: true` works inside `'use cache'`, but the entry is still
+ * With Cache Components, run headerless queries inside `'use cache'` (the
+ * client's fetch tags carry over to the entry, so `revalidateTag` reaches it)
+ * and `personalize: true` queries inside `<Suspense>`: `personalize` reads
+ * request headers, which `'use cache'` forbids. A headerless query outside
+ * both only prerenders when `revalidate` is set. `preview: true` works inside `'use cache'`, but the entry is still
  * cached unless draft mode is enabled, which makes Next skip cached entries.
  *
  * Requires the `graphql` package, which graphql-codegen already installs.

@@ -130,7 +130,71 @@ importers:
         version: 16.14.2
       next:
         specifier: ^16.3.3
-        version: 16.3.4(@babel/core@8.0.1)(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 16.3.4(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+      tailwind-merge:
+        specifier: ^3.6.0
+        version: 3.6.0
+    devDependencies:
+      '@graphql-codegen/cli':
+        specifier: 6.3.1
+        version: 6.3.1(@parcel/watcher@2.6.0)(@types/node@25.9.5)(crossws@0.3.5)(graphql@16.14.2)(typescript@5.9.3)
+      '@graphql-codegen/client-preset':
+        specifier: ^5.3.0
+        version: 5.3.0(graphql@16.14.2)
+      '@graphql-codegen/introspection':
+        specifier: 5.0.2
+        version: 5.0.2(graphql@16.14.2)
+      '@graphql-codegen/typescript':
+        specifier: ^5.0.10
+        version: 5.0.10(graphql@16.14.2)
+      '@graphql-codegen/typescript-resolvers':
+        specifier: ^5.1.8
+        version: 5.1.8(graphql@16.14.2)
+      '@tailwindcss/postcss':
+        specifier: ^4.3.3
+        version: 4.3.3
+      '@types/node':
+        specifier: ^25.9.5
+        version: 25.9.5
+      '@types/react':
+        specifier: 19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  examples/nextjs-cache-components:
+    dependencies:
+      '@graphql-typed-document-node/core':
+        specifier: ^3.2.0
+        version: 3.2.0(graphql@16.14.2)
+      '@preprio/toolkit':
+        specifier: workspace:*
+        version: link:../../packages/toolkit
+      classnames:
+        specifier: ^2.5.1
+        version: 2.5.1
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      graphql:
+        specifier: ^16.14.2
+        version: 16.14.2
+      next:
+        specifier: ^16.3.3
+        version: 16.3.4(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -10280,7 +10344,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 25.9.5
 
   '@typescript-eslint/eslint-plugin@8.67.0(@typescript-eslint/parser@8.67.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:
@@ -11134,7 +11198,7 @@ snapshots:
 
   buffer-image-size@0.6.4:
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 25.9.5
 
   buffer@6.0.3:
     dependencies:
@@ -12385,7 +12449,7 @@ snapshots:
 
   happy-dom@20.11.1:
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 25.9.5
       '@types/whatwg-mimetype': 3.0.2
       '@types/ws': 8.18.1
       buffer-image-size: 0.6.4
@@ -13200,31 +13264,6 @@ snapshots:
 
   neotraverse@1.0.1: {}
 
-  next@16.3.4(@babel/core@8.0.1)(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
-    dependencies:
-      '@next/env': 16.3.4
-      '@swc/helpers': 0.5.23
-      baseline-browser-mapping: 2.11.7
-      caniuse-lite: 1.0.30001806
-      postcss: 8.5.25
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      styled-jsx: 5.1.6(@babel/core@8.0.1)(react@19.2.8)
-    optionalDependencies:
-      '@next/swc-darwin-arm64': 16.3.4
-      '@next/swc-darwin-x64': 16.3.4
-      '@next/swc-linux-arm64-gnu': 16.3.4
-      '@next/swc-linux-arm64-musl': 16.3.4
-      '@next/swc-linux-x64-gnu': 16.3.4
-      '@next/swc-linux-x64-musl': 16.3.4
-      '@next/swc-win32-arm64-msvc': 16.3.4
-      '@next/swc-win32-x64-msvc': 16.3.4
-      sharp: 0.35.4(@types/node@25.9.5)
-    transitivePeerDependencies:
-      - '@babel/core'
-      - '@types/node'
-      - babel-plugin-macros
-
   next@16.3.4(@types/node@22.20.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       '@next/env': 16.3.4
@@ -13234,7 +13273,7 @@ snapshots:
       postcss: 8.5.25
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
-      styled-jsx: 5.1.6(@babel/core@8.0.1)(react@19.2.8)
+      styled-jsx: 5.1.6(react@19.2.8)
     optionalDependencies:
       '@next/swc-darwin-arm64': 16.3.4
       '@next/swc-darwin-x64': 16.3.4
@@ -13245,6 +13284,31 @@ snapshots:
       '@next/swc-win32-arm64-msvc': 16.3.4
       '@next/swc-win32-x64-msvc': 16.3.4
       sharp: 0.35.4(@types/node@22.20.1)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@types/node'
+      - babel-plugin-macros
+
+  next@16.3.4(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    dependencies:
+      '@next/env': 16.3.4
+      '@swc/helpers': 0.5.23
+      baseline-browser-mapping: 2.11.7
+      caniuse-lite: 1.0.30001806
+      postcss: 8.5.25
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+      styled-jsx: 5.1.6(react@19.2.8)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 16.3.4
+      '@next/swc-darwin-x64': 16.3.4
+      '@next/swc-linux-arm64-gnu': 16.3.4
+      '@next/swc-linux-arm64-musl': 16.3.4
+      '@next/swc-linux-x64-gnu': 16.3.4
+      '@next/swc-linux-x64-musl': 16.3.4
+      '@next/swc-win32-arm64-msvc': 16.3.4
+      '@next/swc-win32-x64-msvc': 16.3.4
+      sharp: 0.35.4(@types/node@25.9.5)
     transitivePeerDependencies:
       - '@babel/core'
       - '@types/node'
@@ -14787,12 +14851,10 @@ snapshots:
 
   structured-clone-es@2.0.1: {}
 
-  styled-jsx@5.1.6(@babel/core@8.0.1)(react@19.2.8):
+  styled-jsx@5.1.6(react@19.2.8):
     dependencies:
       client-only: 0.0.1
       react: 19.2.8
-    optionalDependencies:
-      '@babel/core': 8.0.1
 
   stylehacks@8.0.1(postcss@8.5.25):
     dependencies:
