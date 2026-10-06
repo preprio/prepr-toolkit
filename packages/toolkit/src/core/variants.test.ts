@@ -10,6 +10,7 @@ import {
   personalizationPaths,
   resolveVariants,
   splitStack,
+  toAbProbeDocument,
   toDecisionDocument,
   toSchemaInfo,
   toVariantsDocument,
@@ -358,5 +359,23 @@ describe('decision pruned to the groups a page actually has', () => {
 
   it('asks nothing when the page has no segment groups', () => {
     expect(toDecisionDocument(PAGE_QUERY, schema, new Map())).toBeNull();
+  });
+});
+
+describe('toAbProbeDocument', () => {
+  it('keeps every path to items, without leaves, fragments or unused variables', () => {
+    const query = `
+      query GetPage($slug: String, $width: Int) {
+        Page(slug: $slug) {
+          title
+          cover { url(width: $width) }
+          content { ... on Hero { heading } ...CardsFields }
+        }
+      }
+      fragment CardsFields on Cards { cards { ... on Post { title } } }
+    `;
+    expect(compact(toAbProbeDocument(query))).toBe(
+      'query GetPageAbCheck($slug: String) { __typename Page(slug: $slug) { __typename cover { __typename } content { __typename ... on Cards { __typename cards { __typename } } } } }',
+    );
   });
 });

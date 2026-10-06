@@ -741,37 +741,33 @@ describe('variants and decide', () => {
     expect(sent()[0]).toContain('_preprContext');
   });
 
-  it('tells whether a page has an A/B test, and reuses the answer', async () => {
-    const withAb = {
-      data: {
-        Page: {
-          content: [
-            {
-              _preprContext: {
-                kind: 'AB_TEST',
-                group_id: 'g',
-                variant_id: 'A',
-              },
-            },
-          ],
-        },
-      },
-    };
-    const { client, sent, fetch } = schemaSetup(withAb);
+  it('tells whether a page has an A/B test from Vary, without the schema', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) =>
+      respond(
+        { data: { Page: { __typename: 'Page' } } },
+        String(init?.body).includes('"/ab"')
+          ? { vary: 'Authorization, Prepr-ABTesting5050' }
+          : { vary: 'Authorization, Prepr-Segments' },
+      ),
+    );
+    const client = createPreprClient({ url: GRAPHQL_URL, fetch });
 
     expect(await client.hasAbTests(QUERY, { slug: '/ab' })).toBe(true);
     expect(await client.hasAbTests(QUERY, { slug: '/ab' })).toBe(true);
-    expect(sent()).toHaveLength(1);
-    // Sent without visitor headers, so Prepr's CDN can cache it.
-    const init = fetch.mock.calls.at(-1)![1]!;
+    expect(await client.hasAbTests(QUERY, { slug: '/' })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    const init = fetch.mock.calls[0]![1]!;
+    // Leaf fields dropped, no schema introspection, no visitor headers.
+    expect(JSON.parse(init.body as string).query).toBe(
+      'query GetPageAbCheck($slug:String){__typename Page(slug:$slug){__typename content{__typename}}}',
+    );
     expect(new Headers(init.headers).get('Prepr-Customer-Id')).toBeNull();
   });
 
   it('errs toward true when the A/B check fails', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) =>
-      String(init?.body).includes('__schema')
-        ? respond(introspection)
-        : respond('down', {}, 503),
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      respond('down', {}, 503),
     );
     const client = createPreprClient({ url: GRAPHQL_URL, fetch });
 

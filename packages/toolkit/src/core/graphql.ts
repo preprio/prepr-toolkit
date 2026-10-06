@@ -15,7 +15,7 @@ import { stegaClean } from './stega/clean';
 import {
   PREPR_SCHEMA_QUERY,
   decisionsFrom,
-  hasAbTest,
+  toAbProbeDocument,
   personalizationPaths,
   toDecisionDocument,
   toSchemaInfo,
@@ -181,9 +181,10 @@ export interface PreprClient {
   ): Promise<PreprDecisions>;
   /**
    * Whether the query's result holds an A/B test, e.g. to decide in
-   * middleware whether a visitor's A/B bucket is needed. Sends the query cut
-   * down to each item's `_context`, without visitor headers, so Prepr's CDN
-   * caches it; answers are also kept in memory for a minute. Resolves to
+   * middleware whether a visitor's A/B bucket is needed. Sends the query
+   * without its leaf fields and without visitor headers, so Prepr's CDN
+   * caches it, and reads the answer from the `Vary` header; it needs no
+   * schema download. Answers are also kept in memory for a minute. Resolves to
    * `true` when the check itself fails, so callers err toward having the
    * bucket.
    */
@@ -229,6 +230,9 @@ function base64(text: string): string {
   }
   return btoa(binary);
 }
+
+// Prepr lists this in `Vary` when the response holds an A/B test.
+const AB_TEST_VARY = /\bPrepr-ABTesting/i;
 
 // How long a hasAbTests answer is reused, and how many are kept per query.
 const AB_CHECK_TTL_MS = 60_000;
@@ -488,6 +492,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
   // Derived documents are cached per source document, so each is built (and
   // printed) once.
   const variantsDocuments = new Map<unknown, DocumentNode>();
+  const abProbes = new Map<unknown, DocumentNode | null>();
   const abChecks = new Map<
     unknown,
     Map<string, { value: Promise<boolean>; at: number }>
@@ -560,15 +565,25 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
         return cached.value;
 
       const value = (async () => {
-        let derived = decisionDocuments.get(document)?.get('*');
-        if (derived === undefined) {
-          derived = toDecisionDocument(document, await loadSchema());
+        let probe = abProbes.get(document);
+        if (probe === undefined) {
+          probe = toAbProbeDocument(document);
+          abProbes.set(document, probe);
         }
-        if (!derived) return false;
-        // No visitor headers: the default response already contains every
-        // A/B test (as variant A), and Prepr's CDN can cache it.
-        const { data } = await run(derived, variables);
-        return hasAbTest(data);
+        if (!probe) return false;
+        // No visitor headers: the default response already holds every A/B
+        // test (as variant A), and Prepr's CDN can cache it. The answer is in
+        // the `Vary` header, not the data.
+        let vary = '';
+        const send = options.fetch ?? fetch;
+        await run(probe, variables, {
+          fetch: async (input, init) => {
+            const response = await send(input, init);
+            vary = response.headers.get('vary') ?? '';
+            return response;
+          },
+        });
+        return AB_TEST_VARY.test(vary);
       })().catch((error: unknown) => {
         if (isFrameworkSignal(error)) throw error;
         answers!.delete(key);

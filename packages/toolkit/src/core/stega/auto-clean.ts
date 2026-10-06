@@ -41,7 +41,17 @@ export interface StegaAutoCleanOptions {
    * payload, so the overlay keeps working either way.
    */
   enabled?: boolean;
+  /**
+   * @internal Whether the client framework has adopted this server-rendered
+   * text yet. Text it has not hydrated is left alone and retried: changing it
+   * first makes hydration see a mismatch and re-render the section.
+   */
+  isHydrated?: (node: Text) => boolean;
 }
+
+// How often text still waiting for hydration is re-checked. Hydration adopts
+// the existing nodes without mutating them, so no observer sees it happen.
+const HYDRATION_RETRY_MS = 100;
 
 /**
  * Strips stega characters out of visible text at runtime, tagging the closest
@@ -63,9 +73,31 @@ export function createStegaAutoClean(
   // debounce restarts so a superseded batch is deferred, never dropped.
   let pendingDirty = new Set<Text>();
   let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+  const isHydrated = options?.isHydrated;
+  let pendingHydration = new Set<Text>();
+  let hydrationTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function retryPendingHydration(): void {
+    hydrationTimeout = null;
+    processing = true;
+    const batch = [...pendingHydration];
+    pendingHydration.clear();
+    batch.forEach((textNode) => {
+      if (textNode.isConnected) cleanTextNode(textNode);
+    });
+    processing = false;
+  }
 
   function cleanTextNode(textNode: Text): boolean {
     if (isIgnoredTextNode(textNode)) return false;
+    if (isHydrated && !isHydrated(textNode)) {
+      pendingHydration.add(textNode);
+      hydrationTimeout ??= setTimeout(
+        retryPendingHydration,
+        HYDRATION_RETRY_MS,
+      );
+      return false;
+    }
 
     const textContent = textNode.textContent!;
     const info = cleaned.get(textNode);
@@ -243,6 +275,10 @@ export function createStegaAutoClean(
       clearTimeout(debounceTimeout);
       debounceTimeout = null;
     }
+    if (hydrationTimeout) {
+      clearTimeout(hydrationTimeout);
+      hydrationTimeout = null;
+    }
     if (observer) {
       observer.disconnect();
       observer = null;
@@ -250,6 +286,7 @@ export function createStegaAutoClean(
     cleaned = new WeakMap();
     pendingHidden = new Set();
     pendingDirty = new Set();
+    pendingHydration = new Set();
     debug.log('stega auto-clean stopped');
   }
 

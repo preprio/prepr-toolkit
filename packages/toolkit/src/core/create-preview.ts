@@ -53,6 +53,11 @@ export interface CreatePreprPreviewOptions {
   props?: PreprToolbarProps;
   options?: PreprPreviewOptions;
   navigation?: PreprNavigationAdapter;
+  /**
+   * @internal Supplied by framework wrappers so stega stripping waits until
+   * the framework has hydrated the text it would change.
+   */
+  isHydrated?: (node: Text) => boolean;
 }
 
 export interface PreprPreviewController {
@@ -252,6 +257,7 @@ export function createPreprPreview(
   // dropped cross-site) tagged but never stripped.
   const autoClean: StegaAutoClean = createStegaAutoClean({
     enabled: options?.autoClean,
+    isHydrated: opts.isHydrated,
   });
   autoClean.start();
 

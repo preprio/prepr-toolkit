@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
+import { isReactHydrated } from '../react/hydration';
 import { applyPreprAbBucket } from './ab-switch';
 import type { PreprToolbarComponentProps } from '../core/types';
 
@@ -48,6 +49,7 @@ export function PreprToolbar({
         navigate: (url) => router.push(url),
         currentPath: () => pathnameRef.current + window.location.search,
       },
+      isHydrated: isReactHydrated,
     });
 
     return () => toolbar.destroy();
@@ -65,8 +67,12 @@ export function PreprToolbar({
  * `PreprStack`; you do not need it yourself.
  */
 export function PreprAbSwitch(): null {
+  // No dependency list: a navigation to the same route (the preview toolbar
+  // switching variant) re-renders this without remounting it, and the bucket
+  // cookie may have changed with it. Re-applying an unchanged bucket returns
+  // early.
   useLayoutEffect(() => {
     applyPreprAbBucket();
-  }, []);
+  });
   return null;
 }

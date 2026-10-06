@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
 import type { PreprNavigationAdapter } from '../core/create-preview';
+import { isReactHydrated } from './hydration';
 import { loadTrackingPixel } from '../core/pixel';
 import type { PreprPixelConfig } from '../core/pixel';
 import type { PreprToolbarComponentProps } from '../core/types';
@@ -41,7 +42,12 @@ export function PreprPreview({
   // has no effect. Remounting is the way to change it — a live update would
   // have to tear down the editor bridge and re-announce the preview.
   useEffect(() => {
-    const preview = createPreprPreview({ props, options, navigation });
+    const preview = createPreprPreview({
+      props,
+      options,
+      navigation,
+      isHydrated: isReactHydrated,
+    });
 
     return () => preview.destroy();
     // eslint-disable-next-line react-hooks/exhaustive-deps

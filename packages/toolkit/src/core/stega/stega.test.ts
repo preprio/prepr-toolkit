@@ -221,6 +221,32 @@ describe('createStegaAutoClean', () => {
   });
 });
 
+describe('createStegaAutoClean before hydration', () => {
+  it('leaves text the framework has not hydrated yet, then strips it once it has', async () => {
+    vi.useFakeTimers();
+    const { createStegaAutoClean } = await import('./auto-clean');
+    document.body.innerHTML = '';
+    const h1 = document.createElement('h1');
+    h1.textContent = encode('Streamed later');
+    document.body.appendChild(h1);
+
+    let hydrated = false;
+    const autoClean = createStegaAutoClean({ isHydrated: () => hydrated });
+    autoClean.start();
+    // Changing it now would make hydration see a text mismatch.
+    expect(h1.textContent).not.toBe('Streamed later');
+
+    hydrated = true;
+    vi.advanceTimersByTime(100);
+    expect(h1.textContent).toBe('Streamed later');
+    expect(h1.hasAttribute('data-prepr-encoded')).toBe(true);
+
+    autoClean.stop();
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+});
+
 describe('createStegaAutoClean document.title', () => {
   it('strips stega characters from the document title', async () => {
     const { createStegaAutoClean } = await import('./auto-clean');

@@ -288,7 +288,7 @@ export default async function Page({
   return response;
   ```
 
-  Prepr assigns the bucket; the toolkit only asks once, for visitors without a bucket cookie, on pages where `prepr.hasAbTests` (a small, CDN-cached context-only query, reused for a minute) finds an A/B test. Sites without A/B tests can skip the call. In-app navigation is covered too: `PreprStack` applies the bucket before the browser paints the new page. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
+  Prepr assigns the bucket; the toolkit only asks once, for visitors without a bucket cookie, on pages where `prepr.hasAbTests` (your query without its leaf fields, CDN-cached, answered from the `Vary` header without downloading the schema, and reused for a minute) finds an A/B test. Sites without A/B tests can skip the call. In-app navigation is covered too: `PreprStack` applies the bucket before the browser paints the new page. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
 
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
 - **Outside `'use cache'`, set `revalidate`.** With `revalidate: false` (or a number of seconds) on the client, Next treats the fetch as cached and the route still prerenders. With `revalidate` unset, a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
