@@ -10,7 +10,12 @@ if (!PREPR_GRAPHQL_URL) {
 }
 
 // One client for the whole site. Pass `{ personalize: true, event: Astro }`
-// per query to forward this visitor's segment / A-B headers.
-export const prepr = createPreprClient({ url: PREPR_GRAPHQL_URL });
+// per query to forward this visitor's segment / A-B headers. `preview`
+// matches the middleware's flag (src/middleware.ts): it keeps stega markers in
+// text so the toolbar's click-to-edit works.
+export const prepr = createPreprClient({
+  url: PREPR_GRAPHQL_URL,
+  preview: import.meta.env.DEV,
+});
 
 export { PREPR_GRAPHQL_URL };

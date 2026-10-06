@@ -1,3 +1,4 @@
+import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import {
   createPreprClient,
@@ -14,7 +15,11 @@ export const graphqlUrl = () => env.PREPR_GRAPHQL_URL || preprGraphqlUrl();
 
 let client: PreprEventClient<PreprSvelteKitEvent> | undefined;
 
-/** Created on first use, so builds without a `.env` still succeed. */
+/**
+ * Created on first use, so builds without a `.env` still succeed. `preview`
+ * matches `preprHandle`'s flag (hooks.server.ts): it keeps stega markers in
+ * text so the toolbar's click-to-edit works.
+ */
 export function prepr(): PreprEventClient<PreprSvelteKitEvent> {
-  return (client ??= createPreprClient({ url: graphqlUrl() }));
+  return (client ??= createPreprClient({ url: graphqlUrl(), preview: dev }));
 }
