@@ -329,6 +329,70 @@ describe('processPreprRequest', () => {
       });
     });
 
+    // Prepr ignores Prepr-Segments when Prepr-Customer-Id is also sent, so
+    // "view as segment" would show the visitor's own segment instead.
+    it("drops the visitor's customer id when a segment is forced by param", () => {
+      const request = makeRequest(
+        'https://example.com/?prepr_preview_segment=vip',
+        { headers: { cookie: '__prepr_uid=visitor-1' } },
+      );
+      const result = processPreprRequest(request, { preview: true });
+
+      expect(result.requestHeaders.get('Prepr-Segments')).toBe('vip');
+      expect(result.requestHeaders.has('Prepr-Customer-Id')).toBe(false);
+      expect(result.requestHeaders.has('Prepr-Customer-Id-Created')).toBe(
+        false,
+      );
+      // The visitor keeps their id for tracking; only the API request skips it.
+      expect(
+        result.responseCookies.find((c) => c.name === '__prepr_uid'),
+      ).toBeUndefined();
+    });
+
+    it('drops the customer id when a segment is forced by the toolbar cookie', () => {
+      const request = makeRequest('https://example.com/', {
+        headers: { cookie: '__prepr_uid=visitor-1; Prepr-Segments=vip' },
+      });
+      const result = processPreprRequest(request, { preview: true });
+
+      expect(result.requestHeaders.get('Prepr-Segments')).toBe('vip');
+      expect(result.requestHeaders.has('Prepr-Customer-Id')).toBe(false);
+    });
+
+    it('still mints an id for a new visitor while a segment is forced', () => {
+      const request = makeRequest(
+        'https://example.com/?prepr_preview_segment=vip',
+      );
+      const result = processPreprRequest(request, { preview: true });
+
+      expect(result.requestHeaders.has('Prepr-Customer-Id')).toBe(false);
+      expect(
+        result.responseCookies.find((c) => c.name === '__prepr_uid')?.value,
+      ).toBeTruthy();
+    });
+
+    it('keeps the customer id when only an A/B variant is forced', () => {
+      // Prepr honors Prepr-ABtesting alongside a customer id.
+      const request = makeRequest('https://example.com/?prepr_preview_ab=B', {
+        headers: { cookie: '__prepr_uid=visitor-1' },
+      });
+      const result = processPreprRequest(request, { preview: true });
+
+      expect(result.requestHeaders.get('Prepr-ABtesting')).toBe('B');
+      expect(result.requestHeaders.get('Prepr-Customer-Id')).toBe('visitor-1');
+    });
+
+    it('never drops the customer id outside preview', () => {
+      const request = makeRequest(
+        'https://example.com/?prepr_preview_segment=vip',
+        { headers: { cookie: '__prepr_uid=visitor-1; Prepr-Segments=vip' } },
+      );
+      const result = processPreprRequest(request);
+
+      expect(result.requestHeaders.get('Prepr-Customer-Id')).toBe('visitor-1');
+      expect(result.requestHeaders.has('Prepr-Segments')).toBe(false);
+    });
+
     it('falls back to cookies for segment/ab when no query params are present', () => {
       const request = makeRequest('https://example.com/', {
         headers: {

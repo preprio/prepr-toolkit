@@ -66,7 +66,11 @@ export async function resolvePreprBucket(
   const stored = request.cookies.get(PREPR_BUCKET_COOKIE)?.value;
 
   // In preview the toolbar's A/B override wins, also for the browser switch.
-  const forced = request.cookies.get(COOKIE_VARIANT)?.value;
+  // createPreprMiddleware has already resolved it (a ?prepr_preview_ab link
+  // over the cookie) into the forwarded request headers on `response`.
+  const forced =
+    response.headers.get('x-middleware-request-prepr-abtesting') ??
+    request.cookies.get(COOKIE_VARIANT)?.value;
   if (options.preview && isBucket(forced)) {
     if (forced !== stored) setBucketCookie(request, response, forced);
     return forced;

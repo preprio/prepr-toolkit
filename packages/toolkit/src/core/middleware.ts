@@ -343,5 +343,15 @@ export function processFrameworkRequest(
     }
   }
 
+  // "View as segment": Prepr ignores Prepr-Segments when a Prepr-Customer-Id
+  // is also sent and answers for the visitor's own profile instead. While a
+  // segment is forced in preview, the API request goes out without the
+  // visitor's id; their __prepr_uid cookie (used for tracking) is untouched.
+  // A forced A/B variant needs no such step: Prepr-ABtesting wins over the id.
+  if (requestHeaders.has('Prepr-Segments')) {
+    requestHeaders.delete('Prepr-Customer-Id');
+    requestHeaders.delete('Prepr-Customer-Id-Created');
+  }
+
   return { requestHeaders, responseCookies };
 }

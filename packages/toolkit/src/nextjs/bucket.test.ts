@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PREPR_BUCKET_COOKIE, resolvePreprBucket } from './bucket';
+import { createPreprMiddleware } from './middleware';
 
 const URL_ = 'https://graphql.prepr.io/t';
 
@@ -66,5 +67,23 @@ describe('resolvePreprBucket', () => {
 
     expect(bucket).toBe('B');
     expect(onlyIf).not.toHaveBeenCalled();
+  });
+
+  it('follows a ?prepr_preview_ab link in preview on the same request', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const req = new NextRequest('https://site.test/pricing?prepr_preview_ab=B');
+    req.headers.set('cookie', `__prepr_uid=c1; ${PREPR_BUCKET_COOKIE}=A`);
+    const incoming = new NextRequest(req.url, { headers: req.headers });
+    const response = createPreprMiddleware(incoming, { preview: true });
+
+    const bucket = await resolvePreprBucket(incoming, response, {
+      url: URL_,
+      preview: true,
+    });
+
+    expect(bucket).toBe('B');
+    expect(response.cookies.get(PREPR_BUCKET_COOKIE)?.value).toBe('B');
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
