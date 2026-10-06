@@ -269,37 +269,49 @@ export default async function Page({
     <PreprStack
       items={data.Page.content}
       decisions={decisions}
-      render={(items) => <Sections items={items} />}
+      render={(items, { index }) => <Sections items={items} offset={index} />}
     />
   );
 }
 ```
 
-##### Your components stay the same
+##### Your components: one extra prop
 
-`render` receives items exactly as a query without personalization would return them: one item per personalization or A/B group (the variant this visitor gets), and every list nested inside an item already narrowed down the same way. `Sections` is the component you already have:
+`PreprStack` splits the list into blocks (what never varies, each personalization group, each A/B test) and calls `render` once per block. Each call receives items exactly as a query without personalization would return them: the variant this visitor gets, with every list nested inside an item narrowed down the same way.
+
+Because `render` runs per block, a position counted inside `Sections` (`items.map((item, i) => …)`) starts at 0 in every block. `index` is where the block starts in the whole page; add it, and the first section still owns the `<h1>` and the priority image:
 
 ```tsx
 // Before
 <Sections items={data.Page.content} />
 
 // After
-<PreprStack items={data.Page.content} decisions={decisions} render={(items) => <Sections items={items} />} />
+<PreprStack
+  items={data.Page.content}
+  decisions={decisions}
+  render={(items, { index }) => <Sections items={items} offset={index} />}
+/>
+
+// Sections: the only change is `offset + i`
+function Sections({ items, offset = 0 }: { items: Section[]; offset?: number }) {
+  return items.map((item, i) => <Section key={item._id} item={item} position={offset + i} />);
+}
 ```
+
+A group takes one position, whichever variant shows. A group that shows nothing to a visitor (only a segment variant, no default) still takes its position: the page is prerendered before anyone's segment is known.
 
 **The one rule:** a `variants: true` result holds every variant. Every list you render from it goes through `PreprStack`, or visitors see all variants at once.
 
 ##### Fitting your page
 
-| Your page has…                                                                         | Do this                                                                                                |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| One page-builder list (`content`, `sections`, `stack`)                                 | One `PreprStack` around it.                                                                            |
-| Personalized lists inside sections (cards, buttons, models in a section)               | Nothing. They are narrowed down with the section they sit in.                                          |
-| Several lists (hero, body, sidebar)                                                    | One `PreprStack` per list, all with the same `decisions`.                                              |
-| A personalized list outside any list you already wrap (e.g. `Page.buttons`)            | Its own `PreprStack`.                                                                                  |
-| Sections that depend on their position (which one owns the `<h1>`, the priority image) | Use `index` from `render={(items, { index }) => …}`: the position of the first item in the whole list. |
-| Data used outside rendering (`generateMetadata`, JSON-LD)                              | `resolveVariants(data)` gives the default variants and A.                                              |
-| No personalization on a page                                                           | Nothing to change. `PreprStack` renders it statically and `decide()` sends no request.                 |
+| Your page has…                                                              | Do this                                                                                |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| One page-builder list (`content`, `sections`, `stack`)                      | One `PreprStack` around it.                                                            |
+| Personalized lists inside sections (cards, buttons, models in a section)    | Nothing. They are narrowed down with the section they sit in.                          |
+| Several lists (hero, body, sidebar)                                         | One `PreprStack` per list, all with the same `decisions`.                              |
+| A personalized list outside any list you already wrap (e.g. `Page.buttons`) | Its own `PreprStack`.                                                                  |
+| Data used outside rendering (`generateMetadata`, JSON-LD)                   | `resolveVariants(data)` gives the default variants and A.                              |
+| No personalization on a page                                                | Nothing to change. `PreprStack` renders it statically and `decide()` sends no request. |
 
 ##### A/B tests
 
