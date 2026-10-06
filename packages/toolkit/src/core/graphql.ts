@@ -524,7 +524,12 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       // Nothing on the page depends on a segment: no request at all.
       if (paths && paths.size === 0) return new Map();
 
-      const signature = paths ? [...paths].sort().join('|') : '*';
+      const signature = paths
+        ? [...paths]
+            .map(([path, types]) => `${path}:${[...types].sort().join(',')}`)
+            .sort()
+            .join('|')
+        : '*';
       let byPaths = decisionDocuments.get(document);
       if (!byPaths) {
         byPaths = new Map();

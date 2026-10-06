@@ -18,6 +18,13 @@ import { parse } from 'graphql/language/parser.js';
  */
 export const PREPR_CONTEXT_ALIAS = '_preprContext';
 
+/**
+ * Alias under which the toolkit selects each personalizable item's
+ * `__typename`, so the decision query can ask only about the item types that
+ * hold groups, whether or not your query selects `__typename`.
+ */
+export const PREPR_TYPE_ALIAS = '_preprType';
+
 /** Prepr's variant id for visitors outside every targeted segment. */
 export const PREPR_DEFAULT_VARIANT = 'ALL_OTHER_USERS';
 
@@ -122,6 +129,14 @@ function contextField(): FieldNode {
   } as unknown as FieldNode;
 }
 
+function typenameField(): FieldNode {
+  return {
+    kind: 'Field',
+    alias: name(PREPR_TYPE_ALIAS),
+    name: name('__typename'),
+  } as unknown as FieldNode;
+}
+
 function inlineFragment(
   typeName: string,
   selections: SelectionNode[],
@@ -134,21 +149,31 @@ function inlineFragment(
 }
 
 /**
- * `_context` for every item type a personalizable field can return: models
- * and components alike, whatever the schema calls them.
+ * `_context` (and the type name) for every item type a personalizable field
+ * can return: models and components alike, whatever the schema calls them.
+ * With `onlyTypes`, only those members of a union or interface. Decision
+ * queries leave the type name out: only the variants query needs it.
  */
 function contextSelections(
   typeName: string,
   schema: PreprSchemaInfo,
+  onlyTypes?: ReadonlySet<string>,
+  withType = true,
 ): SelectionNode[] {
+  const fields = () =>
+    withType ? [contextField(), typenameField()] : [contextField()];
   const type = schema.types[typeName];
   if (!type) return [];
   if (type.possibleTypes.length > 0) {
     return type.possibleTypes
-      .filter((member) => schema.types[member]?.hasContext)
-      .map((member) => inlineFragment(member, [contextField()]));
+      .filter(
+        (member) =>
+          schema.types[member]?.hasContext &&
+          (!onlyTypes || onlyTypes.has(member)),
+      )
+      .map((member) => inlineFragment(member, fields()));
   }
-  return type.hasContext ? [contextField()] : [];
+  return type.hasContext ? fields() : [];
 }
 
 function withoutPersonalizeArg(args: readonly ArgumentNode[] = []) {
@@ -253,10 +278,14 @@ interface DecisionContext {
   schema: PreprSchemaInfo;
   fragments: Record<string, FragmentDefinitionNode>;
   /**
-   * When known: the response paths whose lists hold personalization groups,
-   * and every prefix of those paths. Fields elsewhere are left out.
+   * When known: the response paths whose lists hold personalization groups
+   * (with the item types that do), and every prefix of those paths. Fields
+   * and types elsewhere are left out.
    */
-  paths?: { groups: ReadonlySet<string>; prefixes: ReadonlySet<string> };
+  paths?: {
+    groups: PreprGroupPaths;
+    prefixes: ReadonlySet<string>;
+  };
 }
 
 function decisionSelectionSet(
@@ -310,15 +339,21 @@ function decisionSelectionSet(
       fieldPath,
       ctx,
     );
+    const groupTypes = ctx.paths?.groups.get(fieldPath);
     const holdsGroups =
-      field.personalizable && (!ctx.paths || ctx.paths.groups.has(fieldPath));
+      field.personalizable && (!ctx.paths || groupTypes !== undefined);
     if (holdsGroups) {
       selections.push({
         ...selection,
         arguments: withoutPersonalizeArg(selection.arguments),
         selectionSet: selectionSet([
           ...(child?.selections ?? []),
-          ...contextSelections(field.type, ctx.schema),
+          ...contextSelections(
+            field.type,
+            ctx.schema,
+            groupTypes && !groupTypes.has('*') ? groupTypes : undefined,
+            false,
+          ),
         ]),
       });
     } else if (child) {
@@ -354,13 +389,14 @@ function collectVariables(node: unknown, used: Set<string>): void {
  * The smallest query that tells which variant a visitor gets: your query cut
  * down to the paths that lead to personalizable fields, selecting only each
  * item's `_context`. With `groupPaths` (from {@link personalizationPaths}),
- * only the fields that actually hold personalization groups are kept.
+ * only the fields, and the item types, that actually hold personalization
+ * groups are kept.
  * Returns null when nothing is left to ask.
  */
 export function toDecisionDocument(
   document: unknown,
   schema: PreprSchemaInfo,
-  groupPaths?: ReadonlySet<string>,
+  groupPaths?: PreprGroupPaths,
 ): DocumentNode | null {
   const doc = documentOf(document);
   const fragments: Record<string, FragmentDefinitionNode> = {};
@@ -378,7 +414,7 @@ export function toDecisionDocument(
   let paths: DecisionContext['paths'];
   if (groupPaths) {
     const prefixes = new Set<string>();
-    for (const groupPath of groupPaths) {
+    for (const groupPath of groupPaths.keys()) {
       const parts = groupPath.split('.');
       for (let i = 1; i <= parts.length; i++) {
         prefixes.add(parts.slice(0, i).join('.'));
@@ -416,23 +452,36 @@ export function toDecisionDocument(
 // --- Resolving variants ---------------------------------------------------------
 
 /**
- * Response paths (keys joined with `.`, list positions left out) of every
- * list in a variants result that holds a segment personalization group. A/B
- * groups are left out: they resolve from the bucket, not a decision.
+ * Lists that hold segment personalization groups, by response path (keys
+ * joined with `.`, list positions left out), with the item types in those
+ * groups. `*` stands for "type unknown", which keeps every type.
  */
-export function personalizationPaths(data: unknown): Set<string> {
-  const paths = new Set<string>();
+export type PreprGroupPaths = ReadonlyMap<string, ReadonlySet<string>>;
+
+/**
+ * Where a variants result holds segment personalization groups, and of which
+ * item types. A/B groups are left out: they resolve from the bucket, not a
+ * decision.
+ */
+export function personalizationPaths(data: unknown): Map<string, Set<string>> {
+  const paths = new Map<string, Set<string>>();
   const walk = (value: unknown, path: string): void => {
     if (Array.isArray(value)) {
       for (const item of value) {
-        if (contextOf(item)?.kind === 'PERSONALIZATION') paths.add(path);
+        if (contextOf(item)?.kind === 'PERSONALIZATION') {
+          const record = item as Record<string, unknown>;
+          const type = record[PREPR_TYPE_ALIAS] ?? record.__typename;
+          const types = paths.get(path) ?? new Set<string>();
+          types.add(typeof type === 'string' ? type : '*');
+          paths.set(path, types);
+        }
         walk(item, path);
       }
       return;
     }
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
-      if (key !== PREPR_CONTEXT_ALIAS)
+      if (key !== PREPR_CONTEXT_ALIAS && key !== PREPR_TYPE_ALIAS)
         walk(child, path ? `${path}.${key}` : key);
     }
   };

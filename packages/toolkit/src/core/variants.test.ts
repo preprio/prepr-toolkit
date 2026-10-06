@@ -153,15 +153,11 @@ describe('toVariantsDocument', () => {
   });
 
   it('selects _context under an alias on every item type, models included', () => {
-    expect(printed).toContain(
-      `... on Post { ${CTX}: _context { kind group_id variant_id } }`,
-    );
-    expect(printed).toContain(
-      `... on Product { ${CTX}: _context { kind group_id variant_id } }`,
-    );
-    expect(printed).toContain(
-      `... on Hero { ${CTX}: _context { kind group_id variant_id } }`,
-    );
+    const ctxOf = (type: string) =>
+      `... on ${type} { ${CTX}: _context { kind group_id variant_id } _preprType: __typename }`;
+    expect(printed).toContain(ctxOf('Post'));
+    expect(printed).toContain(ctxOf('Product'));
+    expect(printed).toContain(ctxOf('Hero'));
     expect(printed).not.toContain('... on Banner {');
   });
 
@@ -307,12 +303,18 @@ describe('decision pruned to the groups a page actually has', () => {
         ],
       },
     };
-    expect([...personalizationPaths(data)]).toEqual(['Page.content.cards']);
+    expect([...personalizationPaths(data)]).toEqual([
+      ['Page.content.cards', new Set(['*'])],
+    ]);
   });
 
   it('keeps only the fields on those paths', () => {
     const printed = compact(
-      toDecisionDocument(PAGE_QUERY, schema, new Set(['Page.content.cards'])),
+      toDecisionDocument(
+        PAGE_QUERY,
+        schema,
+        new Map([['Page.content.cards', new Set(['*'])]]),
+      ),
     );
     // The path down to the cards is kept, as plain traversal...
     expect(printed).toContain('Page(slug: $slug) { content {');
@@ -322,15 +324,39 @@ describe('decision pruned to the groups a page actually has', () => {
     expect(printed).not.toContain('buttons');
   });
 
+  it('asks only about the item types that hold groups', () => {
+    // Variants data from the toolkit's own query carries each item's type.
+    const data = {
+      Page: {
+        content: [
+          { _preprType: 'Hero', ...ctx('PERSONALIZATION', 'g-hero', 'X') },
+          { _preprType: 'Banner' },
+          { _preprType: 'Cards', cards: [{ _preprType: 'Post' }] },
+        ],
+      },
+    };
+    const paths = personalizationPaths(data);
+    expect([...paths]).toEqual([['Page.content', new Set(['Hero'])]]);
+
+    const printed = compact(toDecisionDocument(PAGE_QUERY, schema, paths));
+    expect(printed).toContain(`... on Hero { ${CTX}: _context`);
+    // Cards can appear in the stack too, but holds no group here.
+    expect(printed).not.toContain(`... on Cards { ${CTX}`);
+  });
+
   it('follows aliases in response paths', () => {
     const aliased = `query { Page(slug: "/") { body: content { ... on Hero { heading } } } }`;
     const printed = compact(
-      toDecisionDocument(aliased, schema, new Set(['Page.body'])),
+      toDecisionDocument(
+        aliased,
+        schema,
+        new Map([['Page.body', new Set(['Hero'])]]),
+      ),
     );
     expect(printed).toContain(`body: content { ... on Hero { ${CTX}`);
   });
 
   it('asks nothing when the page has no segment groups', () => {
-    expect(toDecisionDocument(PAGE_QUERY, schema, new Set())).toBeNull();
+    expect(toDecisionDocument(PAGE_QUERY, schema, new Map())).toBeNull();
   });
 });
