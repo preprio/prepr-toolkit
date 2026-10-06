@@ -23,6 +23,12 @@ export {
 } from './bucket';
 
 export {
+  createPreprDraftRoute,
+  preprDraftRedirect,
+  type PreprDraftOptions,
+} from './draft';
+
+export {
   validatePreprToken,
   extractAccessToken,
   PreprError,

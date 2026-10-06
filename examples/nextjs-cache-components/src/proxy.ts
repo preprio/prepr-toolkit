@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import {
   createPreprMiddleware,
+  preprDraftRedirect,
   resolvePreprBucket,
 } from '@preprio/toolkit/nextjs';
 import { preprFeatures } from '@/prepr-features';
@@ -10,6 +11,11 @@ import { GetPageBySlugDocument } from '@/gql/graphql';
 
 export async function proxy(request: NextRequest) {
   const preview = process.env.NODE_ENV !== 'production';
+
+  // Preview runs in draft mode, so cached pages never hide an edit.
+  const draft = preprDraftRedirect(request, { preview });
+  if (draft) return draft;
+
   const response = createPreprMiddleware(request, {
     preview,
     features: preprFeatures,

@@ -31,6 +31,10 @@ The page uses its ordinary query ([`get-page-by-slug.graphql`](./src/queries/get
   default, also for crawlers and visitors without JavaScript.
 - The preview toolbar reads request headers, so it sits in its own
   `<Suspense>` boundary.
+- **Preview is always fresh.** `preprDraftRedirect` in the proxy sends a
+  preview visitor through [`/api/prepr/draft`](./src/app/api/prepr/draft/route.ts)
+  once; draft mode makes Next skip `'use cache'` entries and the Data Cache,
+  so an edit shows on the next load without a publish webhook.
 
 ## Run
 

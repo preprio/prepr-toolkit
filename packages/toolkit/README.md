@@ -292,7 +292,18 @@ export default async function Page({
 
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
 - **Outside `'use cache'`, set `revalidate`.** With `revalidate: false` (or a number of seconds) on the client, Next treats the fetch as cached and the route still prerenders. With `revalidate` unset, a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
-- **`preview: true` works inside `'use cache'`,** but the result is cached like any other unless [draft mode](https://nextjs.org/docs/app/guides/draft-mode) is enabled, which makes Next skip cached entries.
+- **Run preview in draft mode.** `preview: true` works inside `'use cache'`, but the result is cached like any other; [draft mode](https://nextjs.org/docs/app/guides/draft-mode) makes Next render per request and skip `'use cache'` entries and the Data Cache, so editors see an edit on the next load without a publish webhook. Two helpers from `@preprio/toolkit/nextjs` set it up: `preprDraftRedirect` sends a preview visitor through a draft route once, and `createPreprDraftRoute` is that route.
+
+  ```ts
+  // app/api/prepr/draft/route.ts
+  export const GET = createPreprDraftRoute({ preview });
+
+  // proxy.ts, first thing
+  const draft = preprDraftRedirect(request, { preview });
+  if (draft) return draft;
+  ```
+
+  Outside preview both do nothing (the route answers 404). Keep the route out of your proxy `matcher`, or pass its path as `route` when it lives elsewhere. Inside the Prepr editor the site is a cross-site iframe, so on https the draft cookie is set `Partitioned` (`SameSite=None`), which browsers that block third-party cookies still accept. A browser that refuses it anyway gets the cached page rather than a redirect loop, so keep your publish webhook calling `revalidateTag` as the fallback.
 
 Without Cache Components, `resolveVariants(data, { decisions, bucket })` applies a visitor's decisions to a variants result anywhere.
 
