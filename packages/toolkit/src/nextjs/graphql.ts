@@ -21,7 +21,8 @@ import {
   splitStack,
   type PreprDecisions,
 } from '../core/variants';
-import { PREPR_BUCKET_COOKIE } from './bucket';
+import { applyPreprAbBucket } from './ab-switch';
+import { PreprAbSwitch } from './components';
 import { getPreprHeaders } from './server';
 
 export interface PreprNextClientOptions extends PreprClientOptions {
@@ -75,6 +76,14 @@ export interface PreprNextClient {
     variables?: TVariables,
     options?: PreprDecideOptions,
   ): Promise<PreprDecisions>;
+  /**
+   * Whether the query's result holds an A/B test: see `resolvePreprBucket`'s
+   * `onlyIf`. Never reads request headers, so it also works in middleware.
+   */
+  hasAbTests<TVariables>(
+    document: PreprDocument<unknown, TVariables>,
+    variables?: TVariables,
+  ): Promise<boolean>;
 }
 
 type NextFetchInit = RequestInit & {
@@ -156,6 +165,8 @@ export function createPreprClient(
         ),
       });
     },
+
+    hasAbTests: (document, variables) => client.hasAbTests(document, variables),
   };
 }
 
@@ -193,12 +204,9 @@ const AB_BUCKETS = ['A', 'B'] as const;
 const AB_BASE_CSS = `[${AB_ATTRIBUTE}]{display:contents}[${AB_ATTRIBUTE}]:not([${AB_ATTRIBUTE}="A"]){display:none}`;
 
 // Runs while the HTML is parsed, so the visitor's variant is the first one
-// painted: the bucket cookie (set by resolvePreprBucket) adds one rule. The
-// rule goes in a constructable stylesheet, not a <style> element: React
-// hydrates <head>, and an element it did not render there is a hydration
-// error. A hidden variant never reaches 50% visibility, so the tracking pixel
-// never records an impression for it.
-const AB_SWITCH_SCRIPT = `(function(){var m=document.cookie.match(/(?:^|; )${PREPR_BUCKET_COOKIE}=([AB])(?:;|$)/);if(!m||m[1]==="A"||window.__preprAbBucket)return;window.__preprAbBucket=m[1];var css='[${AB_ATTRIBUTE}="A"]{display:none!important}[${AB_ATTRIBUTE}="'+m[1]+'"]{display:contents!important}';try{var sheet=new CSSStyleSheet();sheet.replaceSync(css);document.adoptedStyleSheets=document.adoptedStyleSheets.concat(sheet)}catch(e){var s=document.createElement("style");s.textContent=css;document.head.appendChild(s)}})()`;
+// painted. A hidden variant never reaches 50% visibility, so the tracking
+// pixel never records an impression for it.
+const AB_SWITCH_SCRIPT = `(${applyPreprAbBucket.toString()})()`;
 
 /**
  * Renders items for every A/B bucket the visitor might have, each in a
@@ -307,6 +315,7 @@ export function PreprStack<T>({
           nonce,
           dangerouslySetInnerHTML: { __html: AB_SWITCH_SCRIPT },
         }),
+        createElement(PreprAbSwitch),
       ),
     ...blocks.map((block) => {
       const fallback = renderBuckets(block.items, render, {

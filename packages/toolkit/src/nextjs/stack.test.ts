@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
 const { PreprStack } = await import('./graphql');
+const { PREPR_BUCKET_COOKIE } = await import('./bucket');
+const { applyPreprAbBucket } = await import('./ab-switch');
 
 const ctx = (kind: string, group: string, variant: string) => ({
   _preprContext: { kind, group_id: group, variant_id: variant },
@@ -33,6 +35,7 @@ function html(props: { bucket?: string } = {}) {
 
 afterEach(() => {
   delete (window as { __preprAbBucket?: string }).__preprAbBucket;
+  delete (window as { __preprAbSheet?: unknown }).__preprAbSheet;
   document.adoptedStyleSheets = [];
   document.head.innerHTML = '';
   document.body.innerHTML = '';
@@ -85,5 +88,9 @@ describe('PreprStack A/B switch', () => {
     const before = rules();
     new Function(script)();
     expect(rules()).toBe(before);
+  });
+
+  it('reads the same cookie resolvePreprBucket writes', () => {
+    expect(applyPreprAbBucket.toString()).toContain(`${PREPR_BUCKET_COOKIE}=`);
   });
 });

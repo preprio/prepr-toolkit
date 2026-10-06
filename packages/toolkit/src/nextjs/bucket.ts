@@ -17,6 +17,13 @@ export interface ResolvePreprBucketOptions {
   preview?: boolean;
   /** Abort the one-time lookup after this many ms. Default 1500. */
   timeoutMs?: number;
+  /**
+   * Look the bucket up only when this resolves to true, typically "does this
+   * page have an A/B test": `() => prepr.hasAbTests(PageDocument, { slug })`.
+   * Only called for visitors without a bucket cookie, so visitors on pages
+   * without A/B tests never wait for the lookup.
+   */
+  onlyIf?: () => boolean | Promise<boolean>;
 }
 
 /**
@@ -28,8 +35,9 @@ export interface ResolvePreprBucketOptions {
  * seen, this asks Prepr once (a minimal query with their customer id) and
  * stores the answer in {@link PREPR_BUCKET_COOKIE} on `response`; later
  * requests read the cookie. Call it in middleware after
- * `createPreprMiddleware`, which mints the customer id. Sites without A/B
- * tests can skip it.
+ * `createPreprMiddleware`, which mints the customer id. Pass `onlyIf` so the
+ * lookup happens only on pages that have an A/B test; sites without A/B tests
+ * can skip the call entirely.
  *
  * Never throws: if the lookup fails the visitor gets `A` (Prepr's default for
  * anonymous visitors) and the lookup is retried on the next request.
@@ -65,6 +73,15 @@ export async function resolvePreprBucket(
   }
 
   if (isBucket(stored)) return stored;
+
+  if (options.onlyIf) {
+    // A failing check errs toward the lookup: a wrong bucket is worse than a
+    // slower first request.
+    const needed = await Promise.resolve()
+      .then(options.onlyIf)
+      .catch(() => true);
+    if (!needed) return 'A';
+  }
 
   const customerId =
     request.cookies.get(COOKIE_UID)?.value ??

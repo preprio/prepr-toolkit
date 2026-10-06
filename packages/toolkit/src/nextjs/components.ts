@@ -1,9 +1,10 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
+import { applyPreprAbBucket } from './ab-switch';
 import type { PreprToolbarComponentProps } from '../core/types';
 
 // Nothing Next-specific about the pixel — it lives on the framework-free
@@ -53,5 +54,19 @@ export function PreprToolbar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  return null;
+}
+
+/**
+ * Applies the visitor's A/B bucket after client-side navigation. A full page
+ * load is covered by the inline script `PreprStack` renders, but React does
+ * not run inline scripts that arrive with a client-side navigation; a layout
+ * effect still runs before the browser paints the new page. Rendered by
+ * `PreprStack`; you do not need it yourself.
+ */
+export function PreprAbSwitch(): null {
+  useLayoutEffect(() => {
+    applyPreprAbBucket();
+  }, []);
   return null;
 }

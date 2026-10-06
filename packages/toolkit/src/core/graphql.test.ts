@@ -741,6 +741,43 @@ describe('variants and decide', () => {
     expect(sent()[0]).toContain('_preprContext');
   });
 
+  it('tells whether a page has an A/B test, and reuses the answer', async () => {
+    const withAb = {
+      data: {
+        Page: {
+          content: [
+            {
+              _preprContext: {
+                kind: 'AB_TEST',
+                group_id: 'g',
+                variant_id: 'A',
+              },
+            },
+          ],
+        },
+      },
+    };
+    const { client, sent, fetch } = schemaSetup(withAb);
+
+    expect(await client.hasAbTests(QUERY, { slug: '/ab' })).toBe(true);
+    expect(await client.hasAbTests(QUERY, { slug: '/ab' })).toBe(true);
+    expect(sent()).toHaveLength(1);
+    // Sent without visitor headers, so Prepr's CDN can cache it.
+    const init = fetch.mock.calls.at(-1)![1]!;
+    expect(new Headers(init.headers).get('Prepr-Customer-Id')).toBeNull();
+  });
+
+  it('errs toward true when the A/B check fails', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) =>
+      String(init?.body).includes('__schema')
+        ? respond(introspection)
+        : respond('down', {}, 503),
+    );
+    const client = createPreprClient({ url: GRAPHQL_URL, fetch });
+
+    expect(await client.hasAbTests(QUERY, { slug: '/' })).toBe(true);
+  });
+
   it('introspects the schema once per client', async () => {
     const { client, fetch } = schemaSetup({ data: { Page: null } });
 
@@ -752,5 +789,60 @@ describe('variants and decide', () => {
       String(call[1]?.body).includes('__schema'),
     );
     expect(introspections).toHaveLength(1);
+  });
+});
+
+describe('fastlyQuery', () => {
+  const decode = (value: string) =>
+    new TextDecoder().decode(
+      Uint8Array.from(atob(value), (c) => c.charCodeAt(0)),
+    );
+
+  it('sends a GET with the body base64-encoded in Fastly-Query', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      respond({ data: {} }),
+    );
+    const client = createPreprClient({
+      url: GRAPHQL_URL,
+      fetch,
+      fastlyQuery: true,
+    });
+
+    await client.query(PAGE_QUERY, { slug: 'café' });
+
+    const init = fetch.mock.calls[0]![1]!;
+    expect(init.method).toBe('GET');
+    expect(init.body).toBeUndefined();
+    const header = new Headers(init.headers).get('Fastly-Query')!;
+    expect(JSON.parse(decode(header))).toEqual({
+      query: PAGE_QUERY_SENT,
+      variables: { slug: 'café' },
+    });
+    expect(new Headers(init.headers).get('Content-Type')).toBe(
+      'application/json',
+    );
+  });
+
+  it('falls back to POST when the query is too large for a header', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      respond({ data: {} }),
+    );
+    const client = createPreprClient({
+      url: GRAPHQL_URL,
+      fetch,
+      fastlyQuery: true,
+    });
+
+    await client.query(PAGE_QUERY, { blob: 'x'.repeat(100 * 1024) });
+
+    const init = fetch.mock.calls[0]![1]!;
+    expect(init.method).toBe('POST');
+    expect(new Headers(init.headers).get('Fastly-Query')).toBeNull();
+  });
+
+  it('is off by default', async () => {
+    const { client, init } = setup(respond({ data: {} }));
+    await client.query(PAGE_QUERY);
+    expect(init().method).toBe('POST');
   });
 });

@@ -15,6 +15,7 @@ import { stegaClean } from './stega/clean';
 import {
   PREPR_SCHEMA_QUERY,
   decisionsFrom,
+  hasAbTest,
   personalizationPaths,
   toDecisionDocument,
   toSchemaInfo,
@@ -80,6 +81,14 @@ export interface PreprClientOptions {
   preview?: boolean;
   /** Default: `'urls'` when `preview` is true, otherwise `'all'`. */
   stega?: PreprStegaMode;
+  /**
+   * Send queries as a GET with the request body base64-encoded in a
+   * `Fastly-Query` header, which Prepr's edge serves from the nearest point
+   * of presence (about half the latency of a POST in our measurements).
+   * Queries too large for a header still go as a POST. Off by default: it
+   * relies on Prepr edge behavior that is not part of the documented API.
+   */
+  fastlyQuery?: boolean;
   /**
    * @internal Fetch options for the one-time schema introspection, so a
    * framework wrapper can put it in its data cache.
@@ -170,6 +179,18 @@ export interface PreprClient {
     variables?: TVariables,
     options?: PreprDecideOptions,
   ): Promise<PreprDecisions>;
+  /**
+   * Whether the query's result holds an A/B test, e.g. to decide in
+   * middleware whether a visitor's A/B bucket is needed. Sends the query cut
+   * down to each item's `_context`, without visitor headers, so Prepr's CDN
+   * caches it; answers are also kept in memory for a minute. Resolves to
+   * `true` when the check itself fails, so callers err toward having the
+   * bucket.
+   */
+  hasAbTests<TVariables>(
+    document: PreprDocument<unknown, TVariables>,
+    variables?: TVariables,
+  ): Promise<boolean>;
 }
 
 // Codegen documents are module-level constants, so after the first request
@@ -194,6 +215,24 @@ function invalidDocument(originalError?: Error): PreprError {
     originalError,
   );
 }
+
+// Fastly rejects request headers over 128 KB; this leaves headroom for the
+// visitor headers sent alongside.
+const FASTLY_QUERY_MAX = 96 * 1024;
+
+/** Base64 of UTF-8 text, in any runtime (no Node Buffer). */
+function base64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+// How long a hasAbTests answer is reused, and how many are kept per query.
+const AB_CHECK_TTL_MS = 60_000;
+const AB_CHECK_MAX_ENTRIES = 1000;
 
 // Prepr rejects queries over 27,500 characters (HTTP 412), and indentation
 // alone can push a query with many fragments past that. Every query is sent
@@ -345,11 +384,16 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       queryOptions.headers !== undefined ||
       queryOptions.init?.headers !== undefined;
 
+    const payload = JSON.stringify({ query, variables });
+    const fastly = options.fastlyQuery ? base64(payload) : null;
+    const viaGet = fastly !== null && fastly.length <= FASTLY_QUERY_MAX;
+    if (viaGet) headers.set('Fastly-Query', fastly);
+
     const init: RequestInit = {
       ...cacheInit(queryOptions.init, preview || perRequestHeaders),
-      method: 'POST',
+      method: viaGet ? 'GET' : 'POST',
       headers,
-      body: JSON.stringify({ query, variables }),
+      body: viaGet ? undefined : payload,
     };
     const fetchImpl = queryOptions.fetch ?? options.fetch;
 
@@ -444,6 +488,10 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
   // Derived documents are cached per source document, so each is built (and
   // printed) once.
   const variantsDocuments = new Map<unknown, DocumentNode>();
+  const abChecks = new Map<
+    unknown,
+    Map<string, { value: Promise<boolean>; at: number }>
+  >();
   const decisionDocuments = new Map<
     unknown,
     Map<string, DocumentNode | null>
@@ -490,6 +538,43 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       if (!derived) return new Map();
       const { data } = await run(derived, variables, rest);
       return decisionsFrom(data);
+    },
+
+    async hasAbTests<TVariables>(
+      document: PreprDocument<unknown, TVariables>,
+      variables?: TVariables,
+    ): Promise<boolean> {
+      const key = JSON.stringify(variables ?? null);
+      let answers = abChecks.get(document);
+      if (!answers) {
+        answers = new Map();
+        abChecks.set(document, answers);
+      }
+      const cached = answers.get(key);
+      if (cached && Date.now() - cached.at < AB_CHECK_TTL_MS)
+        return cached.value;
+
+      const value = (async () => {
+        let derived = decisionDocuments.get(document)?.get('*');
+        if (derived === undefined) {
+          derived = toDecisionDocument(document, await loadSchema());
+        }
+        if (!derived) return false;
+        // No visitor headers: the default response already contains every
+        // A/B test (as variant A), and Prepr's CDN can cache it.
+        const { data } = await run(derived, variables);
+        return hasAbTest(data);
+      })().catch((error: unknown) => {
+        if (isFrameworkSignal(error)) throw error;
+        answers!.delete(key);
+        return true;
+      });
+
+      if (answers.size >= AB_CHECK_MAX_ENTRIES) {
+        answers.delete(answers.keys().next().value!);
+      }
+      answers.set(key, { value, at: Date.now() });
+      return value;
     },
   };
 }

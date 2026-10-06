@@ -5,6 +5,8 @@ import {
 } from '@preprio/toolkit/nextjs';
 import { preprFeatures } from '@/prepr-features';
 import { preprGraphqlUrl } from '@/prepr-env';
+import { prepr } from '@/prepr-client';
+import { GetPageBySlugDocument } from '@/gql/graphql';
 
 export async function proxy(request: NextRequest) {
   const preview = process.env.NODE_ENV !== 'production';
@@ -13,12 +15,14 @@ export async function proxy(request: NextRequest) {
     features: preprFeatures,
   });
 
-  // The visitor's A/B bucket, asked from Prepr once and kept in a cookie.
-  // PreprStack reads it in the browser to show the right A/B variant before
-  // first paint. Sites without A/B tests can drop this line.
+  // The visitor's A/B bucket, asked from Prepr once and kept in a cookie, and
+  // only on pages that have an A/B test. PreprStack reads it in the browser
+  // to show the right A/B variant before first paint.
+  const slug = request.nextUrl.pathname.replace(/^\/+|\/+$/g, '') || '/';
   await resolvePreprBucket(request, response, {
     url: preprGraphqlUrl(),
     preview,
+    onlyIf: () => prepr().hasAbTests(GetPageBySlugDocument, { slug }),
   });
 
   return response;

@@ -279,11 +279,16 @@ export default async function Page({
 
   ```ts
   const response = createPreprMiddleware(request, { preview });
-  await resolvePreprBucket(request, response, { url, preview });
+  await resolvePreprBucket(request, response, {
+    url,
+    preview,
+    // Only pages with an A/B test need the bucket; others skip the lookup.
+    onlyIf: () => prepr.hasAbTests(GetPageBySlugDocument, { slug }),
+  });
   return response;
   ```
 
-  Sites without A/B tests can skip it. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
+  Prepr assigns the bucket; the toolkit only asks once, for visitors without a bucket cookie, on pages where `prepr.hasAbTests` (a small, CDN-cached context-only query, reused for a minute) finds an A/B test. Sites without A/B tests can skip the call. In-app navigation is covered too: `PreprStack` applies the bucket before the browser paints the new page. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
 
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
 - **Outside `'use cache'`, set `revalidate`.** With `revalidate: false` (or a number of seconds) on the client, Next treats the fetch as cached and the route still prerenders. With `revalidate` unset, a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
@@ -679,15 +684,16 @@ Each wrapper exposes the same five helpers, differing only in how they reach the
 
 `createPreprClient(options)` ships on `@preprio/toolkit/graphql` and on each framework's `/graphql` subpath (`@preprio/toolkit/nextjs/graphql`, `/nuxt/graphql`, `/sveltekit/graphql`, `/astro/graphql`). These subpaths need the `graphql` package (`>=16`); nothing else in the toolkit does. The core version takes explicit `headers`; the framework versions add `personalize`.
 
-| Option                 | Default                           | Effect                                                                          |
-| ---------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
-| `url`                  | —                                 | Full `https://graphql.prepr.io/<token>` URL. Throws `PreprError` when invalid.  |
-| `preview`              | `false`                           | Every query is `no-store`; stega defaults to `'urls'`.                          |
-| `stega`                | `'urls'` in preview, else `'all'` | Which strings get stega markers stripped: URL-like keys only, all, or `'none'`. |
-| `fetch`                | global `fetch`                    | Custom fetch. Also accepted per query.                                          |
-| `headers`              | —                                 | Sent with every request. Fixed per client, so queries stay cacheable.           |
-| `cacheTags` (Next.js)  | `['prepr']`                       | Tags on cacheable fetches.                                                      |
-| `revalidate` (Next.js) | unset                             | `next.revalidate` on cacheable fetches.                                         |
+| Option                 | Default                           | Effect                                                                                                           |
+| ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `url`                  | —                                 | Full `https://graphql.prepr.io/<token>` URL. Throws `PreprError` when invalid.                                   |
+| `preview`              | `false`                           | Every query is `no-store`; stega defaults to `'urls'`.                                                           |
+| `stega`                | `'urls'` in preview, else `'all'` | Which strings get stega markers stripped: URL-like keys only, all, or `'none'`.                                  |
+| `fetch`                | global `fetch`                    | Custom fetch. Also accepted per query.                                                                           |
+| `fastlyQuery`          | `false`                           | Send queries as a GET with a `Fastly-Query` header, served by Prepr's edge. Opt-in: undocumented Prepr behavior. |
+| `headers`              | —                                 | Sent with every request. Fixed per client, so queries stay cacheable.                                            |
+| `cacheTags` (Next.js)  | `['prepr']`                       | Tags on cacheable fetches.                                                                                       |
+| `revalidate` (Next.js) | unset                             | `next.revalidate` on cacheable fetches.                                                                          |
 
 `query(document, variables?, options?)` takes a query string, a `TypedDocumentString` or a `DocumentNode`, and resolves to `{ data, personalized }`. Per-query options: `headers`, `init`, `fetch`, plus `personalize` (framework versions) and `event` (Nuxt, SvelteKit, Astro). A request carrying per-query headers or `init.headers` is `no-store`; client-level `headers` are not.
 

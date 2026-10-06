@@ -532,11 +532,20 @@ function containsKind(value: unknown, kind: string): boolean {
   return Object.values(value).some((child) => containsKind(child, kind));
 }
 
+/** Whether a query result holds an A/B test anywhere. */
+export function hasAbTest(data: unknown): boolean {
+  return containsKind(data, 'AB_TEST');
+}
+
 /** A run of stack items that renders the same way: see {@link splitStack}. */
 export interface PreprStackBlock<T> {
   key: string;
   items: T[];
-  /** Position of the block's first item in the stack. */
+  /**
+   * Rendered position of the block's first item: a group (whichever variant
+   * shows) takes one position, any other item one each. Use it for anything
+   * that depends on page position, like which section owns the h1.
+   */
   index: number;
   /**
    * Some item in the block (or nested inside one) is a segment variant, so
@@ -558,6 +567,10 @@ export interface PreprStackBlock<T> {
  */
 export function splitStack<T>(items: readonly T[]): PreprStackBlock<T>[] {
   const blocks: PreprStackBlock<T>[] = [];
+  // Rendered positions taken so far; a group's variants share one.
+  let position = 0;
+  const positionsOf = (block: PreprStackBlock<T>) =>
+    block.key.startsWith('group:') ? 1 : block.items.length;
   items.forEach((item, index) => {
     const ctx = contextOf(item);
     const groupKey = ctx ? `group:${ctx.group_id}` : null;
@@ -572,10 +585,12 @@ export function splitStack<T>(items: readonly T[]): PreprStackBlock<T>[] {
     } else if (plain && last && !last.personalized && !last.abTest) {
       last.items.push(item);
     } else {
+      const last = blocks.at(-1);
+      if (last) position = last.index + positionsOf(last);
       blocks.push({
         key: groupKey ?? `items:${index}`,
         items: [item],
-        index,
+        index: position,
         personalized,
         abTest,
       });

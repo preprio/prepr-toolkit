@@ -282,6 +282,14 @@ describe('resolving variants', () => {
       ['items:6', ['plain'], false, false],
     ]);
   });
+
+  it('numbers blocks by rendered position: a group takes one slot', () => {
+    // hero group (2 variants) → 0, banner group → 1, A/B group → 2,
+    // cards → 3, plain → 4.
+    expect(splitStack(content).map((block) => block.index)).toEqual([
+      0, 1, 2, 3, 4,
+    ]);
+  });
 });
 
 describe('decision pruned to the groups a page actually has', () => {
