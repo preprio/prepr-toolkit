@@ -25,6 +25,7 @@ export { PreprError } from '../core/server';
 export type { AstroLikeContext } from './index';
 export type {
   PreprClientOptions,
+  PreprDecideOptions,
   PreprDocument,
   PreprEventClient,
   PreprEventQueryOptions,

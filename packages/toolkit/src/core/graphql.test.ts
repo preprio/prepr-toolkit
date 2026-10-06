@@ -21,6 +21,8 @@ vi.mock('graphql/language/printer.js', async (importOriginal) => {
 const TOKEN = 'secret-token-123';
 const GRAPHQL_URL = `https://graphql.prepr.io/${TOKEN}`;
 const PAGE_QUERY = 'query GetPage($slug: String) { Page(slug: $slug) { _id } }';
+// What the client sends: the same query without insignificant whitespace.
+const PAGE_QUERY_SENT = 'query GetPage($slug:String){Page(slug:$slug){_id}}';
 
 function respond(
   body: unknown,
@@ -91,7 +93,7 @@ describe('query request', () => {
       'application/json',
     );
     expect(JSON.parse(init().body as string)).toEqual({
-      query: PAGE_QUERY,
+      query: PAGE_QUERY_SENT,
       variables: { slug: '/' },
     });
   });
@@ -114,6 +116,32 @@ describe('query request', () => {
 
     expect(perQuery).toHaveBeenCalledTimes(1);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('query size', () => {
+  it("strips indentation and comments, which count against Prepr's size limit", async () => {
+    const { client, sentQuery } = setup(respond({ data: {} }));
+    const indented = `
+      # A comment
+      query GetPage($slug: String) {
+        Page(slug: $slug) {
+          _id
+        }
+      }
+    `;
+
+    await client.query(indented, { slug: '/' });
+
+    expect(sentQuery()).toBe(PAGE_QUERY_SENT);
+  });
+
+  it('explains an HTTP 412 as a query that is too long', async () => {
+    const { client } = setup(respond('', {}, 412));
+
+    const error = await caught(client.query(PAGE_QUERY));
+
+    expect(error.message).toContain('27,500 characters');
   });
 });
 
@@ -145,7 +173,7 @@ describe('document resolution', () => {
       { slug: '/' },
     );
 
-    expect(sentQuery()).toBe(PAGE_QUERY);
+    expect(sentQuery()).toBe(PAGE_QUERY_SENT);
   });
 
   it('prints a DocumentNode without loc, as codegen emits it', async () => {
@@ -153,8 +181,7 @@ describe('document resolution', () => {
 
     await client.query(codegenDocument(PAGE_QUERY), { slug: '/' });
 
-    expect(sentQuery()).toContain('query GetPage($slug: String)');
-    expect(sentQuery()).toContain('Page(slug: $slug)');
+    expect(sentQuery()).toBe(PAGE_QUERY_SENT);
   });
 
   it('prints each DocumentNode once, however often it is queried', async () => {
@@ -635,8 +662,8 @@ describe('variants and decide', () => {
 
     await client.query(QUERY, { slug: '/' }, { variants: true });
 
-    expect(sent()[0]).toContain('content(personalize: false)');
-    expect(sent()[0]).toContain('_preprContext: _context');
+    expect(sent()[0]).toContain('content(personalize:false)');
+    expect(sent()[0]).toContain('_preprContext:_context');
   });
 
   it('decides with a cut-down query and returns variants per group', async () => {
@@ -672,6 +699,46 @@ describe('variants and decide', () => {
       'c1',
     );
     expect(decisionInit.cache).toBe('no-store');
+  });
+
+  it('asks only about fields that hold groups, given the variants result', async () => {
+    const { client, sent, fetch } = schemaSetup({ data: { Page: null } });
+
+    const none = await client.decide(
+      QUERY,
+      { slug: '/' },
+      {
+        headers: {},
+        from: { Page: { title: 'x', content: [{ heading: 'plain' }] } },
+      },
+    );
+
+    // No segment groups on the page: no decision request at all.
+    expect(none.size).toBe(0);
+    expect(sent()).toHaveLength(0);
+    expect(fetch).not.toHaveBeenCalled();
+
+    await client.decide(
+      QUERY,
+      { slug: '/' },
+      {
+        headers: {},
+        from: {
+          Page: {
+            content: [
+              {
+                _preprContext: {
+                  kind: 'PERSONALIZATION',
+                  group_id: 'g',
+                  variant_id: 'X',
+                },
+              },
+            ],
+          },
+        },
+      },
+    );
+    expect(sent()[0]).toContain('_preprContext');
   });
 
   it('introspects the schema once per client', async () => {

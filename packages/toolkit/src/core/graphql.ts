@@ -3,6 +3,7 @@ import type { DocumentNode } from 'graphql';
 // The printer module alone, not the `graphql` barrel: resolved as CommonJS,
 // the barrel loads the whole package (~260 KB minified) for this one function.
 import { print } from 'graphql/language/printer.js';
+import { stripIgnoredCharacters } from 'graphql/utilities/stripIgnoredCharacters.js';
 
 import { isPersonalizedResponse } from './personalization';
 import {
@@ -14,6 +15,7 @@ import { stegaClean } from './stega/clean';
 import {
   PREPR_SCHEMA_QUERY,
   decisionsFrom,
+  personalizationPaths,
   toDecisionDocument,
   toSchemaInfo,
   toVariantsDocument,
@@ -79,6 +81,11 @@ export interface PreprClientOptions {
   /** Default: `'urls'` when `preview` is true, otherwise `'all'`. */
   stega?: PreprStegaMode;
   /**
+   * @internal Fetch options for the one-time schema introspection, so a
+   * framework wrapper can put it in its data cache.
+   */
+  schemaInit?: RequestInit;
+  /**
    * Headers sent with every request, such as a header a proxy in front of the
    * API requires. They are fixed when the client is created, so they cannot
    * vary per visitor and do not stop responses from being cached. Put
@@ -115,6 +122,20 @@ export interface PreprQueryOptions {
   variants?: boolean;
 }
 
+/** Options for `decide()`. */
+export interface PreprDecideOptions extends Omit<
+  PreprQueryOptions,
+  'variants'
+> {
+  /**
+   * The `variants: true` result this decision is for (the whole `data`
+   * object). The decision query then asks only about the fields that hold
+   * segment personalization groups, and is skipped entirely when there are
+   * none, e.g. on pages with only A/B tests or no personalization.
+   */
+  from?: unknown;
+}
+
 export interface PreprQueryResult<TResult> {
   data: TResult;
   /**
@@ -147,7 +168,7 @@ export interface PreprClient {
   decide<TVariables>(
     document: PreprDocument<unknown, TVariables>,
     variables?: TVariables,
-    options?: PreprQueryOptions,
+    options?: PreprDecideOptions,
   ): Promise<PreprDecisions>;
 }
 
@@ -174,15 +195,36 @@ function invalidDocument(originalError?: Error): PreprError {
   );
 }
 
+// Prepr rejects queries over 27,500 characters (HTTP 412), and indentation
+// alone can push a query with many fragments past that. Every query is sent
+// without insignificant whitespace and comments.
+const minified = new Map<string, string>();
+const MINIFIED_CACHE_LIMIT = 500;
+
+function minify(query: string): string {
+  const cached = minified.get(query);
+  if (cached !== undefined) return cached;
+  let result = query;
+  try {
+    result = stripIgnoredCharacters(query);
+  } catch {
+    // Not valid GraphQL: send it as is and let Prepr report the error.
+  }
+  // Query strings are normally module constants; the cap keeps queries built
+  // at runtime from growing the cache without bound.
+  if (minified.size < MINIFIED_CACHE_LIMIT) minified.set(query, result);
+  return result;
+}
+
 function resolveQuery(document: unknown): string {
-  if (typeof document === 'string') return document;
-  if (document instanceof String) return document.toString();
+  if (typeof document === 'string') return minify(document);
+  if (document instanceof String) return minify(document.toString());
   if (!isDocumentNode(document)) throw invalidDocument();
 
   let query = printed.get(document);
   if (query === undefined) {
     try {
-      query = print(document);
+      query = minify(print(document));
     } catch (error) {
       throw invalidDocument(error instanceof Error ? error : undefined);
     }
@@ -326,7 +368,11 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
 
     if (!response.ok) {
       throw new PreprError(
-        `Prepr GraphQL HTTP ${response.status} for ${operation}`,
+        `Prepr GraphQL HTTP ${response.status} for ${operation}${
+          response.status === 412
+            ? ' (Prepr rejects queries longer than 27,500 characters)'
+            : ''
+        }`,
         'HTTP_ERROR',
         operation,
       );
@@ -385,6 +431,8 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
   const loadSchema = () =>
     (schema ??= run<Parameters<typeof toSchemaInfo>[0], undefined>(
       PREPR_SCHEMA_QUERY,
+      undefined,
+      { init: options.schemaInit },
     ).then(
       (result) => toSchemaInfo(result.data),
       (error: unknown) => {
@@ -396,7 +444,10 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
   // Derived documents are cached per source document, so each is built (and
   // printed) once.
   const variantsDocuments = new Map<unknown, DocumentNode>();
-  const decisionDocuments = new Map<unknown, DocumentNode | null>();
+  const decisionDocuments = new Map<
+    unknown,
+    Map<string, DocumentNode | null>
+  >();
 
   return {
     async query<TResult, TVariables>(
@@ -418,15 +469,25 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
     async decide<TVariables>(
       document: PreprDocument<unknown, TVariables>,
       variables?: TVariables,
-      queryOptions: PreprQueryOptions = {},
+      queryOptions: PreprDecideOptions = {},
     ): Promise<PreprDecisions> {
-      let derived = decisionDocuments.get(document);
+      const { from, ...rest } = queryOptions;
+      const paths = from === undefined ? undefined : personalizationPaths(from);
+      // Nothing on the page depends on a segment: no request at all.
+      if (paths && paths.size === 0) return new Map();
+
+      const signature = paths ? [...paths].sort().join('|') : '*';
+      let byPaths = decisionDocuments.get(document);
+      if (!byPaths) {
+        byPaths = new Map();
+        decisionDocuments.set(document, byPaths);
+      }
+      let derived = byPaths.get(signature);
       if (derived === undefined) {
-        derived = toDecisionDocument(document, await loadSchema());
-        decisionDocuments.set(document, derived);
+        derived = toDecisionDocument(document, await loadSchema(), paths);
+        byPaths.set(signature, derived);
       }
       if (!derived) return new Map();
-      const { variants: _variants, ...rest } = queryOptions;
       const { data } = await run(derived, variables, rest);
       return decisionsFrom(data);
     },
@@ -488,7 +549,7 @@ export interface PreprEventClient<TEvent> {
   decide<TVariables>(
     document: PreprDocument<unknown, TVariables>,
     variables: TVariables | undefined,
-    options: PreprQueryOptions & { event: TEvent },
+    options: PreprDecideOptions & { event: TEvent },
   ): Promise<PreprDecisions>;
 }
 
@@ -539,7 +600,7 @@ export function createEventClient<TEvent>(
     async decide<TVariables>(
       document: PreprDocument<unknown, TVariables>,
       variables: TVariables | undefined,
-      queryOptions: PreprQueryOptions & { event: TEvent },
+      queryOptions: PreprDecideOptions & { event: TEvent },
     ): Promise<PreprDecisions> {
       const { event, ...rest } = queryOptions;
       if (event === undefined) {

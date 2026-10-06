@@ -11,6 +11,7 @@ import {
   isFrameworkSignal,
   mergePreprHeaders,
   type PreprClientOptions,
+  type PreprDecideOptions,
   type PreprDocument,
   type PreprQueryOptions,
   type PreprQueryResult,
@@ -72,7 +73,7 @@ export interface PreprNextClient {
   decide<TVariables>(
     document: PreprDocument<unknown, TVariables>,
     variables?: TVariables,
-    options?: PreprQueryOptions,
+    options?: PreprDecideOptions,
   ): Promise<PreprDecisions>;
 }
 
@@ -100,7 +101,14 @@ export function createPreprClient(
   options: PreprNextClientOptions,
 ): PreprNextClient {
   const { cacheTags = ['prepr'], revalidate, ...coreOptions } = options;
-  const client = createCoreClient(coreOptions);
+  const client = createCoreClient({
+    // The schema introspection goes through the Data Cache: shared across
+    // server instances, refreshed hourly and by revalidateTag on publish.
+    schemaInit: {
+      next: { tags: cacheTags, revalidate: 3600 },
+    } as NextFetchInit,
+    ...coreOptions,
+  });
 
   return {
     async query<TResult, TVariables>(
@@ -138,7 +146,7 @@ export function createPreprClient(
     async decide<TVariables>(
       document: PreprDocument<unknown, TVariables>,
       variables?: TVariables,
-      queryOptions: PreprQueryOptions = {},
+      queryOptions: PreprDecideOptions = {},
     ): Promise<PreprDecisions> {
       return client.decide(document, variables, {
         ...queryOptions,
@@ -160,8 +168,13 @@ export interface PreprStackProps<T> {
    * default variants instead of failing the page.
    */
   decisions: Promise<PreprDecisions>;
-  /** Renders resolved stack items, e.g. your section switch. */
-  render: (items: T[]) => ReactNode;
+  /**
+   * Renders resolved stack items, e.g. your section switch. `index` is the
+   * position of the block's first item in the whole stack, for anything that
+   * depends on page position, such as which section owns the h1 or the
+   * priority image.
+   */
+  render: (items: T[], position: { index: number }) => ReactNode;
   /**
    * The visitor's A/B bucket, when the route already knows it (for example
    * from a URL segment). Leave it out to render both variants of each A/B
@@ -191,20 +204,27 @@ const AB_SWITCH_SCRIPT = `(function(){var m=document.cookie.match(/(?:^|; )${PRE
  * Renders items for every A/B bucket the visitor might have, each in a
  * wrapper the switch script shows or hides; or for the known bucket only.
  */
+type StackRender<T> = PreprStackProps<T>['render'];
+
 function renderBuckets<T>(
   items: T[],
-  render: (items: T[]) => ReactNode,
-  options: { bucket?: string; decisions?: PreprDecisions; abTest: boolean },
+  render: StackRender<T>,
+  options: {
+    bucket?: string;
+    decisions?: PreprDecisions;
+    abTest: boolean;
+    index: number;
+  },
 ): ReactNode {
-  const { bucket, decisions, abTest } = options;
+  const { bucket, decisions, abTest, index } = options;
   if (!abTest || bucket) {
-    return render(resolveVariants(items, { decisions, bucket }));
+    return render(resolveVariants(items, { decisions, bucket }), { index });
   }
   return AB_BUCKETS.map((variant) =>
     createElement(
       'div',
       { key: variant, [AB_ATTRIBUTE]: variant },
-      render(resolveVariants(items, { decisions, bucket: variant })),
+      render(resolveVariants(items, { decisions, bucket: variant }), { index }),
     ),
   );
 }
@@ -214,13 +234,15 @@ async function PersonalizedBlock<T>({
   decisions,
   bucket,
   abTest,
+  index,
   render,
 }: {
   items: T[];
   decisions: Promise<PreprDecisions>;
   bucket?: string;
   abTest: boolean;
-  render: (items: T[]) => ReactNode;
+  index: number;
+  render: StackRender<T>;
 }): Promise<ReactNode> {
   const decided = await decisions.catch((error: unknown) => {
     // Next.js control flow must reach Next; anything else degrades to the
@@ -228,7 +250,12 @@ async function PersonalizedBlock<T>({
     if (isFrameworkSignal(error)) throw error;
     return undefined;
   });
-  return renderBuckets(items, render, { bucket, decisions: decided, abTest });
+  return renderBuckets(items, render, {
+    bucket,
+    decisions: decided,
+    abTest,
+    index,
+  });
 }
 
 /**
@@ -246,11 +273,11 @@ async function PersonalizedBlock<T>({
  *   variant, a group with no default variant still gets its place.
  *
  * @example
- * const page = await getPage(slug); // 'use cache' + query(..., { variants: true })
+ * const data = await getPage(slug); // 'use cache' + query(..., { variants: true })
  * <PreprStack
- *   items={page.content}
- *   decisions={prepr.decide(PageDocument, { slug })}
- *   render={(items) => <Sections sections={items} />}
+ *   items={data.Page.content}
+ *   decisions={prepr.decide(PageDocument, { slug }, { from: data })}
+ *   render={(items, { index }) => <Sections sections={items} offset={index} />}
  * />
  */
 export function PreprStack<T>({
@@ -285,6 +312,7 @@ export function PreprStack<T>({
       const fallback = renderBuckets(block.items, render, {
         bucket,
         abTest: block.abTest,
+        index: block.index,
       });
       if (!block.personalized) {
         return createElement(Fragment, { key: block.key }, fallback);
@@ -297,6 +325,7 @@ export function PreprStack<T>({
           decisions,
           bucket,
           abTest: block.abTest,
+          index: block.index,
           render,
         }),
       );
@@ -315,6 +344,7 @@ export {
   type ResolveVariantsOptions,
 } from '../core/variants';
 export type {
+  PreprDecideOptions,
   PreprDocument,
   PreprQueryResult,
   PreprStegaMode,

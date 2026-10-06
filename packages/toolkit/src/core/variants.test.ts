@@ -7,6 +7,7 @@ import {
   PREPR_CONTEXT_ALIAS as CTX,
   PREPR_DEFAULT_VARIANT,
   decisionsFrom,
+  personalizationPaths,
   resolveVariants,
   splitStack,
   toDecisionDocument,
@@ -280,5 +281,48 @@ describe('resolving variants', () => {
       ['items:5', ['cards'], true, false],
       ['items:6', ['plain'], false, false],
     ]);
+  });
+});
+
+describe('decision pruned to the groups a page actually has', () => {
+  const ctx = (kind: string, group: string, variant: string) => ({
+    [CTX]: { kind, group_id: group, variant_id: variant },
+  });
+
+  it('finds the response paths of lists holding segment groups, at any depth', () => {
+    const data = {
+      Page: {
+        content: [
+          { ...ctx('AB_TEST', 'g-ab', 'A') },
+          { cards: [{ ...ctx('PERSONALIZATION', 'g-posts', 'SMALL') }] },
+          { buttons: [{ text: 'plain' }] },
+        ],
+      },
+    };
+    expect([...personalizationPaths(data)]).toEqual(['Page.content.cards']);
+  });
+
+  it('keeps only the fields on those paths', () => {
+    const printed = compact(
+      toDecisionDocument(PAGE_QUERY, schema, new Set(['Page.content.cards'])),
+    );
+    // The path down to the cards is kept, as plain traversal...
+    expect(printed).toContain('Page(slug: $slug) { content {');
+    expect(printed).toContain(`cards { ... on Post { ${CTX}: _context`);
+    // ...but the stack itself is not asked about, and neither are buttons.
+    expect(printed).not.toContain(`... on Hero { ${CTX}`);
+    expect(printed).not.toContain('buttons');
+  });
+
+  it('follows aliases in response paths', () => {
+    const aliased = `query { Page(slug: "/") { body: content { ... on Hero { heading } } } }`;
+    const printed = compact(
+      toDecisionDocument(aliased, schema, new Set(['Page.body'])),
+    );
+    expect(printed).toContain(`body: content { ... on Hero { ${CTX}`);
+  });
+
+  it('asks nothing when the page has no segment groups', () => {
+    expect(toDecisionDocument(PAGE_QUERY, schema, new Set())).toBeNull();
   });
 });

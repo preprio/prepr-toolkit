@@ -247,7 +247,7 @@ async function getPage(slug: string) {
     { slug },
     { variants: true },
   );
-  return data.Page;
+  return data;
 }
 
 export default async function Page({
@@ -257,20 +257,23 @@ export default async function Page({
 }) {
   const { slug: segments } = await params;
   const slug = segments?.join('/') || '/';
-  const page = await getPage(slug);
+  const data = await getPage(slug);
 
   return (
     <PreprStack
-      items={page.content}
-      decisions={prepr.decide(GetPageBySlugDocument, { slug })} // not awaited
-      render={(items) => <Sections sections={items} />}
+      items={data.Page.content}
+      // Not awaited. `from` limits it to the groups this page has.
+      decisions={prepr.decide(GetPageBySlugDocument, { slug }, { from: data })}
+      render={(items, { index }) => (
+        <Sections sections={items} offset={index} />
+      )}
     />
   );
 }
 ```
 
 - **`variants: true`** adds `personalize: false` to every personalizable field in your query, at any depth (page stacks, nested stacks of models, personalized buttons), and selects each item's `_context`. The client learns which fields are personalizable from one schema introspection request per client.
-- **`decide()`** sends your query cut down to the personalizable paths, selecting only `_context`: a few hundred bytes, per visitor, never cached. Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id.
+- **`decide()`** sends your query cut down to the personalizable paths, selecting only `_context`, per visitor and never cached. With `from: data` it asks only about the fields that actually hold segment groups on this page, and makes no request at all on pages without them (including pages with only A/B tests). Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id.
 - **`PreprStack`** renders everything that never varies in the static shell. Each segment-personalized group gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant (shown only to one segment) still gets its place.
 - **A/B tests never stream or swap.** `PreprStack` renders both variants of each A/B test in the static shell, and a tiny inline script shows the visitor's bucket before first paint. A is the default, also for crawlers and visitors without JavaScript. A hidden variant never becomes visible, so the tracking pixel records no impression for it. The bucket comes from a cookie that `resolvePreprBucket` (from `@preprio/toolkit/nextjs`) sets in your middleware, asking Prepr once per visitor:
 

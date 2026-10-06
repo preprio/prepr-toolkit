@@ -249,22 +249,32 @@ export function toVariantsDocument(
 
 // --- Decision document ----------------------------------------------------------
 
+interface DecisionContext {
+  schema: PreprSchemaInfo;
+  fragments: Record<string, FragmentDefinitionNode>;
+  /**
+   * When known: the response paths whose lists hold personalization groups,
+   * and every prefix of those paths. Fields elsewhere are left out.
+   */
+  paths?: { groups: ReadonlySet<string>; prefixes: ReadonlySet<string> };
+}
+
 function decisionSelectionSet(
   set: SelectionSetNode,
   typeName: string,
-  schema: PreprSchemaInfo,
-  fragments: Record<string, FragmentDefinitionNode>,
+  path: string,
+  ctx: DecisionContext,
 ): SelectionSetNode | null {
   const selections: SelectionNode[] = [];
   for (const selection of set.selections) {
     if (selection.kind === 'FragmentSpread') {
-      const fragment = fragments[selection.name.value];
+      const fragment = ctx.fragments[selection.name.value];
       if (!fragment) continue;
       const pruned = decisionSelectionSet(
         fragment.selectionSet,
         fragment.typeCondition.name.value,
-        schema,
-        fragments,
+        path,
+        ctx,
       );
       if (pruned) {
         selections.push(
@@ -279,33 +289,46 @@ function decisionSelectionSet(
       const pruned = decisionSelectionSet(
         selection.selectionSet,
         selection.typeCondition?.name.value ?? typeName,
-        schema,
-        fragments,
+        path,
+        ctx,
       );
       if (pruned) selections.push({ ...selection, selectionSet: pruned });
       continue;
     }
     if (!selection.selectionSet) continue;
 
-    const field = schema.types[typeName]?.fields[selection.name.value];
+    const field = ctx.schema.types[typeName]?.fields[selection.name.value];
     if (!field) continue;
+    // Response paths use the alias when there is one.
+    const key = selection.alias?.value ?? selection.name.value;
+    const fieldPath = path ? `${path}.${key}` : key;
+    if (ctx.paths && !ctx.paths.prefixes.has(fieldPath)) continue;
+
     const child = decisionSelectionSet(
       selection.selectionSet,
       field.type,
-      schema,
-      fragments,
+      fieldPath,
+      ctx,
     );
-    if (field.personalizable) {
+    const holdsGroups =
+      field.personalizable && (!ctx.paths || ctx.paths.groups.has(fieldPath));
+    if (holdsGroups) {
       selections.push({
         ...selection,
         arguments: withoutPersonalizeArg(selection.arguments),
         selectionSet: selectionSet([
           ...(child?.selections ?? []),
-          ...contextSelections(field.type, schema),
+          ...contextSelections(field.type, ctx.schema),
         ]),
       });
     } else if (child) {
-      selections.push({ ...selection, selectionSet: child });
+      selections.push({
+        ...selection,
+        arguments: field.personalizable
+          ? withoutPersonalizeArg(selection.arguments)
+          : selection.arguments,
+        selectionSet: child,
+      });
     }
   }
   return selections.length > 0 ? selectionSet(selections) : null;
@@ -330,11 +353,14 @@ function collectVariables(node: unknown, used: Set<string>): void {
 /**
  * The smallest query that tells which variant a visitor gets: your query cut
  * down to the paths that lead to personalizable fields, selecting only each
- * item's `_context`. Returns null when the query has nothing personalizable.
+ * item's `_context`. With `groupPaths` (from {@link personalizationPaths}),
+ * only the fields that actually hold personalization groups are kept.
+ * Returns null when nothing is left to ask.
  */
 export function toDecisionDocument(
   document: unknown,
   schema: PreprSchemaInfo,
+  groupPaths?: ReadonlySet<string>,
 ): DocumentNode | null {
   const doc = documentOf(document);
   const fragments: Record<string, FragmentDefinitionNode> = {};
@@ -349,11 +375,22 @@ export function toDecisionDocument(
   );
   if (!operation) return null;
 
+  let paths: DecisionContext['paths'];
+  if (groupPaths) {
+    const prefixes = new Set<string>();
+    for (const groupPath of groupPaths) {
+      const parts = groupPath.split('.');
+      for (let i = 1; i <= parts.length; i++) {
+        prefixes.add(parts.slice(0, i).join('.'));
+      }
+    }
+    paths = { groups: groupPaths, prefixes };
+  }
   const pruned = decisionSelectionSet(
     operation.selectionSet,
     schema.queryType,
-    schema,
-    fragments,
+    '',
+    { schema, fragments, paths },
   );
   if (!pruned) return null;
 
@@ -377,6 +414,31 @@ export function toDecisionDocument(
 }
 
 // --- Resolving variants ---------------------------------------------------------
+
+/**
+ * Response paths (keys joined with `.`, list positions left out) of every
+ * list in a variants result that holds a segment personalization group. A/B
+ * groups are left out: they resolve from the bucket, not a decision.
+ */
+export function personalizationPaths(data: unknown): Set<string> {
+  const paths = new Set<string>();
+  const walk = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (contextOf(item)?.kind === 'PERSONALIZATION') paths.add(path);
+        walk(item, path);
+      }
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== PREPR_CONTEXT_ALIAS)
+        walk(child, path ? `${path}.${key}` : key);
+    }
+  };
+  walk(data, '');
+  return paths;
+}
 
 interface ItemContext {
   kind?: string | null;
@@ -474,6 +536,8 @@ function containsKind(value: unknown, kind: string): boolean {
 export interface PreprStackBlock<T> {
   key: string;
   items: T[];
+  /** Position of the block's first item in the stack. */
+  index: number;
   /**
    * Some item in the block (or nested inside one) is a segment variant, so
    * the block depends on the visitor and is decided per request.
@@ -511,6 +575,7 @@ export function splitStack<T>(items: readonly T[]): PreprStackBlock<T>[] {
       blocks.push({
         key: groupKey ?? `items:${index}`,
         items: [item],
+        index,
         personalized,
         abTest,
       });

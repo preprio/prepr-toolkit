@@ -18,7 +18,7 @@ async function getPage(slug: string) {
     { slug },
     { variants: true },
   );
-  return data.Page;
+  return data;
 }
 
 // Prerender the home page; other slugs render on first request.
@@ -34,7 +34,8 @@ export default async function Page({
   const { slug: segments } = await params;
   const slug = segments?.join('/') || '/';
 
-  const page = await getPage(slug);
+  const data = await getPage(slug);
+  const page = data.Page;
   if (!page) notFound();
 
   return (
@@ -47,7 +48,13 @@ export default async function Page({
           group: this visitor's segment variants. */}
       <PreprStack
         items={page.content}
-        decisions={prepr().decide(GetPageBySlugDocument, { slug })}
+        // `from` limits the per-visitor query to the groups this page has,
+        // and skips it when there are none.
+        decisions={prepr().decide(
+          GetPageBySlugDocument,
+          { slug },
+          { from: data },
+        )}
         render={(elements) => <Sections elements={elements} />}
       />
     </div>

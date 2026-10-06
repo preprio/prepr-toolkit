@@ -5,6 +5,7 @@ export {
   createPreprClient,
   type PreprClient,
   type PreprClientOptions,
+  type PreprDecideOptions,
   type PreprDocument,
   type PreprQueryOptions,
   type PreprQueryResult,

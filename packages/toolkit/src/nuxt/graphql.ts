@@ -30,6 +30,7 @@ export { isPersonalizedResponse } from '../core/personalization';
 export { PreprError } from '../core/server';
 export type {
   PreprClientOptions,
+  PreprDecideOptions,
   PreprDocument,
   PreprEventClient,
   PreprEventQueryOptions,
