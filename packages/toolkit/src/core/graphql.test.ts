@@ -572,3 +572,118 @@ describe('custom headers', () => {
     expect(sent.get('content-type')).toBe('application/json');
   });
 });
+
+describe('variants and decide', () => {
+  const ref = (name: string) => ({ name: null, ofType: { name } });
+  const introspection = {
+    data: {
+      __schema: {
+        queryType: { name: 'Query' },
+        types: [
+          {
+            name: 'Query',
+            fields: [
+              { name: 'Page', args: [{ name: 'slug' }], type: ref('Page') },
+            ],
+          },
+          {
+            name: 'Page',
+            fields: [
+              { name: 'title', args: [], type: ref('String') },
+              {
+                name: 'content',
+                args: [{ name: 'personalize' }],
+                type: ref('Page_Content'),
+              },
+            ],
+          },
+          { name: 'Page_Content', possibleTypes: [{ name: 'Hero' }] },
+          {
+            name: 'Hero',
+            fields: [
+              { name: 'heading', args: [], type: ref('String') },
+              { name: '_context', args: [], type: ref('Context') },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const QUERY =
+    'query GetPage($slug: String) { Page(slug: $slug) { title content { ... on Hero { heading } } } }';
+
+  function schemaSetup(answer: unknown) {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) =>
+      String(init?.body).includes('__schema')
+        ? respond(introspection)
+        : respond(answer),
+    );
+    const client = createPreprClient({
+      url: GRAPHQL_URL,
+      fetch,
+      stega: 'none',
+    });
+    const sent = () =>
+      fetch.mock.calls
+        .map((call) => JSON.parse(call[1]!.body as string).query as string)
+        .filter((q) => !q.includes('__schema'));
+    return { client, fetch, sent };
+  }
+
+  it('asks for every variant with variants: true', async () => {
+    const { client, sent } = schemaSetup({ data: { Page: null } });
+
+    await client.query(QUERY, { slug: '/' }, { variants: true });
+
+    expect(sent()[0]).toContain('content(personalize: false)');
+    expect(sent()[0]).toContain('_preprContext: _context');
+  });
+
+  it('decides with a cut-down query and returns variants per group', async () => {
+    const { client, sent, fetch } = schemaSetup({
+      data: {
+        Page: {
+          content: [
+            {
+              _preprContext: {
+                kind: 'PERSONALIZATION',
+                group_id: 'g1',
+                variant_id: 'SEG',
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const decisions = await client.decide(
+      QUERY,
+      { slug: '/' },
+      {
+        headers: { 'Prepr-Customer-Id': 'c1' },
+      },
+    );
+
+    expect(decisions.get('g1')).toEqual(['SEG']);
+    expect(sent()[0]).not.toContain('heading');
+    expect(sent()[0]).not.toContain('title');
+    const decisionInit = fetch.mock.calls.at(-1)![1]!;
+    expect(new Headers(decisionInit.headers).get('Prepr-Customer-Id')).toBe(
+      'c1',
+    );
+    expect(decisionInit.cache).toBe('no-store');
+  });
+
+  it('introspects the schema once per client', async () => {
+    const { client, fetch } = schemaSetup({ data: { Page: null } });
+
+    await client.query(QUERY, { slug: '/' }, { variants: true });
+    await client.decide(QUERY, { slug: '/' }, { headers: {} });
+    await client.query(QUERY, { slug: '/a' }, { variants: true });
+
+    const introspections = fetch.mock.calls.filter((call) =>
+      String(call[1]?.body).includes('__schema'),
+    );
+    expect(introspections).toHaveLength(1);
+  });
+});

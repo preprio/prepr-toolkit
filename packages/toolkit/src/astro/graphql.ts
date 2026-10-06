@@ -31,3 +31,11 @@ export type {
   PreprQueryResult,
   PreprStegaMode,
 } from '../core/graphql';
+export {
+  PREPR_DEFAULT_VARIANT,
+  resolveVariants,
+  splitStack,
+  type PreprDecisions,
+  type PreprStackBlock,
+  type ResolveVariantsOptions,
+} from '../core/variants';

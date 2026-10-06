@@ -17,15 +17,13 @@ type Documents = {
     "fragment Button on Button {\n  button_type\n  text\n  external_url\n  link {\n    ... on Category {\n      _slug\n    }\n    ... on Page {\n      _slug\n    }\n    ... on Post {\n      _slug\n    }\n  }\n}": typeof types.ButtonFragmentDoc,
     "fragment Feature on Feature {\n  _id\n  heading\n  sub_heading\n  button {\n    ...Button\n  }\n  _context {\n    variant_key\n  }\n  image_position\n  image {\n    url(width: 870, height: 570)\n  }\n}": typeof types.FeatureFragmentDoc,
     "fragment Hero on Hero {\n  _id\n  sub_heading\n  image {\n    url(preset: \"Hero\", width: 2000)\n    height\n    width\n  }\n  _context {\n    variant_key\n  }\n  heading\n  buttons {\n    ...Button\n  }\n}": typeof types.HeroFragmentDoc,
-    "query GetPageDecision($slug: String) {\n  Page(slug: $slug) {\n    content {\n      ... on Component {\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n    }\n  }\n}": typeof types.GetPageDecisionDocument,
-    "query GetPageVariants($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content(personalize: false) {\n      __typename\n      ... on Component {\n        _id\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}": typeof types.GetPageVariantsDocument,
+    "query GetPageBySlug($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content {\n      __typename\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}": typeof types.GetPageBySlugDocument,
 };
 const documents: Documents = {
     "fragment Button on Button {\n  button_type\n  text\n  external_url\n  link {\n    ... on Category {\n      _slug\n    }\n    ... on Page {\n      _slug\n    }\n    ... on Post {\n      _slug\n    }\n  }\n}": types.ButtonFragmentDoc,
     "fragment Feature on Feature {\n  _id\n  heading\n  sub_heading\n  button {\n    ...Button\n  }\n  _context {\n    variant_key\n  }\n  image_position\n  image {\n    url(width: 870, height: 570)\n  }\n}": types.FeatureFragmentDoc,
     "fragment Hero on Hero {\n  _id\n  sub_heading\n  image {\n    url(preset: \"Hero\", width: 2000)\n    height\n    width\n  }\n  _context {\n    variant_key\n  }\n  heading\n  buttons {\n    ...Button\n  }\n}": types.HeroFragmentDoc,
-    "query GetPageDecision($slug: String) {\n  Page(slug: $slug) {\n    content {\n      ... on Component {\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n    }\n  }\n}": types.GetPageDecisionDocument,
-    "query GetPageVariants($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content(personalize: false) {\n      __typename\n      ... on Component {\n        _id\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}": types.GetPageVariantsDocument,
+    "query GetPageBySlug($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content {\n      __typename\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}": types.GetPageBySlugDocument,
 };
 
 /**
@@ -57,11 +55,7 @@ export function graphql(source: "fragment Hero on Hero {\n  _id\n  sub_heading\n
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "query GetPageDecision($slug: String) {\n  Page(slug: $slug) {\n    content {\n      ... on Component {\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n    }\n  }\n}"): (typeof documents)["query GetPageDecision($slug: String) {\n  Page(slug: $slug) {\n    content {\n      ... on Component {\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n    }\n  }\n}"];
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "query GetPageVariants($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content(personalize: false) {\n      __typename\n      ... on Component {\n        _id\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}"): (typeof documents)["query GetPageVariants($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content(personalize: false) {\n      __typename\n      ... on Component {\n        _id\n        _context {\n          kind\n          group_id\n          variant_id\n        }\n      }\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}"];
+export function graphql(source: "query GetPageBySlug($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content {\n      __typename\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}"): (typeof documents)["query GetPageBySlug($slug: String) {\n  Page(slug: $slug) {\n    title\n    _id\n    content {\n      __typename\n      ... on Hero {\n        ...Hero\n      }\n      ... on Feature {\n        ...Feature\n      }\n    }\n  }\n}"];
 
 export function graphql(source: string) {
   return (documents as any)[source] ?? {};

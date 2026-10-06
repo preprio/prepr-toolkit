@@ -11,6 +11,15 @@ import {
   validatePreprToken,
 } from './server';
 import { stegaClean } from './stega/clean';
+import {
+  PREPR_SCHEMA_QUERY,
+  decisionsFrom,
+  toDecisionDocument,
+  toSchemaInfo,
+  toVariantsDocument,
+  type PreprDecisions,
+  type PreprSchemaInfo,
+} from './variants';
 import type { PreprHeaders } from './types';
 
 const OPERATION_NAME =
@@ -93,6 +102,17 @@ export interface PreprQueryOptions {
   init?: RequestInit;
   /** Per-query fetch, overriding the client's (e.g. SvelteKit's `event.fetch`). */
   fetch?: typeof fetch;
+  /**
+   * Fetch every variant instead of the visitor's: `personalize: false` is
+   * added to every personalizable field in the query, at any depth, and each
+   * item gets its `_context` (under `_preprContext`). The result is the same
+   * for every visitor, so it can be cached; pass it to `resolveVariants` with
+   * the visitor's `decide()` result to get what they see.
+   *
+   * The client learns which fields are personalizable from one schema
+   * introspection request, made on first use.
+   */
+  variants?: boolean;
 }
 
 export interface PreprQueryResult<TResult> {
@@ -117,6 +137,18 @@ export interface PreprClient {
     variables?: TVariables,
     options?: PreprQueryOptions,
   ): Promise<PreprQueryResult<TResult>>;
+  /**
+   * Which variant of each personalization and A/B group a visitor gets, for
+   * the same query you render with `variants: true`. Sends a cut-down copy of
+   * the query that selects only each item's `_context`, so the response is a
+   * few hundred bytes. Pass the visitor's Prepr headers: the result is only
+   * as personal as the headers sent.
+   */
+  decide<TVariables>(
+    document: PreprDocument<unknown, TVariables>,
+    variables?: TVariables,
+    options?: PreprQueryOptions,
+  ): Promise<PreprDecisions>;
 }
 
 // Codegen documents are module-level constants, so after the first request
@@ -191,7 +223,8 @@ function cacheInit(
  * `digest`. Wrapping those in `PreprError` would stop the framework from
  * recognizing them.
  */
-function isFrameworkSignal(error: unknown): boolean {
+/** @internal */
+export function isFrameworkSignal(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
@@ -247,104 +280,155 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
   const stega = options.stega ?? (preview ? 'urls' : 'all');
   const clientHeaders = new Headers(options.headers);
 
+  const run = async <TResult, TVariables>(
+    document: PreprDocument<TResult, TVariables> | DocumentNode,
+    variables?: TVariables,
+    queryOptions: PreprQueryOptions = {},
+  ): Promise<PreprQueryResult<TResult>> => {
+    const query = resolveQuery(document);
+    const operation = OPERATION_NAME.exec(query)?.[1] ?? 'anonymous';
+
+    // Later layers win: client, then `init.headers`, then `headers`.
+    // Content-Type is set last because the body is always JSON.
+    const headers = new Headers(clientHeaders);
+    for (const layer of [queryOptions.init?.headers, queryOptions.headers]) {
+      new Headers(layer as HeadersInit | undefined).forEach((value, key) => {
+        headers.set(key, value);
+      });
+    }
+    headers.set('Content-Type', 'application/json');
+
+    // Per-request headers may carry visitor data; client-level ones cannot.
+    const perRequestHeaders =
+      queryOptions.headers !== undefined ||
+      queryOptions.init?.headers !== undefined;
+
+    const init: RequestInit = {
+      ...cacheInit(queryOptions.init, preview || perRequestHeaders),
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query, variables }),
+    };
+    const fetchImpl = queryOptions.fetch ?? options.fetch;
+
+    let response: Response;
+    try {
+      response = await (fetchImpl ? fetchImpl(url, init) : fetch(url, init));
+    } catch (error) {
+      if (isFrameworkSignal(error)) throw error;
+      throw new PreprError(
+        `Prepr GraphQL request failed for ${operation}`,
+        'FETCH_ERROR',
+        operation,
+        error instanceof Error ? error : undefined,
+      );
+    }
+
+    if (!response.ok) {
+      throw new PreprError(
+        `Prepr GraphQL HTTP ${response.status} for ${operation}`,
+        'HTTP_ERROR',
+        operation,
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = parseBody(await response.text(), stega);
+    } catch (error) {
+      throw new PreprError(
+        `Prepr GraphQL response for ${operation} is not valid JSON`,
+        'INVALID_RESPONSE',
+        operation,
+        error instanceof Error ? error : undefined,
+      );
+    }
+
+    if (typeof body !== 'object' || body === null) {
+      throw new PreprError(
+        `Prepr GraphQL response for ${operation} is not an object`,
+        'INVALID_RESPONSE',
+        operation,
+      );
+    }
+
+    const { data, errors } = body as {
+      data?: TResult | null;
+      errors?: { message?: unknown }[];
+    };
+
+    if (Array.isArray(errors) && errors.length > 0) {
+      const messages = errors
+        .map((e) => String(e?.message ?? 'Unknown error'))
+        .join('; ');
+      throw new PreprError(
+        `Prepr GraphQL errors for ${operation}: ${messages}`,
+        'GRAPHQL_ERROR',
+        operation,
+      );
+    }
+
+    if (data === null || data === undefined) {
+      throw new PreprError(
+        `Prepr GraphQL response for ${operation} has no data`,
+        'INVALID_RESPONSE',
+        operation,
+      );
+    }
+
+    return { data, personalized: isPersonalizedResponse(response) };
+  };
+
+  // The schema says which fields take `personalize`; it is fetched once per
+  // client, and refetched only if that request fails.
+  let schema: Promise<PreprSchemaInfo> | undefined;
+  const loadSchema = () =>
+    (schema ??= run<Parameters<typeof toSchemaInfo>[0], undefined>(
+      PREPR_SCHEMA_QUERY,
+    ).then(
+      (result) => toSchemaInfo(result.data),
+      (error: unknown) => {
+        schema = undefined;
+        throw error;
+      },
+    ));
+
+  // Derived documents are cached per source document, so each is built (and
+  // printed) once.
+  const variantsDocuments = new Map<unknown, DocumentNode>();
+  const decisionDocuments = new Map<unknown, DocumentNode | null>();
+
   return {
     async query<TResult, TVariables>(
       document: PreprDocument<TResult, TVariables>,
       variables?: TVariables,
       queryOptions: PreprQueryOptions = {},
     ): Promise<PreprQueryResult<TResult>> {
-      const query = resolveQuery(document);
-      const operation = OPERATION_NAME.exec(query)?.[1] ?? 'anonymous';
+      const { variants, ...rest } = queryOptions;
+      if (!variants) return run(document, variables, rest);
 
-      // Later layers win: client, then `init.headers`, then `headers`.
-      // Content-Type is set last because the body is always JSON.
-      const headers = new Headers(clientHeaders);
-      for (const layer of [queryOptions.init?.headers, queryOptions.headers]) {
-        new Headers(layer as HeadersInit | undefined).forEach((value, key) => {
-          headers.set(key, value);
-        });
+      let derived = variantsDocuments.get(document);
+      if (!derived) {
+        derived = toVariantsDocument(document, await loadSchema());
+        variantsDocuments.set(document, derived);
       }
-      headers.set('Content-Type', 'application/json');
+      return run<TResult, TVariables>(derived, variables, rest);
+    },
 
-      // Per-request headers may carry visitor data; client-level ones cannot.
-      const perRequestHeaders =
-        queryOptions.headers !== undefined ||
-        queryOptions.init?.headers !== undefined;
-
-      const init: RequestInit = {
-        ...cacheInit(queryOptions.init, preview || perRequestHeaders),
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ query, variables }),
-      };
-      const fetchImpl = queryOptions.fetch ?? options.fetch;
-
-      let response: Response;
-      try {
-        response = await (fetchImpl ? fetchImpl(url, init) : fetch(url, init));
-      } catch (error) {
-        if (isFrameworkSignal(error)) throw error;
-        throw new PreprError(
-          `Prepr GraphQL request failed for ${operation}`,
-          'FETCH_ERROR',
-          operation,
-          error instanceof Error ? error : undefined,
-        );
+    async decide<TVariables>(
+      document: PreprDocument<unknown, TVariables>,
+      variables?: TVariables,
+      queryOptions: PreprQueryOptions = {},
+    ): Promise<PreprDecisions> {
+      let derived = decisionDocuments.get(document);
+      if (derived === undefined) {
+        derived = toDecisionDocument(document, await loadSchema());
+        decisionDocuments.set(document, derived);
       }
-
-      if (!response.ok) {
-        throw new PreprError(
-          `Prepr GraphQL HTTP ${response.status} for ${operation}`,
-          'HTTP_ERROR',
-          operation,
-        );
-      }
-
-      let body: unknown;
-      try {
-        body = parseBody(await response.text(), stega);
-      } catch (error) {
-        throw new PreprError(
-          `Prepr GraphQL response for ${operation} is not valid JSON`,
-          'INVALID_RESPONSE',
-          operation,
-          error instanceof Error ? error : undefined,
-        );
-      }
-
-      if (typeof body !== 'object' || body === null) {
-        throw new PreprError(
-          `Prepr GraphQL response for ${operation} is not an object`,
-          'INVALID_RESPONSE',
-          operation,
-        );
-      }
-
-      const { data, errors } = body as {
-        data?: TResult | null;
-        errors?: { message?: unknown }[];
-      };
-
-      if (Array.isArray(errors) && errors.length > 0) {
-        const messages = errors
-          .map((e) => String(e?.message ?? 'Unknown error'))
-          .join('; ');
-        throw new PreprError(
-          `Prepr GraphQL errors for ${operation}: ${messages}`,
-          'GRAPHQL_ERROR',
-          operation,
-        );
-      }
-
-      if (data === null || data === undefined) {
-        throw new PreprError(
-          `Prepr GraphQL response for ${operation} has no data`,
-          'INVALID_RESPONSE',
-          operation,
-        );
-      }
-
-      return { data, personalized: isPersonalizedResponse(response) };
+      if (!derived) return new Map();
+      const { variants: _variants, ...rest } = queryOptions;
+      const { data } = await run(derived, variables, rest);
+      return decisionsFrom(data);
     },
   };
 }
@@ -395,6 +479,17 @@ export interface PreprEventClient<TEvent> {
     variables?: TVariables,
     options?: PreprEventQueryOptions<TEvent>,
   ): Promise<PreprQueryResult<TResult>>;
+  /**
+   * Which variant of each group this visitor gets, for the query you render
+   * with `variants: true`. Forwards the Prepr headers of `event`.
+   *
+   * @throws PreprError — `CONTEXT_ERROR` without an `event`.
+   */
+  decide<TVariables>(
+    document: PreprDocument<unknown, TVariables>,
+    variables: TVariables | undefined,
+    options: PreprQueryOptions & { event: TEvent },
+  ): Promise<PreprDecisions>;
 }
 
 /** @internal Shared implementation of the Nuxt, SvelteKit and Astro clients. */
@@ -438,6 +533,29 @@ export function createEventClient<TEvent>(
         ...rest,
         headers,
         fetch: fetchImpl,
+      });
+    },
+
+    async decide<TVariables>(
+      document: PreprDocument<unknown, TVariables>,
+      variables: TVariables | undefined,
+      queryOptions: PreprQueryOptions & { event: TEvent },
+    ): Promise<PreprDecisions> {
+      const { event, ...rest } = queryOptions;
+      if (event === undefined) {
+        throw new PreprError(
+          'decide requires the request event',
+          'CONTEXT_ERROR',
+          'createPreprClient',
+        );
+      }
+      return client.decide(document, variables, {
+        ...rest,
+        headers: mergePreprHeaders(
+          getPreprHeadersFromHeaders(adapter.headers(event)),
+          rest.headers,
+        ),
+        fetch: rest.fetch ?? adapter.fetch?.(event),
       });
     },
   };

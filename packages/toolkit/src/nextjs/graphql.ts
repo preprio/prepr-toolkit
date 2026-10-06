@@ -1,11 +1,25 @@
 import {
+  createElement,
+  Fragment,
+  Suspense,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+
+import {
   createPreprClient as createCoreClient,
+  isFrameworkSignal,
   mergePreprHeaders,
   type PreprClientOptions,
   type PreprDocument,
   type PreprQueryOptions,
   type PreprQueryResult,
 } from '../core/graphql';
+import {
+  resolveVariants,
+  splitStack,
+  type PreprDecisions,
+} from '../core/variants';
 import { getPreprHeaders } from './server';
 
 export interface PreprNextClientOptions extends PreprClientOptions {
@@ -44,6 +58,21 @@ export interface PreprNextClient {
     variables?: TVariables,
     options?: PreprNextQueryOptions,
   ): Promise<PreprQueryResult<TResult>>;
+  /**
+   * Which variant of each personalization and A/B group this visitor gets,
+   * for the query you render with `variants: true`. Forwards the visitor's
+   * Prepr headers (read through `next/headers`); never cached. Prepr decides
+   * from everything the middleware forwards: customer profile, UTM
+   * parameters, visitor IP, HubSpot id.
+   *
+   * Start it without awaiting and hand the promise to `PreprStack`: only the
+   * parts that vary per visitor wait for it.
+   */
+  decide<TVariables>(
+    document: PreprDocument<unknown, TVariables>,
+    variables?: TVariables,
+    options?: PreprQueryOptions,
+  ): Promise<PreprDecisions>;
 }
 
 type NextFetchInit = RequestInit & {
@@ -104,11 +133,112 @@ export function createPreprClient(
         headers: mergePreprHeaders(await getPreprHeaders(), rest.headers),
       });
     },
+
+    async decide<TVariables>(
+      document: PreprDocument<unknown, TVariables>,
+      variables?: TVariables,
+      queryOptions: PreprQueryOptions = {},
+    ): Promise<PreprDecisions> {
+      return client.decide(document, variables, {
+        ...queryOptions,
+        headers: mergePreprHeaders(
+          await getPreprHeaders(),
+          queryOptions.headers,
+        ),
+      });
+    },
   };
+}
+
+export interface PreprStackProps<T> {
+  /** A stack (e.g. `page.content`) from a query run with `variants: true`. */
+  items: readonly T[];
+  /**
+   * The visitor's decisions, as a promise from `decide()`. Only the parts
+   * that vary per visitor wait for it; a failed decision falls back to the
+   * default variants instead of failing the page.
+   */
+  decisions: Promise<PreprDecisions>;
+  /** The visitor's A/B bucket; see `resolvePreprBucket`. Default `A`. */
+  bucket?: string;
+  /** Renders resolved stack items, e.g. your section switch. */
+  render: (items: T[]) => ReactNode;
+}
+
+async function PersonalizedBlock<T>({
+  items,
+  decisions,
+  bucket,
+  render,
+}: Omit<PreprStackProps<T>, 'items'> & { items: T[] }): Promise<ReactNode> {
+  const decided = await decisions.catch((error: unknown) => {
+    // Next.js control flow must reach Next; anything else degrades to the
+    // default variant rather than an error page.
+    if (isFrameworkSignal(error)) throw error;
+    return undefined;
+  });
+  return render(resolveVariants(items, { decisions: decided, bucket }));
+}
+
+/**
+ * Renders a personalized stack with Cache Components / Partial Prerendering.
+ *
+ * Parts that never vary, and A/B tests (resolved from `bucket`), render in
+ * the static shell. Each segment-personalized group, and each item with
+ * personalized content nested inside it, gets its own `<Suspense>` boundary:
+ * the default variant (possibly empty) is the fallback, and this visitor's
+ * variant streams in once `decisions` resolves. Because `items` holds every
+ * variant, a group with no default variant still gets its place.
+ *
+ * @example
+ * const { data } = await getPage(slug); // 'use cache' + query(..., { variants: true })
+ * <PreprStack
+ *   items={data.Page.content}
+ *   decisions={prepr.decide(PageDocument, { slug })}
+ *   bucket={bucket}
+ *   render={(items) => <Sections sections={items} />}
+ * />
+ */
+export function PreprStack<T>({
+  items,
+  decisions,
+  bucket,
+  render,
+}: PreprStackProps<T>): ReactElement {
+  // Blocks that never wait would leave a rejection unobserved.
+  decisions.catch(() => undefined);
+  return createElement(
+    Fragment,
+    null,
+    ...splitStack(items).map((block) => {
+      const fallback = render(resolveVariants(block.items, { bucket }));
+      if (!block.personalized) {
+        return createElement(Fragment, { key: block.key }, fallback);
+      }
+      return createElement(
+        Suspense,
+        { key: block.key, fallback },
+        createElement(PersonalizedBlock<T>, {
+          items: block.items,
+          decisions,
+          bucket,
+          render,
+        }),
+      );
+    }),
+  );
 }
 
 export { isPersonalizedResponse } from '../core/personalization';
 export { PreprError } from '../core/server';
+export {
+  PREPR_DEFAULT_VARIANT,
+  resolveVariants,
+  splitStack,
+  type PreprDecisions,
+  type PreprStackBlock,
+  type ResolveVariantsOptions,
+} from '../core/variants';
 export type {
   PreprDocument,
   PreprQueryResult,

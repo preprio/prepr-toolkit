@@ -233,39 +233,64 @@ Custom headers go in two places. Client-level `headers` (`createPreprClient({ ur
 
 #### With Cache Components
 
-With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), cache the headerless query and render the per-visitor part inside `<Suspense>`. `personalized` decides at prerender time whether a page needs that part at all:
+With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), the page can be a cached shell where only the personalized parts render per visitor. You keep your own page query; the client derives the rest from it.
 
 ```tsx
+import { PreprStack } from '@preprio/toolkit/nextjs/graphql';
+
+// Every variant of every personalization and A/B group: the same for every
+// visitor, so it is cached.
 async function getPage(slug: string) {
   'use cache';
-  return prepr.query(GetPageBySlugDocument, { slug }); // { data, personalized }
+  const { data } = await prepr.query(
+    GetPageBySlugDocument,
+    { slug },
+    { variants: true },
+  );
+  return data.Page;
 }
 
 export default async function Page({
   params,
 }: {
-  params: Promise<{ slug?: string[] }>;
+  params: Promise<{ bucket: string; slug?: string[] }>;
 }) {
-  const slug = (await params).slug?.join('/') || '/';
-  const { data, personalized } = await getPage(slug);
-  if (!personalized) return <PageContent page={data.Page} />;
+  const { bucket, slug: segments } = await params;
+  const slug = segments?.join('/') || '/';
+  const page = await getPage(slug);
 
-  // The default variant is the static fallback; this visitor's variant
-  // streams in over it.
   return (
-    <Suspense fallback={<PageContent page={data.Page} />}>
-      <PersonalizedPage slug={slug} /> {/* query with personalize: true */}
-    </Suspense>
+    <PreprStack
+      items={page.content}
+      decisions={prepr.decide(GetPageBySlugDocument, { slug })} // not awaited
+      bucket={bucket}
+      render={(items) => <Sections sections={items} />}
+    />
   );
 }
 ```
 
+- **`variants: true`** adds `personalize: false` to every personalizable field in your query, at any depth (page stacks, nested stacks of models, personalized buttons), and selects each item's `_context`. The client learns which fields are personalizable from one schema introspection request per client.
+- **`decide()`** sends your query cut down to the personalizable paths, selecting only `_context`: a few hundred bytes, per visitor, never cached. Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id.
+- **`PreprStack`** renders everything that never varies, and every A/B test, in the static shell. Each segment-personalized group gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant (shown only to one segment) still gets its place.
+- **A/B tests never stream.** `resolvePreprBucket` (from `@preprio/toolkit/nextjs`) learns the visitor's bucket from Prepr once and keeps it in a cookie. Put it in the URL with a middleware rewrite so the page is prerendered per bucket:
+
+  ```ts
+  const response = createPreprMiddleware(request, { preview });
+  const bucket = await resolvePreprBucket(request, response, { url, preview });
+  response.headers.set(
+    'x-middleware-rewrite',
+    new URL(`/ab/${bucket}${request.nextUrl.pathname}`, request.url).toString(),
+  );
+  ```
+
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
 - **Outside `'use cache'`, set `revalidate`.** With `revalidate: false` (or a number of seconds) on the client, Next treats the fetch as cached and the route still prerenders. With `revalidate` unset, a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
-- **`personalize: true` belongs in `<Suspense>`.** It reads request headers, which `'use cache'` does not allow.
 - **`preview: true` works inside `'use cache'`,** but the result is cached like any other unless [draft mode](https://nextjs.org/docs/app/guides/draft-mode) is enabled, which makes Next skip cached entries.
 
-To re-render less per visitor, stream only the parts that vary. Query the page once with `content(personalize: false)` inside `'use cache'`: Prepr returns every variant of every group, tagged with `_context { kind group_id variant_id }`. Per visitor, a tiny `personalize: true` query returning only `_context` decides which variant each group shows. Each segment group gets its own `<Suspense>` boundary; A/B groups are resolved from the visitor's bucket without streaming. `examples/nextjs-cache-components` does all of this.
+Without Cache Components, `resolveVariants(data, { decisions, bucket })` applies a visitor's decisions to a variants result anywhere.
+
+`examples/nextjs-cache-components` is a runnable version.
 
 Do not catch and swallow errors from `query` without [`unstable_rethrow`](https://nextjs.org/docs/app/api-reference/functions/unstable_rethrow): Next.js signals dynamic rendering by throwing from inside `fetch`, and the client passes those signals through.
 

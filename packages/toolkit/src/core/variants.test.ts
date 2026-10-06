@@ -1,0 +1,280 @@
+// @vitest-environment node
+import { parse } from 'graphql';
+import { print } from 'graphql/language/printer.js';
+import { describe, expect, it } from 'vitest';
+
+import {
+  PREPR_CONTEXT_ALIAS as CTX,
+  PREPR_DEFAULT_VARIANT,
+  decisionsFrom,
+  resolveVariants,
+  splitStack,
+  toDecisionDocument,
+  toSchemaInfo,
+  toVariantsDocument,
+  type PreprSchemaInfo,
+} from './variants';
+
+// A slice of a real Prepr schema: a page stack of components, a component
+// (Cards) with a nested stack of *models*, and a component with personalized
+// buttons. Field arguments mark which fields are personalizable.
+const ref = (name: string) => ({ name: null, ofType: { name } });
+const field = (name: string, type: string, personalize = false) => ({
+  name,
+  args: personalize ? [{ name: 'personalize' }] : [],
+  type: ref(type),
+});
+const schema: PreprSchemaInfo = toSchemaInfo({
+  __schema: {
+    queryType: { name: 'Query' },
+    types: [
+      {
+        name: 'Query',
+        fields: [{ ...field('Page', 'Page'), args: [{ name: 'slug' }] }],
+      },
+      {
+        name: 'Page',
+        fields: [
+          field('_id', 'String'),
+          field('_context', 'Context'),
+          field('title', 'String'),
+          field('content', 'Page_Content', true),
+        ],
+      },
+      {
+        name: 'Page_Content',
+        possibleTypes: [
+          { name: 'Hero' },
+          { name: 'Cards' },
+          { name: 'Banner' },
+        ],
+      },
+      {
+        name: 'Hero',
+        fields: [
+          field('_id', 'String'),
+          field('_context', 'Context'),
+          field('heading', 'String'),
+          field('buttons', 'Button', true),
+        ],
+      },
+      {
+        name: 'Button',
+        fields: [field('_context', 'Context'), field('text', 'String')],
+      },
+      {
+        name: 'Cards',
+        fields: [
+          field('_id', 'String'),
+          field('_context', 'Context'),
+          field('cards', 'Cards_Cards', true),
+        ],
+      },
+      {
+        name: 'Cards_Cards',
+        possibleTypes: [{ name: 'Post' }, { name: 'Product' }],
+      },
+      {
+        name: 'Post',
+        fields: [
+          field('_id', 'String'),
+          field('_context', 'Context'),
+          field('title', 'String'),
+        ],
+      },
+      {
+        name: 'Product',
+        fields: [
+          field('_id', 'String'),
+          field('_context', 'Context'),
+          field('name', 'String'),
+        ],
+      },
+      // No _context: never gets a context selection.
+      { name: 'Banner', fields: [field('text', 'String')] },
+      {
+        name: 'Context',
+        fields: [
+          field('kind', 'String'),
+          field('group_id', 'String'),
+          field('variant_id', 'String'),
+          field('variant_key', 'String'),
+        ],
+      },
+    ],
+  },
+});
+
+const PAGE_QUERY = /* GraphQL */ `
+  query GetPage($slug: String, $unused: String) {
+    Page(slug: $slug) {
+      title
+      content {
+        __typename
+        ... on Hero {
+          heading
+          _context {
+            variant_key
+          }
+          buttons {
+            text
+          }
+        }
+        ... on Cards {
+          ...CardsFields
+        }
+      }
+    }
+  }
+  fragment CardsFields on Cards {
+    cards {
+      ... on Post {
+        title
+      }
+      ... on Product {
+        name
+      }
+    }
+  }
+`;
+
+const compact = (document: unknown) =>
+  print(document as never).replace(/\s+/g, ' ');
+
+describe('toVariantsDocument', () => {
+  const printed = compact(toVariantsDocument(PAGE_QUERY, schema));
+
+  it('adds personalize: false to every personalizable field, at any depth', () => {
+    expect(printed).toContain('content(personalize: false)');
+    expect(printed).toContain('buttons(personalize: false)');
+    expect(printed).toContain('cards(personalize: false)');
+    expect(printed.match(/personalize: false/g)).toHaveLength(3);
+  });
+
+  it('selects _context under an alias on every item type, models included', () => {
+    expect(printed).toContain(
+      `... on Post { ${CTX}: _context { kind group_id variant_id } }`,
+    );
+    expect(printed).toContain(
+      `... on Product { ${CTX}: _context { kind group_id variant_id } }`,
+    );
+    expect(printed).toContain(
+      `... on Hero { ${CTX}: _context { kind group_id variant_id } }`,
+    );
+    expect(printed).not.toContain('... on Banner {');
+  });
+
+  it("keeps the caller's own fields and _context selection", () => {
+    expect(printed).toContain('_context { variant_key }');
+    expect(printed).toContain('heading');
+    expect(() =>
+      parse(print(toVariantsDocument(PAGE_QUERY, schema))),
+    ).not.toThrow();
+  });
+});
+
+describe('toDecisionDocument', () => {
+  const decision = toDecisionDocument(PAGE_QUERY, schema);
+  const printed = compact(decision);
+
+  it('keeps only the paths to personalizable fields, with item contexts', () => {
+    expect(printed).not.toContain('title');
+    expect(printed).not.toContain('heading');
+    expect(printed).not.toContain('variant_key');
+    expect(printed).toContain('Page(slug: $slug)');
+    expect(printed).toContain(`buttons { ${CTX}: _context`);
+    expect(printed).toContain(`... on Post { ${CTX}: _context`);
+  });
+
+  it('inlines fragments and drops unused variables', () => {
+    expect(printed).not.toContain('fragment ');
+    expect(printed).toContain('query GetPageDecision($slug: String)');
+    expect(printed).not.toContain('$unused');
+  });
+
+  it('is null when nothing in the query is personalizable', () => {
+    expect(
+      toDecisionDocument('{ Page(slug: "/") { title } }', schema),
+    ).toBeNull();
+  });
+});
+
+describe('resolving variants', () => {
+  const ctx = (kind: string, group: string, variant: string) => ({
+    [CTX]: { kind, group_id: group, variant_id: variant },
+  });
+  // A variants-query result: a group with a default, a group WITHOUT a
+  // default (only "small companies"), an A/B group, and a plain Cards item
+  // whose nested model stack is personalized.
+  const content = [
+    {
+      _id: 'hero-default',
+      ...ctx('PERSONALIZATION', 'g-hero', PREPR_DEFAULT_VARIANT),
+    },
+    { _id: 'hero-acme', ...ctx('PERSONALIZATION', 'g-hero', 'ACME-CORP') },
+    {
+      _id: 'banner-small',
+      ...ctx('PERSONALIZATION', 'g-banner', 'SMALL-COMPANIES'),
+    },
+    { _id: 'cta-a', ...ctx('AB_TEST', 'g-cta', 'A') },
+    { _id: 'cta-b', ...ctx('AB_TEST', 'g-cta', 'B') },
+    {
+      _id: 'cards',
+      cards: [
+        {
+          _id: 'post-default',
+          ...ctx('PERSONALIZATION', 'g-posts', PREPR_DEFAULT_VARIANT),
+        },
+        {
+          _id: 'post-small',
+          ...ctx('PERSONALIZATION', 'g-posts', 'SMALL-COMPANIES'),
+        },
+      ],
+    },
+    { _id: 'plain' },
+  ];
+  const ids = (items: { _id: string }[]) => items.map((item) => item._id);
+
+  it('shows defaults and the A/B bucket without decisions', () => {
+    const resolved = resolveVariants(content, { bucket: 'B' });
+    expect(ids(resolved)).toEqual(['hero-default', 'cta-b', 'cards', 'plain']);
+    expect(ids(resolved[2]!.cards!)).toEqual(['post-default']);
+  });
+
+  it('applies decisions per group, at any depth, for a visitor in several segments', () => {
+    const decisions = decisionsFrom({
+      Page: {
+        content: [
+          ctx('PERSONALIZATION', 'g-hero', 'ACME-CORP'),
+          ctx('PERSONALIZATION', 'g-banner', 'SMALL-COMPANIES'),
+          { cards: [ctx('PERSONALIZATION', 'g-posts', 'SMALL-COMPANIES')] },
+        ],
+      },
+    });
+    const resolved = resolveVariants(content, { decisions, bucket: 'A' });
+    // The banner has no default variant and still appears for its segment.
+    expect(ids(resolved)).toEqual([
+      'hero-acme',
+      'banner-small',
+      'cta-a',
+      'cards',
+      'plain',
+    ]);
+    expect(ids(resolved[3]!.cards!)).toEqual(['post-small']);
+  });
+
+  it('splits a stack into blocks, streaming only what varies per visitor', () => {
+    const blocks = splitStack(content);
+    expect(
+      blocks.map((block) => [block.key, ids(block.items), block.personalized]),
+    ).toEqual([
+      ['group:g-hero', ['hero-default', 'hero-acme'], true],
+      ['group:g-banner', ['banner-small'], true],
+      // A/B items resolve from the bucket, so they join the static run...
+      ['items:3', ['cta-a', 'cta-b'], false],
+      // ...but an item with a personalized nested stack varies per visitor.
+      ['items:5', ['cards'], true],
+      ['items:6', ['plain'], false],
+    ]);
+  });
+});
