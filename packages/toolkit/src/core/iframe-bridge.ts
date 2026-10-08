@@ -55,7 +55,12 @@ const EDITOR_BASE_DOMAIN = 'prepr.io';
  */
 function isAllowedEditorOrigin(origin: string, allowed?: string[]): boolean {
   // An explicit list opts out of the wildcard entirely (self-hosted editors).
-  if (allowed) return allowed.includes(origin);
+  // `'*'` trusts any framing page; the opaque "null" origin of a sandboxed
+  // frame is still refused, because postMessage cannot target it.
+  if (allowed) {
+    if (allowed.includes('*')) return origin !== 'null';
+    return allowed.includes(origin);
+  }
 
   let url: URL;
   try {
@@ -79,7 +84,8 @@ function isAllowedEditorOrigin(origin: string, allowed?: string[]): boolean {
 export interface IframeBridgeOptions {
   /**
    * Replace the `*.prepr.io` wildcard with an exact origin list. Intended for
-   * self-hosted editors; when set, the wildcard no longer applies.
+   * self-hosted editors; when set, the wildcard no longer applies. `['*']`
+   * accepts any editor origin — see `PreprPreviewOptions.allowedEditorOrigins`.
    */
   allowedEditorOrigins?: string[];
   /**
@@ -131,7 +137,12 @@ export function createIframeBridge(
     if (data?.event === 'prepr:initVE' && !parentOrigin) {
       // Validate BEFORE touching the store: this branch enables preview and
       // edit mode, so an unvalidated sender must not reach it.
-      if (!isAllowedEditorOrigin(evt.origin, allowedOrigins)) return;
+      if (!isAllowedEditorOrigin(evt.origin, allowedOrigins)) {
+        // Rejection is otherwise silent: no edit mode, no click handling, and
+        // no events back to the editor. Name the origin so it can be allowlisted.
+        debug.warn('ignored editor handshake from origin', evt.origin);
+        return;
+      }
       parentOrigin = evt.origin;
       // From here on, outbound events target this origin instead of '*'.
       setTrustedParentOrigin(parentOrigin);

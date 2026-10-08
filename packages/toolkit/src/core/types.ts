@@ -62,8 +62,14 @@ export interface PreprPreviewOptions extends PreprToolbarOptions {
    */
   ui?: boolean;
   /**
-   * Replace the `*.prepr.io` editor-origin wildcard with an exact list.
-   * Intended for self-hosted editors; when set, the wildcard no longer applies.
+   * Replace the `*.prepr.io` editor-origin wildcard with an exact list, e.g.
+   * `['http://acme.localhost:8000']`. Intended for self-hosted or locally run
+   * editors; when set, the wildcard no longer applies. Entries are compared to
+   * the editor's origin exactly: scheme, host and port.
+   *
+   * `['*']` accepts any editor origin. Use it for development only: any page
+   * that frames the preview can then switch on preview and edit mode and
+   * receives the field-edit events, which carry content item ids.
    */
   allowedEditorOrigins?: string[];
   /**

@@ -106,6 +106,28 @@ describe('createIframeBridge — editor origin validation', () => {
     b.stop();
   });
 
+  it("accepts any editor origin, local http included, when the allowlist is ['*']", () => {
+    const s = createToolbarStore();
+    const b = createIframeBridge(s, { allowedEditorOrigins: ['*'] });
+    b.start();
+
+    postFrom('http://acme.localhost:8000', { event: 'prepr:initVE' });
+    expect(s.get().previewMode).toBe(true);
+    b.stop();
+  });
+
+  it("still rejects an opaque 'null' origin under ['*']", () => {
+    const s = createToolbarStore();
+    const b = createIframeBridge(s, { allowedEditorOrigins: ['*'] });
+    b.start();
+
+    // A sandboxed frame reports origin "null", which postMessage cannot
+    // target — trusting it would make every outbound event throw.
+    postFrom('null', { event: 'prepr:initVE' });
+    expect(s.get().previewMode).toBe(false);
+    b.stop();
+  });
+
   // The deliberate split: `features.editMode` gates the site's own
   // click-to-edit, not the CMS driving its own preview iframe.
   it('still activates edit mode when the site disabled its own edit mode', () => {

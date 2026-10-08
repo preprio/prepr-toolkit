@@ -694,14 +694,14 @@ createPreprMiddleware(request, response, { preview });
 createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 ```
 
-| Option                 | Type            | Default       | Description                                                                                              |
-| ---------------------- | --------------- | ------------- | -------------------------------------------------------------------------------------------------------- |
-| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                                    |
-| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                              |
-| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                 |
-| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                      |
-| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted editors. Replaces the wildcard.      |
-| `autoClean`            | `boolean`       | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning). |
+| Option                 | Type            | Default       | Description                                                                                                                                                 |
+| ---------------------- | --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                                                                                       |
+| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                                                                                 |
+| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                                                                    |
+| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                                                                         |
+| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted or local editors. Replaces the wildcard. `['*']` accepts any origin — development only. |
+| `autoClean`            | `boolean`       | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning).                                                    |
 
 `features` and `ui` are independent: `features` decides _what runs_, `ui` decides _whether the toolbar is visible_.
 
