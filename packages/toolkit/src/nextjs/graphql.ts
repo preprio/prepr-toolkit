@@ -1,15 +1,7 @@
-import {
-  createElement,
-  Fragment,
-  Suspense,
-  type ReactElement,
-  type ReactNode,
-} from 'react';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import {
   createPreprClient as createCoreClient,
-  isFrameworkSignal,
   mergePreprHeaders,
   type PreprClientOptions,
   type PreprDecideOptions,
@@ -17,17 +9,8 @@ import {
   type PreprQueryOptions,
   type PreprQueryResult,
 } from '../core/graphql';
-import { getPreprHeadersFromHeaders } from '../core/server';
-import {
-  PREPR_CONTEXT_ALIAS,
-  PREPR_DEFAULT_VARIANT,
-  preprVariantProps,
-  resolveVariants,
-  splitStack,
-  type PreprDecisions,
-} from '../core/variants';
-import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
-import { PreprAbSwitch, PreprVariantTracking } from './components';
+import type { PreprDecisions } from '../core/variants';
+import { resolveDecisionsWith, type PreprSeenGroups } from './decisions';
 import { getPreprHeaders } from './server';
 
 export interface PreprNextClientOptions extends PreprClientOptions {
@@ -124,53 +107,6 @@ export interface PreprNextClient {
   ): Promise<void>;
 }
 
-/** The cookie `resolveDecisions` writes and the `PreprStack` switch reads. */
-export const PREPR_DECISIONS_COOKIE = 'prepr_decisions';
-
-// Groups remembered across pages; prefetches of several pages each add theirs.
-const DECISIONS_MAX_GROUPS = 40;
-const SAFE_ID = /^[\w-]+$/;
-const SEEN_MAX_PAGES = 1000;
-
-function parseDecisions(raw: string | undefined): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  for (const pair of (raw ?? '').split('~')) {
-    const at = pair.indexOf(':');
-    const group = pair.slice(0, at);
-    if (at < 1 || !SAFE_ID.test(group)) continue;
-    out.set(
-      group,
-      pair
-        .slice(at + 1)
-        .split('|')
-        .filter((variant) => SAFE_ID.test(variant)),
-    );
-  }
-  return out;
-}
-
-function serializeDecisions(decisions: Map<string, string[]>): string {
-  return [...decisions]
-    .slice(0, DECISIONS_MAX_GROUPS)
-    .map(([group, variants]) => `${group}:${variants.join('|')}`)
-    .join('~');
-}
-
-/**
- * The visitor headers `createPreprMiddleware` forwards: the overridden request
- * headers on `response` when it set any, the request's own otherwise.
- */
-function forwardedHeaders(request: NextRequest, response: NextResponse) {
-  const overridden = response.headers.get('x-middleware-override-headers');
-  if (!overridden) return getPreprHeadersFromHeaders(request.headers);
-  const headers = new Headers();
-  for (const name of overridden.split(',')) {
-    const value = response.headers.get(`x-middleware-request-${name.trim()}`);
-    if (value !== null) headers.set(name.trim(), value);
-  }
-  return getPreprHeadersFromHeaders(headers);
-}
-
 type NextFetchInit = RequestInit & {
   next?: { tags?: string[]; revalidate?: number | false };
 };
@@ -206,7 +142,7 @@ export function createPreprClient(
 
   // Per page: the groups decisions have named, so a later request can tell
   // whether the stored cookie already covers the page.
-  const seenGroups = new Map<unknown, Map<string, Set<string>>>();
+  const seenGroups: PreprSeenGroups = new Map();
 
   return {
     async query<TResult, TVariables>(
@@ -257,373 +193,21 @@ export function createPreprClient(
 
     hasAbTests: (document, variables) => client.hasAbTests(document, variables),
 
-    async resolveDecisions(request, response, document, variables, options) {
-      try {
-        if (options?.onlyIf && !(await options.onlyIf())) return;
-        // A cached check: pages without segment groups cost no request.
-        if (!(await client.hasSegments(document, variables))) return;
-
-        const headers = mergePreprHeaders(forwardedHeaders(request, response));
-        const stored = parseDecisions(
-          request.cookies.get(PREPR_DECISIONS_COOKIE)?.value,
-        );
-        const pageKey = `${JSON.stringify(variables ?? null)}`;
-        let byVariables = seenGroups.get(document);
-        if (!byVariables) {
-          byVariables = new Map();
-          seenGroups.set(document, byVariables);
-        }
-        const known = byVariables.get(pageKey);
-        const isNewVisitor =
-          headers.get('Prepr-Customer-Id-Created') === 'true';
-
-        // Within a visit the segments rarely change: reuse the stored decision
-        // unless something arrived that can change it (UTM parameters, a first
-        // visit, a segment forced in preview).
-        const contextChanged =
-          isNewVisitor ||
-          headers.has('Prepr-Segments') ||
-          [...request.nextUrl.searchParams.keys()].some((key) =>
-            key.startsWith('utm_'),
-          );
-        if (
-          options?.reuse !== false &&
-          !contextChanged &&
-          known &&
-          [...known].every((group) => stored.has(group))
-        ) {
-          return;
-        }
-
-        // Only the top-level lists: `aboveTheFold` renders those groups, and
-        // Prepr answers this far faster than for every nested list.
-        const decided = await client.decide(document, variables, {
-          topLevelOnly: true,
-          headers,
-          init: { signal: AbortSignal.timeout(options?.timeoutMs ?? 1000) },
-        });
-
-        if (!known && byVariables.size >= SEEN_MAX_PAGES) {
-          byVariables.delete(byVariables.keys().next().value!);
-        }
-        const groups = known ?? new Set<string>();
-        for (const group of decided.keys()) groups.add(group);
-        byVariables.set(pageKey, groups);
-
-        // This page's groups first, then what other pages stored.
-        const next = new Map<string, string[]>();
-        for (const [group, variants] of decided) {
-          if (SAFE_ID.test(group)) {
-            next.set(
-              group,
-              variants.filter((v) => SAFE_ID.test(v)),
-            );
-          }
-        }
-        for (const [group, variants] of stored) {
-          if (!next.has(group)) next.set(group, variants);
-        }
-        if (next.size === 0) return;
-        response.cookies.set(PREPR_DECISIONS_COOKIE, serializeDecisions(next), {
-          path: '/',
-          sameSite: 'lax',
-          // Read by the inline switch script before first paint.
-          httpOnly: false,
-        });
-      } catch (error) {
-        if (isFrameworkSignal(error)) throw error;
-        // The default variant shows; the next request asks again.
-      }
-    },
-  };
-}
-
-export interface PreprStackProps<T> {
-  /** A stack (e.g. `page.content`) from a query run with `variants: true`. */
-  items: readonly T[];
-  /**
-   * The visitor's decisions, as a promise from `decide()`. Only the parts
-   * that vary per segment wait for it; a failed decision falls back to the
-   * default variants instead of failing the page.
-   */
-  decisions: Promise<PreprDecisions>;
-  /**
-   * Renders resolved stack items, e.g. your section switch. `index` is the
-   * position of the block's first item in the whole stack, for anything that
-   * depends on page position, such as which section owns the h1 or the
-   * priority image.
-   */
-  render: (items: T[], position: { index: number }) => ReactNode;
-  /**
-   * The visitor's A/B bucket, when the route already knows it (for example
-   * from a URL segment). Leave it out to render both variants of each A/B
-   * test and pick the visitor's in the browser before first paint.
-   */
-  bucket?: string;
-  /** Nonce for the inline A/B switch script, under a strict CSP. */
-  nonce?: string;
-  /**
-   * Tag each personalization and A/B variant for Prepr's tracking pixel, so
-   * it counts impressions (and clicks on `data-prepr-variant-event` elements
-   * inside) without `data-prepr-variant-key` in your components. Default
-   * `false`.
-   *
-   * Each item's key goes on the element `render` returns for it, in order,
-   * once the page has hydrated. Each variant gets a wrapper with
-   * `display: contents`: it takes no box, but CSS child combinators (`>`) and
-   * `:first-child` from the stack's parent no longer reach the sections. Lists
-   * nested inside an item are not tagged; use `preprVariantProps` there.
-   */
-  trackVariants?: boolean;
-  /**
-   * How many blocks, from the top, are on screen before the visitor scrolls.
-   * Default `0`.
-   *
-   * Their segment groups do not stream: every variant is in the cached page,
-   * and the variant the proxy decided (`prepr.resolveDecisions`) shows before
-   * first paint, so nothing on screen changes while the page loads. Without
-   * a decision (no cookie yet, or the proxy's lookup failed) the default
-   * variant shows. Costs the HTML of the other variants; images in them still
-   * download. An item with a segment group nested inside it keeps streaming.
-   */
-  aboveTheFold?: number;
-}
-
-const AB_ATTRIBUTE = 'data-prepr-ab';
-const AB_BUCKETS = ['A', 'B'] as const;
-
-// The variant wrappers never affect layout, and only A shows by default: what
-// visitors without JavaScript, crawlers and anonymous visitors get.
-const AB_BASE_CSS = `[${AB_ATTRIBUTE}]{display:contents}[${AB_ATTRIBUTE}]:not([${AB_ATTRIBUTE}="A"]){display:none}`;
-
-// Runs while the HTML is parsed, so the visitor's variant is the first one
-// painted. A hidden variant never reaches 50% visibility, so the tracking
-// pixel never records an impression for it.
-const AB_SWITCH_SCRIPT = `(${applyPreprAbBucket.toString()})();(${applyPreprDecisions.toString()})()`;
-
-const GROUP_ATTRIBUTE = 'data-prepr-group';
-const VARIANT_ATTRIBUTE = 'data-prepr-variant';
-const DEFAULT_ATTRIBUTE = 'data-prepr-default';
-
-// Segment variants of above-the-fold groups: no layout effect, and only the
-// default shows until the switch script applies the proxy's decision.
-const GROUP_BASE_CSS = `[${GROUP_ATTRIBUTE}]{display:contents}[${GROUP_ATTRIBUTE}]:not([${DEFAULT_ATTRIBUTE}]){display:none}`;
-
-/**
- * Renders items for every A/B bucket the visitor might have, each in a
- * wrapper the switch script shows or hides; or for the known bucket only.
- */
-type StackRender<T> = PreprStackProps<T>['render'];
-
-function variantKeysOf(items: unknown[]): string[] {
-  return items.flatMap((item) => {
-    const key = preprVariantProps(item)['data-prepr-variant-key'];
-    return key ? [key] : [];
-  });
-}
-
-function renderBuckets<T>(
-  items: T[],
-  render: StackRender<T>,
-  options: {
-    bucket?: string;
-    decisions?: PreprDecisions;
-    abTest: boolean;
-    index: number;
-    track?: boolean;
-  },
-): ReactNode {
-  const { bucket, decisions, abTest, index, track } = options;
-  const renderVariant = (variant: string | undefined, key?: string) => {
-    const resolved = resolveVariants(items, { decisions, bucket: variant });
-    const content = render(resolved, { index });
-    const variantKeys = track ? variantKeysOf(resolved) : [];
-    const ab = abTest && !bucket ? variant : undefined;
-    if (variantKeys.length > 0) {
-      return createElement(
-        PreprVariantTracking,
-        { key, variantKeys, ab },
-        content,
-      );
-    }
-    if (ab) return createElement('div', { key, [AB_ATTRIBUTE]: ab }, content);
-    return content;
-  };
-  if (!abTest || bucket) return renderVariant(bucket);
-  return AB_BUCKETS.map((variant) => renderVariant(variant, variant));
-}
-
-/**
- * Every variant of one segment group, each in a wrapper the switch script
- * shows or hides.
- */
-function renderAllVariants<T>(
-  block: { key: string; items: T[]; index: number },
-  render: StackRender<T>,
-  options: { bucket?: string; track?: boolean },
-): ReactNode {
-  const group = block.key.slice('group:'.length);
-  const variants = [
-    ...new Set(
-      block.items.flatMap((item) => {
-        const ctx = (item as Record<string, unknown>)[PREPR_CONTEXT_ALIAS] as
-          { variant_id?: string } | undefined;
-        return ctx?.variant_id ? [ctx.variant_id] : [];
-      }),
-    ),
-  ];
-  return variants.map((variant) =>
-    createElement(
-      'div',
-      {
-        key: variant,
-        [GROUP_ATTRIBUTE]: group,
-        [VARIANT_ATTRIBUTE]: variant,
-        ...(variant === PREPR_DEFAULT_VARIANT
-          ? { [DEFAULT_ATTRIBUTE]: '' }
-          : {}),
-      },
-      renderBuckets(block.items, render, {
-        bucket: options.bucket,
-        decisions: new Map([[group, [variant]]]),
-        abTest: false,
-        index: block.index,
-        track: options.track,
-      }),
-    ),
-  );
-}
-
-async function PersonalizedBlock<T>({
-  items,
-  decisions,
-  bucket,
-  abTest,
-  index,
-  render,
-  track,
-}: {
-  items: T[];
-  decisions: Promise<PreprDecisions>;
-  bucket?: string;
-  abTest: boolean;
-  index: number;
-  render: StackRender<T>;
-  track?: boolean;
-}): Promise<ReactNode> {
-  const decided = await decisions.catch((error: unknown) => {
-    // Next.js control flow must reach Next; anything else degrades to the
-    // default variant rather than an error page.
-    if (isFrameworkSignal(error)) throw error;
-    return undefined;
-  });
-  return renderBuckets(items, render, {
-    bucket,
-    decisions: decided,
-    abTest,
-    index,
-    track,
-  });
-}
-
-/**
- * Renders a personalized stack with Cache Components / Partial Prerendering.
- *
- * - Items that never vary render in the static shell.
- * - A/B tests render in the static shell too, once per bucket; a tiny inline
- *   script shows the visitor's bucket (from `resolvePreprBucket`'s cookie)
- *   before first paint, so no variant streams or swaps in. `A` is the
- *   default. Pass `bucket` instead when the route already knows it.
- * - Each segment-personalized group, and each item with segment content
- *   nested inside it, gets its own `<Suspense>` boundary: the default
- *   variant (possibly empty) is the fallback, and this visitor's variant
- *   streams in once `decisions` resolves. Because `items` holds every
- *   variant, a group with no default variant still gets its place.
- *
- * @example
- * const data = await getPage(slug); // 'use cache' + query(..., { variants: true })
- * <PreprStack
- *   items={data.Page.content}
- *   decisions={prepr.decide(PageDocument, { slug }, { from: data })}
- *   render={(items, { index }) => <Sections sections={items} offset={index} />}
- * />
- */
-export function PreprStack<T>({
-  items,
-  decisions,
-  render,
-  bucket,
-  nonce,
-  trackVariants = false,
-  aboveTheFold = 0,
-}: PreprStackProps<T>): ReactElement {
-  // Blocks that never wait would leave a rejection unobserved.
-  decisions.catch(() => undefined);
-  const blocks = splitStack(items);
-  const decidedInProxy = (block: (typeof blocks)[number]) =>
-    block.index < aboveTheFold &&
-    block.personalized &&
-    !block.abTest &&
-    block.key.startsWith('group:');
-  const hasDecided = blocks.some(decidedInProxy);
-  const needsSwitch =
-    (!bucket && blocks.some((block) => block.abTest)) || hasDecided;
-
-  return createElement(
-    Fragment,
-    null,
-    needsSwitch &&
-      createElement(
-        Fragment,
-        { key: 'prepr-ab' },
-        createElement('style', {
-          nonce,
-          dangerouslySetInnerHTML: {
-            __html: AB_BASE_CSS + (hasDecided ? GROUP_BASE_CSS : ''),
-          },
-        }),
-        createElement('script', {
-          nonce,
-          dangerouslySetInnerHTML: { __html: AB_SWITCH_SCRIPT },
-        }),
-        createElement(PreprAbSwitch),
+    resolveDecisions: (request, response, document, variables, options) =>
+      resolveDecisionsWith(
+        client,
+        seenGroups,
+        request,
+        response,
+        document,
+        variables,
+        options,
       ),
-    ...blocks.map((block) => {
-      if (decidedInProxy(block)) {
-        return createElement(
-          Fragment,
-          { key: block.key },
-          renderAllVariants(block, render, { bucket, track: trackVariants }),
-        );
-      }
-      // A fallback is only on screen until the visitor's variant arrives, so
-      // it is tagged only where it is final: blocks that never stream.
-      const fallback = renderBuckets(block.items, render, {
-        bucket,
-        abTest: block.abTest,
-        index: block.index,
-        track: trackVariants && !block.personalized,
-      });
-      if (!block.personalized) {
-        return createElement(Fragment, { key: block.key }, fallback);
-      }
-      return createElement(
-        Suspense,
-        { key: block.key, fallback },
-        createElement(PersonalizedBlock<T>, {
-          items: block.items,
-          decisions,
-          bucket,
-          abTest: block.abTest,
-          index: block.index,
-          render,
-          track: trackVariants,
-        }),
-      );
-    }),
-  );
+  };
 }
 
+export { PREPR_DECISIONS_COOKIE } from './decisions';
+export { PreprStack, type PreprStackProps } from './stack';
 export { isPersonalizedResponse } from '../core/personalization';
 export { PreprError } from '../core/server';
 export {

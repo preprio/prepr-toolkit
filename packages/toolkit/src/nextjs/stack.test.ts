@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
-const { PreprStack } = await import('./graphql');
+const { PreprStack } = await import('./stack');
 const { PREPR_BUCKET_COOKIE } = await import('./bucket');
 const { applyPreprAbBucket, applyPreprDecisions } = await import('./ab-switch');
 
