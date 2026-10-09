@@ -378,7 +378,8 @@ await prepr.resolveDecisions(
 
 `PreprStack` puts every variant of those blocks' segment groups in the cached page, and the A/B switch script shows the variant the proxy decided before first paint: nothing on screen changes. `resolveDecisions` forwards the visitor's headers (customer id, UTM parameters, IP, HubSpot id) to Prepr and stores the answer in the `prepr_decisions` cookie.
 
-- It adds one uncached Prepr request per page view to the proxy, so its time depends on how far your functions run from Prepr: deploy them in the region closest to your visitors and to Prepr, and use `onlyIf` to limit it to pages that need it. Pages without segment groups are skipped after a cached check (the same one `hasAbTests` uses).
+- It asks Prepr once per visit, not per page view: later requests reuse the stored decision unless something arrives that can change the segment (UTM parameters, a first visit, a segment forced in preview). Pass `reuse: false` to ask on every request. A visitor who joins a segment mid-visit sees it from the next request that asks.
+- That request is uncached, so its time depends on how far your functions run from Prepr: deploy them in the region closest to your visitors and to Prepr, and use `onlyIf` to limit it to pages that need it. Pages without segment groups are skipped after a cached check (the same one `hasAbTests` uses).
 - Without a decision (the lookup failed or took longer than `timeoutMs`, default 1000), the default variant shows.
 - The page carries the HTML of every variant of those groups, and images in hidden variants still download.
 - An item with a segment group nested inside it keeps streaming; only groups at the top level of the list are decided in the proxy.

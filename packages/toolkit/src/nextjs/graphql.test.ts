@@ -263,6 +263,49 @@ describe('resolveDecisions', () => {
     expect(skipped.decisionCalls()).toHaveLength(0);
   });
 
+  it('reuses the stored decision for the rest of the visit, and asks again when the context changes', async () => {
+    const { prepr, request, response, decisionCalls } = await setup();
+    const { NextRequest } = await import('next/server');
+    const first = response();
+    await prepr.resolveDecisions(request(), first, PAGE, { slug: '/' });
+    const cookie = `prepr_decisions=${first.cookies.get('prepr_decisions')!.value}`;
+    expect(decisionCalls()).toHaveLength(1);
+
+    // Same visit, cookie covers the page: no request.
+    await prepr.resolveDecisions(request(cookie), response(), PAGE, {
+      slug: '/',
+    });
+    expect(decisionCalls()).toHaveLength(1);
+
+    // UTM parameters can change the segment.
+    await prepr.resolveDecisions(
+      new NextRequest('https://site.test/?utm_source=ad', {
+        headers: { cookie },
+      }),
+      response(),
+      PAGE,
+      { slug: '/' },
+    );
+    expect(decisionCalls()).toHaveLength(2);
+
+    // So can a first visit, and reuse can be turned off.
+    const fresh = response();
+    fresh.headers.set(
+      'x-middleware-override-headers',
+      'prepr-customer-id,prepr-customer-id-created',
+    );
+    fresh.headers.set('x-middleware-request-prepr-customer-id-created', 'true');
+    await prepr.resolveDecisions(request(cookie), fresh, PAGE, { slug: '/' });
+    await prepr.resolveDecisions(
+      request(cookie),
+      response(),
+      PAGE,
+      { slug: '/' },
+      { reuse: false },
+    );
+    expect(decisionCalls()).toHaveLength(4);
+  });
+
   it('never throws: a failed lookup leaves the cookie alone', async () => {
     const { createPreprClient } = await load();
     const { NextRequest, NextResponse } = await import('next/server');
