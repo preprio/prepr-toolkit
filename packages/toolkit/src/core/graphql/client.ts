@@ -32,6 +32,21 @@ function isParseableUrl(url: string): boolean {
 }
 
 /**
+ * @internal Throws the same `PreprError` for a bad GraphQL URL wherever one is
+ * accepted. The message never includes the URL: it contains the access token.
+ */
+export function assertPreprUrl(url: string, source: string): void {
+  validatePreprToken(url);
+  if (!isParseableUrl(url)) {
+    throw new PreprError(
+      'Prepr GraphQL URL is not a valid URL',
+      'INVALID_TOKEN',
+      source,
+    );
+  }
+}
+
+/**
  * Create a GraphQL client for the Prepr API.
  *
  * Reach for it on the server, to fetch content with codegen types and get
@@ -44,16 +59,7 @@ function isParseableUrl(url: string): boolean {
  * @throws PreprError `MISSING_TOKEN` or `INVALID_TOKEN` for a bad `url`.
  */
 export function createPreprClient(options: PreprClientOptions): PreprClient {
-  const { url } = options;
-  validatePreprToken(url);
-  if (!isParseableUrl(url)) {
-    // The message deliberately omits the url: it contains the access token.
-    throw new PreprError(
-      'Prepr GraphQL URL is not a valid URL',
-      'INVALID_TOKEN',
-      'createPreprClient',
-    );
-  }
+  assertPreprUrl(options.url, 'createPreprClient');
 
   const run = createTransport(options);
   const probeVary = createVaryProbe(run, options);

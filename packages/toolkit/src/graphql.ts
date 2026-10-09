@@ -19,10 +19,15 @@ export type { PreprErrorCode, PreprHeaders } from './core/types';
 export {
   PREPR_DEFAULT_VARIANT,
   preprVariantProps,
+  decisionsFrom,
   resolveVariants,
+  toDecisionQuery,
+  toVariantsQuery,
+  type PreprSchema,
   splitStack,
   type PreprDecisions,
   type PreprStackBlock,
   type PreprVariantProps,
   type ResolveVariantsOptions,
 } from './core/variants';
+export { loadPreprSchema } from './core/graphql';

@@ -21,3 +21,4 @@ export {
 export { splitStack, type PreprStackBlock } from './stack';
 export { preprVariantProps, type PreprVariantProps } from './tracking';
 export { toVariantsDocument } from './variants-document';
+export { toDecisionQuery, toVariantsQuery, type PreprSchema } from './queries';

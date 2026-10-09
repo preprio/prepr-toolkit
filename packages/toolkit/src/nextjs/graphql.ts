@@ -213,7 +213,11 @@ export { PreprError } from '../core/server';
 export {
   PREPR_DEFAULT_VARIANT,
   preprVariantProps,
+  decisionsFrom,
   resolveVariants,
+  toDecisionQuery,
+  toVariantsQuery,
+  type PreprSchema,
   splitStack,
   type PreprDecisions,
   type PreprStackBlock,
@@ -226,3 +230,4 @@ export type {
   PreprQueryResult,
   PreprStegaMode,
 } from '../core/graphql';
+export { loadPreprSchema } from '../core/graphql';

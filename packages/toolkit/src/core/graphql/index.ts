@@ -15,3 +15,4 @@ export type {
   PreprQueryResult,
   PreprStegaMode,
 } from './types';
+export { loadPreprSchema } from './schema-loader';
