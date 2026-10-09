@@ -44,6 +44,11 @@
       "import": "./dist/graphql.js",
       "require": "./dist/graphql.cjs"
     },
+    "./graphql/codegen": {
+      "types": "./dist/graphql/codegen.d.ts",
+      "import": "./dist/graphql/codegen.js",
+      "require": "./dist/graphql/codegen.cjs"
+    },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js",

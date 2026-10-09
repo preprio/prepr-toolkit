@@ -33,6 +33,11 @@ function reachesGraphql(fileUrl, seen = new Set()) {
   return false;
 }
 
+// Entries allowed to import `graphql`: the GraphQL clients and the
+// build-time codegen plugin.
+const usesGraphql = (subpath) =>
+  subpath.endsWith('/graphql') || subpath === './graphql/codegen';
+
 const missing = [];
 const leaking = [];
 for (const [subpath, entry] of Object.entries(pkg.exports)) {
@@ -45,7 +50,7 @@ for (const [subpath, entry] of Object.entries(pkg.exports)) {
       continue;
     }
     const isScript = target.endsWith('.js') || target.endsWith('.cjs');
-    if (isScript && !subpath.endsWith('/graphql') && reachesGraphql(url)) {
+    if (isScript && !usesGraphql(subpath) && reachesGraphql(url)) {
       leaking.push(`${subpath} -> ${target}`);
     }
   }

@@ -45,6 +45,8 @@ export default defineConfig([
       // Imports the optional `graphql` peer, so it must never be folded into
       // the main barrel; scripts/check-exports.mjs enforces that.
       graphql: 'src/graphql.ts',
+      // Build-time graphql-codegen plugin; may import `graphql` like the client.
+      'graphql/codegen': 'src/codegen/index.ts',
     },
     // No `clean` on any config here: tsup runs this array concurrently, so a
     // clean in one races the output of the others — it silently ate
