@@ -402,3 +402,15 @@ describe('preprVariantProps', () => {
     expect(preprVariantProps(null)).toEqual({});
   });
 });
+
+describe('toDecisionDocument topLevelOnly', () => {
+  it('asks only about the first personalizable list on each path', () => {
+    const printed = compact(
+      toDecisionDocument(PAGE_QUERY, schema, undefined, { topLevelOnly: true }),
+    );
+    expect(printed).toContain(`content { ... on Hero { ${CTX}: _context`);
+    // Lists nested in the items (buttons, cards) are left out.
+    expect(printed).not.toContain('buttons');
+    expect(printed).not.toContain('cards');
+  });
+});

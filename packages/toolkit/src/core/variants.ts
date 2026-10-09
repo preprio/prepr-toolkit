@@ -282,6 +282,8 @@ export function toVariantsDocument(
 interface DecisionContext {
   schema: PreprSchemaInfo;
   fragments: Record<string, FragmentDefinitionNode>;
+  /** Ask only about the first personalizable list on each path, not the ones nested in its items. */
+  topLevelOnly?: boolean;
   /**
    * When known: the response paths whose lists hold personalization groups
    * (with the item types that do), and every prefix of those paths. Fields
@@ -352,7 +354,7 @@ function decisionSelectionSet(
         ...selection,
         arguments: withoutPersonalizeArg(selection.arguments),
         selectionSet: selectionSet([
-          ...(child?.selections ?? []),
+          ...(ctx.topLevelOnly ? [] : (child?.selections ?? [])),
           ...contextSelections(
             field.type,
             ctx.schema,
@@ -395,13 +397,15 @@ function collectVariables(node: unknown, used: Set<string>): void {
  * down to the paths that lead to personalizable fields, selecting only each
  * item's `_context`. With `groupPaths` (from {@link personalizationPaths}),
  * only the fields, and the item types, that actually hold personalization
- * groups are kept.
+ * groups are kept. With `topLevelOnly`, lists nested inside the items of a
+ * personalizable list are left out.
  * Returns null when nothing is left to ask.
  */
 export function toDecisionDocument(
   document: unknown,
   schema: PreprSchemaInfo,
   groupPaths?: PreprGroupPaths,
+  options?: { topLevelOnly?: boolean },
 ): DocumentNode | null {
   const doc = documentOf(document);
   const fragments: Record<string, FragmentDefinitionNode> = {};
@@ -431,7 +435,7 @@ export function toDecisionDocument(
     operation.selectionSet,
     schema.queryType,
     '',
-    { schema, fragments, paths },
+    { schema, fragments, paths, topLevelOnly: options?.topLevelOnly },
   );
   if (!pruned) return null;
 

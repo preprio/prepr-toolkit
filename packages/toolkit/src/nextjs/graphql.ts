@@ -249,7 +249,10 @@ export function createPreprClient(
         if (options?.onlyIf && !(await options.onlyIf())) return;
         // A cached check: pages without segment groups cost no request.
         if (!(await client.hasSegments(document, variables))) return;
+        // Only the top-level lists: `aboveTheFold` renders those groups, and
+        // Prepr answers this far faster than for every nested list.
         const decided = await client.decide(document, variables, {
+          topLevelOnly: true,
           headers: mergePreprHeaders(forwardedHeaders(request, response)),
           init: { signal: AbortSignal.timeout(options?.timeoutMs ?? 1000) },
         });

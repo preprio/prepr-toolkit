@@ -143,6 +143,11 @@ export interface PreprDecideOptions extends Omit<
    * none, e.g. on pages with only A/B tests or no personalization.
    */
   from?: unknown;
+  /**
+   * @internal Ask only about the first personalizable list on each path,
+   * without `from`: what middleware needs for groups at the top of a stack.
+   */
+  topLevelOnly?: boolean;
 }
 
 export interface PreprQueryResult<TResult> {
@@ -586,7 +591,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       variables?: TVariables,
       queryOptions: PreprDecideOptions = {},
     ): Promise<PreprDecisions> {
-      const { from, ...rest } = queryOptions;
+      const { from, topLevelOnly, ...rest } = queryOptions;
       const paths = from === undefined ? undefined : personalizationPaths(from);
       // Nothing on the page depends on a segment: no request at all.
       if (paths && paths.size === 0) return new Map();
@@ -596,7 +601,9 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
             .map(([path, types]) => `${path}:${[...types].sort().join(',')}`)
             .sort()
             .join('|')
-        : '*';
+        : topLevelOnly
+          ? 'top'
+          : '*';
       let byPaths = decisionDocuments.get(document);
       if (!byPaths) {
         byPaths = new Map();
@@ -604,7 +611,9 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       }
       let derived = byPaths.get(signature);
       if (derived === undefined) {
-        derived = toDecisionDocument(document, await loadSchema(), paths);
+        derived = toDecisionDocument(document, await loadSchema(), paths, {
+          topLevelOnly: !paths && topLevelOnly,
+        });
         byPaths.set(signature, derived);
       }
       if (!derived) return new Map();
