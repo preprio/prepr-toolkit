@@ -354,6 +354,26 @@ return response;
 
 Sites without A/B tests leave this out. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
 
+##### Personalized content above the fold
+
+A segment group streams in: the default variant shows first, then this visitor's variant replaces it. Below the fold nobody sees that. In the hero they do, so for the blocks on screen before the visitor scrolls, decide in the proxy instead:
+
+```tsx
+<PreprStack items={data.Page.content} decisions={decisions} aboveTheFold={1} render={…} />
+```
+
+```ts
+// proxy.ts, after createPreprMiddleware
+await prepr.resolveDecisions(request, response, PageDocument, { slug });
+```
+
+`PreprStack` puts every variant of those blocks' segment groups in the cached page, and the A/B switch script shows the variant the proxy decided before first paint: nothing on screen changes. `resolveDecisions` forwards the visitor's headers (customer id, UTM parameters, IP, HubSpot id) to Prepr and stores the answer in the `prepr_decisions` cookie.
+
+- It adds one Prepr request (about 30 ms) to the proxy, on pages with segment groups only. Which groups a page has is looked up once a minute with a cacheable query.
+- Without a decision (the lookup failed or took longer than `timeoutMs`, default 1000), the default variant shows.
+- The page carries the HTML of every variant of those groups, and images in hidden variants still download.
+- An item with a segment group nested inside it keeps streaming; only groups at the top level of the list are decided in the proxy.
+
 ##### Preview
 
 Run preview in [draft mode](https://nextjs.org/docs/app/guides/draft-mode), so editors see an edit on the next load instead of the cached page:

@@ -5,6 +5,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import type { NextRequest, NextResponse } from 'next/server';
 
 import {
   createPreprClient as createCoreClient,
@@ -16,13 +17,16 @@ import {
   type PreprQueryOptions,
   type PreprQueryResult,
 } from '../core/graphql';
+import { getPreprHeadersFromHeaders } from '../core/server';
 import {
+  PREPR_CONTEXT_ALIAS,
+  PREPR_DEFAULT_VARIANT,
   preprVariantProps,
   resolveVariants,
   splitStack,
   type PreprDecisions,
 } from '../core/variants';
-import { applyPreprAbBucket } from './ab-switch';
+import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
 import { PreprAbSwitch, PreprVariantTracking } from './components';
 import { getPreprHeaders } from './server';
 
@@ -85,6 +89,90 @@ export interface PreprNextClient {
     document: PreprDocument<unknown, TVariables>,
     variables?: TVariables,
   ): Promise<boolean>;
+  /**
+   * In middleware (`proxy.ts`): asks Prepr which segment variant this visitor
+   * gets for each personalization group on the page, and stores the answer in
+   * the `prepr_decisions` cookie on `response`. `PreprStack` with
+   * `aboveTheFold` then shows those variants before first paint instead of
+   * streaming them in.
+   *
+   * Call it after `createPreprMiddleware`, whose visitor headers (customer id,
+   * UTM parameters, IP, HubSpot id) it forwards. Which groups the page holds
+   * is looked up once a minute with a cacheable variants query; pages without
+   * segment groups cost no further request. Never throws and gives up after
+   * `timeoutMs` (default 1000): the default variant shows instead.
+   */
+  resolveDecisions<TVariables>(
+    request: NextRequest,
+    response: NextResponse,
+    document: PreprDocument<unknown, TVariables>,
+    variables?: TVariables,
+    options?: { timeoutMs?: number },
+  ): Promise<void>;
+}
+
+/** The cookie `resolveDecisions` writes and the `PreprStack` switch reads. */
+export const PREPR_DECISIONS_COOKIE = 'prepr_decisions';
+
+// Groups remembered across pages; prefetches of several pages each add theirs.
+const DECISIONS_MAX_GROUPS = 40;
+const SAFE_ID = /^[\w-]+$/;
+// How long a page's group list is reused, and how many pages are kept.
+const GROUPS_TTL_MS = 60_000;
+const GROUPS_MAX_ENTRIES = 200;
+
+function parseDecisions(raw: string | undefined): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const pair of (raw ?? '').split('~')) {
+    const at = pair.indexOf(':');
+    const group = pair.slice(0, at);
+    if (at < 1 || !SAFE_ID.test(group)) continue;
+    out.set(
+      group,
+      pair
+        .slice(at + 1)
+        .split('|')
+        .filter((variant) => SAFE_ID.test(variant)),
+    );
+  }
+  return out;
+}
+
+function serializeDecisions(decisions: Map<string, string[]>): string {
+  return [...decisions]
+    .slice(0, DECISIONS_MAX_GROUPS)
+    .map(([group, variants]) => `${group}:${variants.join('|')}`)
+    .join('~');
+}
+
+/** The personalization group ids anywhere in a `variants: true` result. */
+function segmentGroupsOf(data: unknown, into = new Set<string>()): Set<string> {
+  if (Array.isArray(data)) {
+    for (const item of data) segmentGroupsOf(item, into);
+  } else if (data && typeof data === 'object') {
+    const ctx = (data as Record<string, unknown>)[PREPR_CONTEXT_ALIAS] as
+      { kind?: string; group_id?: string } | undefined;
+    if (ctx?.kind === 'PERSONALIZATION' && ctx.group_id) {
+      into.add(ctx.group_id);
+    }
+    for (const child of Object.values(data)) segmentGroupsOf(child, into);
+  }
+  return into;
+}
+
+/**
+ * The visitor headers `createPreprMiddleware` forwards: the overridden request
+ * headers on `response` when it set any, the request's own otherwise.
+ */
+function forwardedHeaders(request: NextRequest, response: NextResponse) {
+  const overridden = response.headers.get('x-middleware-override-headers');
+  if (!overridden) return getPreprHeadersFromHeaders(request.headers);
+  const headers = new Headers();
+  for (const name of overridden.split(',')) {
+    const value = response.headers.get(`x-middleware-request-${name.trim()}`);
+    if (value !== null) headers.set(name.trim(), value);
+  }
+  return getPreprHeadersFromHeaders(headers);
 }
 
 type NextFetchInit = RequestInit & {
@@ -119,6 +207,17 @@ export function createPreprClient(
     } as NextFetchInit,
     ...coreOptions,
   });
+
+  const pageGroups = new Map<
+    unknown,
+    Map<
+      string,
+      {
+        value: Promise<{ data: unknown; groups: Set<string> }>;
+        at: number;
+      }
+    >
+  >();
 
   return {
     async query<TResult, TVariables>(
@@ -168,6 +267,66 @@ export function createPreprClient(
     },
 
     hasAbTests: (document, variables) => client.hasAbTests(document, variables),
+
+    async resolveDecisions(request, response, document, variables, options) {
+      const key = JSON.stringify(variables ?? null);
+      let byVariables = pageGroups.get(document);
+      if (!byVariables) {
+        byVariables = new Map();
+        pageGroups.set(document, byVariables);
+      }
+      let entry = byVariables.get(key);
+      if (!entry || Date.now() - entry.at > GROUPS_TTL_MS) {
+        // No visitor headers: the same for everyone, so Prepr's CDN caches it.
+        const value = client
+          .query(document, variables, { variants: true })
+          .then(({ data }) => ({
+            data,
+            groups: segmentGroupsOf(data),
+          }));
+        value.catch(() => byVariables!.delete(key));
+        if (byVariables.size >= GROUPS_MAX_ENTRIES) {
+          byVariables.delete(byVariables.keys().next().value!);
+        }
+        entry = { value, at: Date.now() };
+        byVariables.set(key, entry);
+      }
+
+      try {
+        const page = await entry.value;
+        if (page.groups.size === 0) return;
+        const decided = await client.decide(document, variables, {
+          from: page.data,
+          headers: mergePreprHeaders(forwardedHeaders(request, response)),
+          init: { signal: AbortSignal.timeout(options?.timeoutMs ?? 1000) },
+        });
+        // This page's groups first, each with what the visitor gets (none for
+        // a group without a variant for them), then what other pages stored.
+        const next = new Map<string, string[]>();
+        for (const group of page.groups) {
+          if (!SAFE_ID.test(group)) continue;
+          next.set(
+            group,
+            (decided.get(group) ?? []).filter((v) => SAFE_ID.test(v)),
+          );
+        }
+        const stored = parseDecisions(
+          request.cookies.get(PREPR_DECISIONS_COOKIE)?.value,
+        );
+        for (const [group, variants] of stored) {
+          if (!next.has(group)) next.set(group, variants);
+        }
+        response.cookies.set(PREPR_DECISIONS_COOKIE, serializeDecisions(next), {
+          path: '/',
+          sameSite: 'lax',
+          // Read by the inline switch script before first paint.
+          httpOnly: false,
+        });
+      } catch (error) {
+        if (isFrameworkSignal(error)) throw error;
+        // The default variant shows; the next request asks again.
+      }
+    },
   };
 }
 
@@ -208,6 +367,18 @@ export interface PreprStackProps<T> {
    * nested inside an item are not tagged; use `preprVariantProps` there.
    */
   trackVariants?: boolean;
+  /**
+   * How many blocks, from the top, are on screen before the visitor scrolls.
+   * Default `0`.
+   *
+   * Their segment groups do not stream: every variant is in the cached page,
+   * and the variant the proxy decided (`prepr.resolveDecisions`) shows before
+   * first paint, so nothing on screen changes while the page loads. Without
+   * a decision (no cookie yet, or the proxy's lookup failed) the default
+   * variant shows. Costs the HTML of the other variants; images in them still
+   * download. An item with a segment group nested inside it keeps streaming.
+   */
+  aboveTheFold?: number;
 }
 
 const AB_ATTRIBUTE = 'data-prepr-ab';
@@ -220,7 +391,15 @@ const AB_BASE_CSS = `[${AB_ATTRIBUTE}]{display:contents}[${AB_ATTRIBUTE}]:not([$
 // Runs while the HTML is parsed, so the visitor's variant is the first one
 // painted. A hidden variant never reaches 50% visibility, so the tracking
 // pixel never records an impression for it.
-const AB_SWITCH_SCRIPT = `(${applyPreprAbBucket.toString()})()`;
+const AB_SWITCH_SCRIPT = `(${applyPreprAbBucket.toString()})();(${applyPreprDecisions.toString()})()`;
+
+const GROUP_ATTRIBUTE = 'data-prepr-group';
+const VARIANT_ATTRIBUTE = 'data-prepr-variant';
+const DEFAULT_ATTRIBUTE = 'data-prepr-default';
+
+// Segment variants of above-the-fold groups: no layout effect, and only the
+// default shows until the switch script applies the proxy's decision.
+const GROUP_BASE_CSS = `[${GROUP_ATTRIBUTE}]{display:contents}[${GROUP_ATTRIBUTE}]:not([${DEFAULT_ATTRIBUTE}]){display:none}`;
 
 /**
  * Renders items for every A/B bucket the visitor might have, each in a
@@ -264,6 +443,47 @@ function renderBuckets<T>(
   };
   if (!abTest || bucket) return renderVariant(bucket);
   return AB_BUCKETS.map((variant) => renderVariant(variant, variant));
+}
+
+/**
+ * Every variant of one segment group, each in a wrapper the switch script
+ * shows or hides.
+ */
+function renderAllVariants<T>(
+  block: { key: string; items: T[]; index: number },
+  render: StackRender<T>,
+  options: { bucket?: string; track?: boolean },
+): ReactNode {
+  const group = block.key.slice('group:'.length);
+  const variants = [
+    ...new Set(
+      block.items.flatMap((item) => {
+        const ctx = (item as Record<string, unknown>)[PREPR_CONTEXT_ALIAS] as
+          { variant_id?: string } | undefined;
+        return ctx?.variant_id ? [ctx.variant_id] : [];
+      }),
+    ),
+  ];
+  return variants.map((variant) =>
+    createElement(
+      'div',
+      {
+        key: variant,
+        [GROUP_ATTRIBUTE]: group,
+        [VARIANT_ATTRIBUTE]: variant,
+        ...(variant === PREPR_DEFAULT_VARIANT
+          ? { [DEFAULT_ATTRIBUTE]: '' }
+          : {}),
+      },
+      renderBuckets(block.items, render, {
+        bucket: options.bucket,
+        decisions: new Map([[group, [variant]]]),
+        abTest: false,
+        index: block.index,
+        track: options.track,
+      }),
+    ),
+  );
 }
 
 async function PersonalizedBlock<T>({
@@ -327,11 +547,19 @@ export function PreprStack<T>({
   bucket,
   nonce,
   trackVariants = false,
+  aboveTheFold = 0,
 }: PreprStackProps<T>): ReactElement {
   // Blocks that never wait would leave a rejection unobserved.
   decisions.catch(() => undefined);
   const blocks = splitStack(items);
-  const needsSwitch = !bucket && blocks.some((block) => block.abTest);
+  const decidedInProxy = (block: (typeof blocks)[number]) =>
+    block.index < aboveTheFold &&
+    block.personalized &&
+    !block.abTest &&
+    block.key.startsWith('group:');
+  const hasDecided = blocks.some(decidedInProxy);
+  const needsSwitch =
+    (!bucket && blocks.some((block) => block.abTest)) || hasDecided;
 
   return createElement(
     Fragment,
@@ -342,7 +570,9 @@ export function PreprStack<T>({
         { key: 'prepr-ab' },
         createElement('style', {
           nonce,
-          dangerouslySetInnerHTML: { __html: AB_BASE_CSS },
+          dangerouslySetInnerHTML: {
+            __html: AB_BASE_CSS + (hasDecided ? GROUP_BASE_CSS : ''),
+          },
         }),
         createElement('script', {
           nonce,
@@ -351,6 +581,13 @@ export function PreprStack<T>({
         createElement(PreprAbSwitch),
       ),
     ...blocks.map((block) => {
+      if (decidedInProxy(block)) {
+        return createElement(
+          Fragment,
+          { key: block.key },
+          renderAllVariants(block, render, { bucket, track: trackVariants }),
+        );
+      }
       // A fallback is only on screen until the visitor's variant arrives, so
       // it is tagged only where it is final: blocks that never stream.
       const fallback = renderBuckets(block.items, render, {

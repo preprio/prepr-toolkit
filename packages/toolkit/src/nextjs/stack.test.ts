@@ -9,7 +9,7 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
 const { PreprStack } = await import('./graphql');
 const { PREPR_BUCKET_COOKIE } = await import('./bucket');
-const { applyPreprAbBucket } = await import('./ab-switch');
+const { applyPreprAbBucket, applyPreprDecisions } = await import('./ab-switch');
 
 const ctx = (kind: string, group: string, variant: string) => ({
   _preprContext: { kind, group_id: group, variant_id: variant },
@@ -38,6 +38,8 @@ function html(props: { bucket?: string } = {}) {
 afterEach(() => {
   delete (window as { __preprAbBucket?: string }).__preprAbBucket;
   delete (window as { __preprAbSheet?: unknown }).__preprAbSheet;
+  delete (window as { __preprDecisions?: unknown }).__preprDecisions;
+  delete (window as { __preprDecisionSheet?: unknown }).__preprDecisionSheet;
   document.adoptedStyleSheets = [];
   document.head.innerHTML = '';
   document.body.innerHTML = '';
@@ -215,5 +217,79 @@ describe('PreprStack trackVariants', () => {
     expect(el.textContent).toBe('hero-dev');
     expect(el.getAttribute('data-prepr-variant-key')).toBe('key-DEVELOPERS');
     act(() => root.unmount());
+  });
+});
+
+describe('PreprStack aboveTheFold', () => {
+  const seg = (variant: string) => ({
+    _preprContext: {
+      kind: 'PERSONALIZATION',
+      group_id: 'hero',
+      variant_id: variant,
+    },
+  });
+  const heroItems = [
+    { id: 'hero-default', ...seg('ALL_OTHER_USERS') },
+    { id: 'hero-dev', ...seg('DEVELOPERS') },
+    { id: 'below', ...ctx('PERSONALIZATION', 'g-below', 'ALL_OTHER_USERS') },
+  ];
+  const out = () =>
+    renderToString(
+      createElement(PreprStack<{ id: string }>, {
+        items: heroItems,
+        decisions: new Promise<Map<string, string[]>>(() => {}),
+        render,
+        aboveTheFold: 1,
+      }),
+    );
+
+  it('renders every variant of an above-the-fold group in the page, default marked', () => {
+    const html = out();
+    expect(html).toContain(
+      '<div data-prepr-group="hero" data-prepr-variant="ALL_OTHER_USERS" data-prepr-default=""><p>hero-default</p></div>',
+    );
+    expect(html).toContain(
+      '<div data-prepr-group="hero" data-prepr-variant="DEVELOPERS"><p>hero-dev</p></div>',
+    );
+    expect(html).toContain(
+      '[data-prepr-group]:not([data-prepr-default]){display:none}',
+    );
+  });
+
+  it('keeps streaming groups below the fold', () => {
+    const html = out();
+    expect(html).toContain('<p>below</p>');
+    expect(html).not.toContain('data-prepr-group="g-below"');
+  });
+
+  it('shows the decided variant before paint, and none for a group decided as "none"', () => {
+    const rules = () =>
+      [
+        ...(window as unknown as { __preprDecisionSheet: CSSStyleSheet })
+          .__preprDecisionSheet.cssRules,
+      ]
+        .map((r) => r.cssText.replace(/\s+/g, ''))
+        .join('');
+
+    document.cookie = 'prepr_decisions=hero%3ADEVELOPERS; path=/';
+    applyPreprDecisions();
+    expect(rules()).toBe(
+      '[data-prepr-group="hero"]{display:none!important;}[data-prepr-group="hero"][data-prepr-variant="DEVELOPERS"]{display:contents!important;}',
+    );
+
+    document.cookie = 'prepr_decisions=hero%3A; path=/';
+    applyPreprDecisions();
+    expect(rules()).toBe('[data-prepr-group="hero"]{display:none!important;}');
+    document.cookie = 'prepr_decisions=; max-age=0; path=/';
+  });
+
+  it('ignores ids that could inject CSS', () => {
+    document.cookie = `prepr_decisions=${encodeURIComponent('x"]{}body{display:none}:a~hero:B')}; path=/`;
+    applyPreprDecisions();
+    const sheet = (window as unknown as { __preprDecisionSheet: CSSStyleSheet })
+      .__preprDecisionSheet;
+    const css = [...sheet.cssRules].map((r) => r.cssText).join('');
+    expect(css).not.toContain('body');
+    document.cookie = 'prepr_decisions=; max-age=0; path=/';
   });
 });

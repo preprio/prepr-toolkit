@@ -12,7 +12,7 @@ import {
 
 import { createPreprPreview } from '../core/create-preview';
 import { isReactHydrated } from '../react/hydration';
-import { applyPreprAbBucket } from './ab-switch';
+import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
 import type { PreprToolbarComponentProps } from '../core/types';
 
 // Nothing Next-specific about the pixel — it lives on the framework-free
@@ -67,7 +67,8 @@ export function PreprToolbar({
 }
 
 /**
- * Applies the visitor's A/B bucket after client-side navigation. A full page
+ * Applies the visitor's A/B bucket, and the segment variants decided in the
+ * proxy, after client-side navigation. A full page
  * load is covered by the inline script `PreprStack` renders, but React does
  * not run inline scripts that arrive with a client-side navigation; a layout
  * effect still runs before the browser paints the new page. Rendered by
@@ -80,6 +81,7 @@ export function PreprAbSwitch(): null {
   // early.
   useLayoutEffect(() => {
     applyPreprAbBucket();
+    applyPreprDecisions();
   });
   return null;
 }

@@ -39,3 +39,65 @@ export function applyPreprAbBucket(): void {
     (state.__preprAbSheet as HTMLStyleElement).textContent = css;
   }
 }
+
+/**
+ * Shows the segment variant the proxy decided for each group rendered with
+ * `aboveTheFold` (from the `prepr_decisions` cookie) and hides the others,
+ * the same way as the A/B switch. Groups the cookie does not mention keep
+ * their default variant.
+ *
+ * Self-contained for the same reason as the A/B switch: its source is inlined
+ * as a `<script>`. Only ids of letters, digits, `_` and `-` are used, so a
+ * tampered cookie cannot inject CSS.
+ */
+export function applyPreprDecisions(): void {
+  const match = document.cookie.match(/(?:^|; )prepr_decisions=([^;]*)/);
+  let raw: string;
+  try {
+    raw = match ? decodeURIComponent(match[1]!) : '';
+  } catch {
+    raw = '';
+  }
+  const state = window as unknown as {
+    __preprDecisions?: string;
+    __preprDecisionSheet?: CSSStyleSheet | HTMLStyleElement;
+  };
+  if (state.__preprDecisions === raw) return;
+  state.__preprDecisions = raw;
+  const id = /^[\w-]+$/;
+  let css = '';
+  raw.split('~').forEach((pair) => {
+    const at = pair.indexOf(':');
+    const group = pair.slice(0, at);
+    if (at < 1 || !id.test(group)) return;
+    const selector = '[data-prepr-group="' + group + '"]';
+    css += selector + '{display:none!important}';
+    pair
+      .slice(at + 1)
+      .split('|')
+      .forEach((variant) => {
+        if (id.test(variant)) {
+          css +=
+            selector +
+            '[data-prepr-variant="' +
+            variant +
+            '"]{display:contents!important}';
+        }
+      });
+  });
+  try {
+    if (!state.__preprDecisionSheet) {
+      const sheet = new CSSStyleSheet();
+      document.adoptedStyleSheets = document.adoptedStyleSheets.concat(sheet);
+      state.__preprDecisionSheet = sheet;
+    }
+    (state.__preprDecisionSheet as CSSStyleSheet).replaceSync(css);
+  } catch {
+    // Browsers without constructable stylesheets.
+    if (!state.__preprDecisionSheet) {
+      state.__preprDecisionSheet = document.createElement('style');
+      document.head.appendChild(state.__preprDecisionSheet);
+    }
+    (state.__preprDecisionSheet as HTMLStyleElement).textContent = css;
+  }
+}
