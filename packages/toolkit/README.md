@@ -424,6 +424,99 @@ Outside preview both do nothing (the route answers 404). Keep the route out of y
 
 Do not catch and swallow errors from `query` without [`unstable_rethrow`](https://nextjs.org/docs/app/api-reference/functions/unstable_rethrow): Next.js signals dynamic rendering by throwing from inside `fetch`, and the client passes those signals through.
 
+#### Using your own GraphQL client
+
+Everything the toolkit's client does for personalization is two query rewrites and one helper. Use them with any client: Apollo, urql, or plain `fetch`.
+
+1. **Variants query** (same for every visitor, cache it): `toVariantsQuery(query, schema)`.
+2. **Decision query** (per visitor, never cached, with the visitor's Prepr headers): `toDecisionQuery(query, schema, { from: variantsData })`, then `decisionsFrom(data)`.
+3. **Render** with `PreprStack` (Next.js) or `resolveVariants(data, { decisions, bucket })` anywhere.
+
+The rewrites need to know which fields take `personalize`: `loadPreprSchema(url)` fetches that once and keeps it in memory.
+
+```ts
+import {
+  decisionsFrom,
+  loadPreprSchema,
+  resolveVariants,
+  toDecisionQuery,
+  toVariantsQuery,
+} from '@preprio/toolkit/graphql';
+
+const url = process.env.PREPR_GRAPHQL_URL!;
+const schema = await loadPreprSchema(url);
+
+async function post(
+  query: string,
+  variables: object,
+  headers: HeadersInit = {},
+) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ query, variables }),
+  });
+  return (await res.json()).data;
+}
+
+const variables = { slug: '/' };
+const page = await post(toVariantsQuery(PAGE_QUERY, schema), variables); // cacheable
+
+const decisionQuery = toDecisionQuery(PAGE_QUERY, schema, { from: page });
+const decisions = decisionQuery
+  ? decisionsFrom(await post(decisionQuery, variables, visitorPreprHeaders))
+  : new Map();
+
+const content = resolveVariants(page.Page.content, { decisions, bucket });
+```
+
+`visitorPreprHeaders` are the headers the middleware forwards (`getPreprHeaders()` in Next.js); `bucket` is the visitor's A/B bucket (`resolvePreprBucket` stores it in a cookie).
+
+With Apollo, parse the strings once and use them like any document:
+
+```ts
+import { gql } from '@apollo/client';
+
+const PageVariants = gql(toVariantsQuery(PAGE_QUERY, schema));
+const { data: page } = await client.query({ query: PageVariants, variables });
+
+const decisionQuery = toDecisionQuery(PAGE_QUERY, schema, { from: page });
+const decisions = decisionQuery
+  ? decisionsFrom(
+      (
+        await client.query({
+          query: gql(decisionQuery),
+          variables,
+          context: { headers: visitorPreprHeaders },
+          fetchPolicy: 'no-cache', // per visitor: never from Apollo's cache
+        })
+      ).data,
+    )
+  : new Map();
+```
+
+**At build time with graphql-codegen.** The plugin writes both queries per named query into a file, so nothing is rewritten and no schema is loaded at runtime:
+
+```ts
+// codegen.ts
+generates: {
+  'src/gql/prepr-queries.ts': {
+    plugins: ['@preprio/toolkit/graphql/codegen'],
+  },
+},
+```
+
+```ts
+import {
+  GetPageBySlugDecisionQuery,
+  GetPageBySlugVariantsQuery,
+} from './gql/prepr-queries';
+```
+
+Only named queries with personalizable fields get exports; two queries with the same name fail the run. The generated decision query asks about every personalizable list. When you have the variants result at hand, `toDecisionQuery(query, schema, { from })` is smaller and markedly faster for visitors Prepr has not seen before.
+
+A/B tests need no decision query: render both variants and pick the visitor's bucket, as `PreprStack` and `resolvePreprBucket` do, or pass the bucket to `resolveVariants`.
+
 ### Image loader
 
 Prepr's stream CDN resizes at the edge. Routing `next/image` through the bundled loader makes Next request the exact width it needs, instead of pulling the full-resolution original and re-encoding it through `/_next/image`.
@@ -824,6 +917,17 @@ Each wrapper exposes the same five helpers, differing only in how they reach the
 Import `PreprError` from the same subpath as the client when checking `instanceof`: CommonJS entry points do not share classes. `error.code` works from anywhere.
 
 `isPersonalizedResponse(response)`, exported from every entry point, reads the same verdict from a response fetched with your own client. It does not need `graphql`.
+
+For your own GraphQL client (see [Using your own GraphQL client](#using-your-own-graphql-client)), every `/graphql` subpath also exports:
+
+| Function                                                   | Returns                                                                                |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `loadPreprSchema(url, { fetch? })`                         | What the rewrites need from your schema, loaded once per URL. Failures are not cached. |
+| `toVariantsQuery(query, schema)`                           | The variants query as a string: what `variants: true` sends.                           |
+| `toDecisionQuery(query, schema, { from?, topLevelOnly? })` | The per-visitor decision query as a string, or `null` when there is nothing to decide. |
+| `decisionsFrom(data)`                                      | Decisions from a decision query's `data`, for `resolveVariants` or `PreprStack`.       |
+
+`@preprio/toolkit/graphql/codegen` is a graphql-codegen plugin that writes `<Name>VariantsQuery` and `<Name>DecisionQuery` for every named query with personalizable fields.
 
 ### Token helpers
 
