@@ -173,22 +173,24 @@ describe('resolveDecisions', () => {
       variant_id: variant,
     },
   });
-  const variants = {
-    data: { Page: { content: [ctx('ALL_OTHER_USERS'), ctx('DEVELOPERS')] } },
-  };
   const decision = { data: { Page: { content: [ctx('DEVELOPERS')] } } };
 
-  async function setup(answer: unknown = decision) {
+  async function setup({
+    answer = decision as unknown,
+    vary = 'Prepr-Segments',
+  } = {}) {
     const { createPreprClient } = await load();
     const { NextRequest, NextResponse } = await import('next/server');
     const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
       const body = String(init?.body);
-      const json = body.includes('__schema')
-        ? introspection
-        : body.includes('personalize:false')
-          ? variants
-          : answer;
-      return new Response(JSON.stringify(json));
+      if (body.includes('__schema'))
+        return new Response(JSON.stringify(introspection));
+      if (body.includes('AbCheck')) {
+        return new Response(JSON.stringify({ data: { Page: null } }), {
+          headers: { vary },
+        });
+      }
+      return new Response(JSON.stringify(answer));
     });
     const prepr = createPreprClient({ url: URL_, fetch });
     const request = (cookie = '') =>
@@ -205,53 +207,60 @@ describe('resolveDecisions', () => {
       r.headers.set('x-middleware-request-prepr-customer-id', 'visitor-1');
       return r;
     };
-    return { prepr, fetch, request, response };
+    const decisionCalls = () =>
+      fetch.mock.calls.filter((call) =>
+        String(call[1]?.body).includes('Decision'),
+      );
+    return { prepr, request, response, decisionCalls };
   }
 
   it("stores the visitor's variant per group, asked with the forwarded visitor headers", async () => {
-    const { prepr, fetch, request, response } = await setup();
+    const { prepr, request, response, decisionCalls } = await setup();
     const res = response();
 
     await prepr.resolveDecisions(request(), res, PAGE, { slug: '/' });
 
     expect(res.cookies.get('prepr_decisions')?.value).toBe('hero:DEVELOPERS');
     expect(res.cookies.get('prepr_decisions')?.httpOnly).toBe(false);
-    const decisionCall = fetch.mock.calls.find((call) =>
-      String(call[1]?.body).includes('Decision'),
-    )!;
-    expect(new Headers(decisionCall[1]!.headers).get('prepr-customer-id')).toBe(
-      'visitor-1',
-    );
+    expect(
+      new Headers(decisionCalls()[0]![1]!.headers).get('prepr-customer-id'),
+    ).toBe('visitor-1');
   });
 
-  it('keeps groups other pages stored, and records "none" for a group without a variant for the visitor', async () => {
-    const { prepr, request, response } = await setup({
-      data: { Page: { content: [] } },
-    });
+  it('keeps groups other pages stored', async () => {
+    const { prepr, request, response } = await setup();
     const res = response();
 
     await prepr.resolveDecisions(
-      request('prepr_decisions=other:B2B'),
+      request('prepr_decisions=other:B2B~hero:X'),
       res,
       PAGE,
       { slug: '/' },
     );
 
-    expect(res.cookies.get('prepr_decisions')?.value).toBe('hero:~other:B2B');
+    expect(res.cookies.get('prepr_decisions')?.value).toBe(
+      'hero:DEVELOPERS~other:B2B',
+    );
   });
 
-  it('asks Prepr nothing per visitor on a page without segment groups', async () => {
-    const { prepr, fetch, request, response } = await setup();
-    variants.data.Page.content = [];
-    const res = response();
-
-    await prepr.resolveDecisions(request(), res, PAGE, { slug: '/plain' });
-
+  it('asks Prepr nothing per visitor on a page without segment groups, or when onlyIf says no', async () => {
+    const plain = await setup({ vary: 'Authorization' });
+    const res = plain.response();
+    await plain.prepr.resolveDecisions(plain.request(), res, PAGE, {
+      slug: '/plain',
+    });
     expect(res.cookies.get('prepr_decisions')).toBeUndefined();
-    expect(
-      fetch.mock.calls.some((c) => String(c[1]?.body).includes('Decision')),
-    ).toBe(false);
-    variants.data.Page.content = [ctx('ALL_OTHER_USERS'), ctx('DEVELOPERS')];
+    expect(plain.decisionCalls()).toHaveLength(0);
+
+    const skipped = await setup();
+    await skipped.prepr.resolveDecisions(
+      skipped.request(),
+      skipped.response(),
+      PAGE,
+      { slug: '/' },
+      { onlyIf: () => false },
+    );
+    expect(skipped.decisionCalls()).toHaveLength(0);
   });
 
   it('never throws: a failed lookup leaves the cookie alone', async () => {

@@ -97,17 +97,22 @@ export interface PreprNextClient {
    * streaming them in.
    *
    * Call it after `createPreprMiddleware`, whose visitor headers (customer id,
-   * UTM parameters, IP, HubSpot id) it forwards. Which groups the page holds
-   * is looked up once a minute with a cacheable variants query; pages without
-   * segment groups cost no further request. Never throws and gives up after
-   * `timeoutMs` (default 1000): the default variant shows instead.
+   * UTM parameters, IP, HubSpot id) it forwards. The decision is one uncached
+   * Prepr request per page view, so limit it with `onlyIf` to pages whose
+   * personalized content is above the fold; pages without segment groups are
+   * skipped after a cached check. Never throws and gives up after `timeoutMs`
+   * (default 1000): the default variant shows instead.
    */
   resolveDecisions<TVariables>(
     request: NextRequest,
     response: NextResponse,
     document: PreprDocument<unknown, TVariables>,
     variables?: TVariables,
-    options?: { timeoutMs?: number },
+    options?: {
+      timeoutMs?: number;
+      /** Skip the decision when this resolves to false, e.g. for pages without a personalized hero. */
+      onlyIf?: () => boolean | Promise<boolean>;
+    },
   ): Promise<void>;
 }
 
@@ -117,9 +122,6 @@ export const PREPR_DECISIONS_COOKIE = 'prepr_decisions';
 // Groups remembered across pages; prefetches of several pages each add theirs.
 const DECISIONS_MAX_GROUPS = 40;
 const SAFE_ID = /^[\w-]+$/;
-// How long a page's group list is reused, and how many pages are kept.
-const GROUPS_TTL_MS = 60_000;
-const GROUPS_MAX_ENTRIES = 200;
 
 function parseDecisions(raw: string | undefined): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -143,21 +145,6 @@ function serializeDecisions(decisions: Map<string, string[]>): string {
     .slice(0, DECISIONS_MAX_GROUPS)
     .map(([group, variants]) => `${group}:${variants.join('|')}`)
     .join('~');
-}
-
-/** The personalization group ids anywhere in a `variants: true` result. */
-function segmentGroupsOf(data: unknown, into = new Set<string>()): Set<string> {
-  if (Array.isArray(data)) {
-    for (const item of data) segmentGroupsOf(item, into);
-  } else if (data && typeof data === 'object') {
-    const ctx = (data as Record<string, unknown>)[PREPR_CONTEXT_ALIAS] as
-      { kind?: string; group_id?: string } | undefined;
-    if (ctx?.kind === 'PERSONALIZATION' && ctx.group_id) {
-      into.add(ctx.group_id);
-    }
-    for (const child of Object.values(data)) segmentGroupsOf(child, into);
-  }
-  return into;
 }
 
 /**
@@ -207,17 +194,6 @@ export function createPreprClient(
     } as NextFetchInit,
     ...coreOptions,
   });
-
-  const pageGroups = new Map<
-    unknown,
-    Map<
-      string,
-      {
-        value: Promise<{ data: unknown; groups: Set<string> }>;
-        at: number;
-      }
-    >
-  >();
 
   return {
     async query<TResult, TVariables>(
@@ -269,46 +245,23 @@ export function createPreprClient(
     hasAbTests: (document, variables) => client.hasAbTests(document, variables),
 
     async resolveDecisions(request, response, document, variables, options) {
-      const key = JSON.stringify(variables ?? null);
-      let byVariables = pageGroups.get(document);
-      if (!byVariables) {
-        byVariables = new Map();
-        pageGroups.set(document, byVariables);
-      }
-      let entry = byVariables.get(key);
-      if (!entry || Date.now() - entry.at > GROUPS_TTL_MS) {
-        // No visitor headers: the same for everyone, so Prepr's CDN caches it.
-        const value = client
-          .query(document, variables, { variants: true })
-          .then(({ data }) => ({
-            data,
-            groups: segmentGroupsOf(data),
-          }));
-        value.catch(() => byVariables!.delete(key));
-        if (byVariables.size >= GROUPS_MAX_ENTRIES) {
-          byVariables.delete(byVariables.keys().next().value!);
-        }
-        entry = { value, at: Date.now() };
-        byVariables.set(key, entry);
-      }
-
       try {
-        const page = await entry.value;
-        if (page.groups.size === 0) return;
+        if (options?.onlyIf && !(await options.onlyIf())) return;
+        // A cached check: pages without segment groups cost no request.
+        if (!(await client.hasSegments(document, variables))) return;
         const decided = await client.decide(document, variables, {
-          from: page.data,
           headers: mergePreprHeaders(forwardedHeaders(request, response)),
           init: { signal: AbortSignal.timeout(options?.timeoutMs ?? 1000) },
         });
-        // This page's groups first, each with what the visitor gets (none for
-        // a group without a variant for them), then what other pages stored.
+        // This page's groups first, then what other pages stored.
         const next = new Map<string, string[]>();
-        for (const group of page.groups) {
-          if (!SAFE_ID.test(group)) continue;
-          next.set(
-            group,
-            (decided.get(group) ?? []).filter((v) => SAFE_ID.test(v)),
-          );
+        for (const [group, variants] of decided) {
+          if (SAFE_ID.test(group)) {
+            next.set(
+              group,
+              variants.filter((v) => SAFE_ID.test(v)),
+            );
+          }
         }
         const stored = parseDecisions(
           request.cookies.get(PREPR_DECISIONS_COOKIE)?.value,
@@ -316,6 +269,7 @@ export function createPreprClient(
         for (const [group, variants] of stored) {
           if (!next.has(group)) next.set(group, variants);
         }
+        if (next.size === 0) return;
         response.cookies.set(PREPR_DECISIONS_COOKIE, serializeDecisions(next), {
           path: '/',
           sameSite: 'lax',
