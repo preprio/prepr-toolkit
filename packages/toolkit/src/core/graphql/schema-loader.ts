@@ -3,6 +3,7 @@ import {
   toSchemaInfo,
   type PreprSchemaInfo,
 } from '../variants/schema';
+import { PreprError } from '../server';
 import { assertPreprUrl } from './client';
 import { createTransport } from './transport';
 
@@ -33,13 +34,20 @@ export async function loadPreprSchema(
     const run = createTransport({ url, fetch: options.fetch, stega: 'none' });
     schema = run<Parameters<typeof toSchemaInfo>[0], undefined>(
       PREPR_SCHEMA_QUERY,
-    ).then(
-      (result) => toSchemaInfo(result.data),
-      (error: unknown) => {
+    )
+      .then((result) => toSchemaInfo(result.data))
+      .catch((error: unknown) => {
+        // Request failures and responses that are not a schema (a proxy, the
+        // wrong endpoint) alike: drop the entry so the next call retries.
         schemas.delete(url);
-        throw error;
-      },
-    );
+        if (error instanceof PreprError) throw error;
+        throw new PreprError(
+          'Prepr schema response is not an introspection result',
+          'INVALID_RESPONSE',
+          'loadPreprSchema',
+          error instanceof Error ? error : undefined,
+        );
+      });
     schemas.set(url, schema);
   }
   return schema;

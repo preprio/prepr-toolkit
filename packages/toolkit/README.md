@@ -456,7 +456,10 @@ async function post(
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify({ query, variables }),
   });
-  return (await res.json()).data;
+  const json = await res.json();
+  if (!res.ok || json.errors)
+    throw new Error(`Prepr GraphQL request failed (${res.status})`);
+  return json.data;
 }
 
 const variables = { slug: '/' };

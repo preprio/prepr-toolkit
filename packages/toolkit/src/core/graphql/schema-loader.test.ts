@@ -42,6 +42,22 @@ describe('loadPreprSchema', () => {
     expect(ok).toHaveBeenCalledTimes(1);
   });
 
+  it('does not cache a 200 response that is not a schema, and reports it as a PreprError', async () => {
+    const url = `${URL_}-c`;
+    const wrong = vi.fn(
+      async () => new Response(JSON.stringify({ data: { foo: 1 } })),
+    );
+    const error = await loadPreprSchema(url, { fetch: wrong }).catch(
+      (e: unknown) => e as Error,
+    );
+    expect((error as Error).name).toBe('PreprError');
+    expect((error as { code?: string }).code).toBe('INVALID_RESPONSE');
+
+    const ok = vi.fn(async () => new Response(JSON.stringify(introspection)));
+    await expect(loadPreprSchema(url, { fetch: ok })).resolves.toBeTruthy();
+    expect(ok).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a URL that is not a Prepr GraphQL URL, like createPreprClient', async () => {
     await expect(loadPreprSchema('not a url')).rejects.toMatchObject({
       name: 'PreprError',

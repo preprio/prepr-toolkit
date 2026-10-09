@@ -55,6 +55,18 @@ describe('codegen plugin', () => {
     expect(out).not.toContain('fragment Unused');
   });
 
+  it('attaches fragments that other fragments use, and no unused ones', () => {
+    const out = plugin(schema, [
+      doc(`query GetPage { Page(slug: "/") { ...PageFields } }`),
+      doc(`fragment PageFields on Page { content { ...HeroFields } }`),
+      doc(`fragment HeroFields on Hero { heading }`),
+      doc(`fragment Unused on Banner { text }`),
+    ]);
+    expect(out).toContain('fragment PageFields on Page');
+    expect(out).toContain('fragment HeroFields on Hero');
+    expect(out).not.toContain('fragment Unused');
+  });
+
   it('skips operations without personalizable fields and anonymous ones', () => {
     const out = plugin(schema, [
       doc(`query Plain { Page(slug: "/") { title } }`),
