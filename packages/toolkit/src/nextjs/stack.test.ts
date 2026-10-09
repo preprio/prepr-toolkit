@@ -293,3 +293,31 @@ describe('PreprStack aboveTheFold', () => {
     document.cookie = 'prepr_decisions=; max-age=0; path=/';
   });
 });
+
+describe('PreprStack placeholder flag', () => {
+  it('marks only the stand-in for a streaming segment group as a placeholder', () => {
+    const seen: [string, boolean][] = [];
+    renderToString(
+      createElement(PreprStack<{ id: string }>, {
+        items: [
+          { id: 'intro' },
+          { id: 'cta-a', ...ctx('AB_TEST', 'g-cta', 'A') },
+          { id: 'cta-b', ...ctx('AB_TEST', 'g-cta', 'B') },
+          { id: 'seg', ...ctx('PERSONALIZATION', 'g-seg', 'ALL_OTHER_USERS') },
+        ],
+        // Never resolves: only the stand-in renders.
+        decisions: new Promise<Map<string, string[]>>(() => {}),
+        render: (items, { placeholder }) => {
+          for (const item of items) seen.push([item.id, placeholder]);
+          return null;
+        },
+      }),
+    );
+    expect(seen).toEqual([
+      ['intro', false],
+      ['cta-a', false],
+      ['cta-b', false],
+      ['seg', true],
+    ]);
+  });
+});

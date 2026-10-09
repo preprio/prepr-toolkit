@@ -32,8 +32,16 @@ export interface PreprStackProps<T> {
    * position of the block's first item in the whole stack, for anything that
    * depends on page position, such as which section owns the h1 or the
    * priority image.
+   *
+   * `placeholder` is true while this render only stands in for the visitor's
+   * variant of a segment group (the default variant, shown until the
+   * decision streams in). Leave `data-prepr-variant-key` off it: the tracking
+   * pixel would count an impression of a variant the visitor may never get.
    */
-  render: (items: T[], position: { index: number }) => ReactNode;
+  render: (
+    items: T[],
+    position: { index: number; placeholder: boolean },
+  ) => ReactNode;
   /**
    * The visitor's A/B bucket, when the route already knows it (for example
    * from a URL segment). Leave it out to render both variants of each A/B
@@ -111,12 +119,20 @@ function renderBuckets<T>(
     abTest: boolean;
     index: number;
     track?: boolean;
+    placeholder?: boolean;
   },
 ): ReactNode {
-  const { bucket, decisions, abTest, index, track } = options;
+  const {
+    bucket,
+    decisions,
+    abTest,
+    index,
+    track,
+    placeholder = false,
+  } = options;
   const renderVariant = (variant: string | undefined, key?: string) => {
     const resolved = resolveVariants(items, { decisions, bucket: variant });
-    const content = render(resolved, { index });
+    const content = render(resolved, { index, placeholder });
     const variantKeys = track ? variantKeysOf(resolved) : [];
     const ab = abTest && !bucket ? variant : undefined;
     if (variantKeys.length > 0) {
@@ -283,6 +299,7 @@ export function PreprStack<T>({
         abTest: block.abTest,
         index: block.index,
         track: trackVariants && !block.personalized,
+        placeholder: block.personalized,
       });
       if (!block.personalized) {
         return createElement(Fragment, { key: block.key }, fallback);

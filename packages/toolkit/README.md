@@ -335,6 +335,14 @@ Conversions stay your choice: put `data-prepr-variant-event` (or `data-prepr-var
 - Keys are added after the page hydrates; the pixel picks them up then. Each item of a variant tags the element it renders, in order. A variant that renders a different number of elements than it has items (a section with several root elements, or one rendering nothing) tags only its first element.
 - With `trackVariants`, each variant sits in a `display: contents` wrapper. It takes no box, but CSS child combinators (`>`) and `:first-child` from the stack's parent no longer reach the sections.
 - An element that already has `data-prepr-variant-key` keeps it, so existing manual tagging keeps working.
+- Tagging yourself (with your own `_context { variant_key }` or `preprVariantProps`)? Skip the tag when `render` gets `placeholder: true`: that render is the default variant standing in until the visitor's variant of a segment group streams in, and the pixel counts anything with a key that appears on screen, however briefly.
+
+  ```tsx
+  render={(items, { index, placeholder }) => (
+    <Sections items={items} offset={index} tagVariants={!placeholder} />
+  )}
+  ```
+
 - A hidden A/B variant never scrolls into view, so it records no impression.
 
 ##### A/B tests
