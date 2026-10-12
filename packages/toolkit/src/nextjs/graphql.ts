@@ -210,6 +210,11 @@ export {
   PREPR_DECISIONS_COOKIE,
   type ResolveDecisionsOptions,
 } from './decisions';
+export {
+  createPreprProxy,
+  type PreprProxyOptions,
+  type PreprProxyPage,
+} from './proxy';
 export { PreprStack, type PreprStackProps } from './stack';
 export { isPersonalizedResponse } from '../core/personalization';
 export { PreprError } from '../core/server';
