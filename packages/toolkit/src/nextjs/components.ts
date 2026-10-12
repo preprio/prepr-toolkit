@@ -6,6 +6,8 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
+  Suspense,
   type ReactElement,
   type ReactNode,
 } from 'react';
@@ -120,10 +122,10 @@ export interface PreprPersonalizationSwitchProps {
 export function PreprPersonalizationSwitch({
   refresh = true,
   freshFor,
-}: PreprPersonalizationSwitchProps): null {
-  // Re-renders on every client-side navigation; the scheduler counts views.
-  const pathname = usePathname();
-  const scheduler = useRef<PreprRefreshScheduler | null>(null);
+}: PreprPersonalizationSwitchProps): ReactElement | null {
+  const [scheduler, setScheduler] = useState<PreprRefreshScheduler | null>(
+    null,
+  );
 
   // No dependency list: the preview toolbar switches variant by navigating
   // to the same page with another query, which re-renders this without a new
@@ -136,17 +138,35 @@ export function PreprPersonalizationSwitch({
   useEffect(() => {
     if (!refresh) return;
     const started = createPreprRefreshScheduler({ freshFor });
-    scheduler.current = started;
+    setScheduler(started);
     return () => {
       started.stop();
-      scheduler.current = null;
+      setScheduler(null);
     };
   }, [refresh, freshFor]);
 
-  useEffect(() => {
-    scheduler.current?.view();
-  }, [pathname, refresh, freshFor]);
+  // The pathname is request data on routes whose params are only known at
+  // request time, and reading it outside a Suspense boundary stops Next.js
+  // from prerendering them. Only the view counter reads it, in a boundary of
+  // its own that renders nothing.
+  return scheduler
+    ? createElement(
+        Suspense,
+        { fallback: null },
+        createElement(ViewCounter, { scheduler }),
+      )
+    : null;
+}
 
+function ViewCounter({
+  scheduler,
+}: {
+  scheduler: PreprRefreshScheduler;
+}): null {
+  const pathname = usePathname();
+  useEffect(() => {
+    scheduler.view();
+  }, [pathname, scheduler]);
   return null;
 }
 
