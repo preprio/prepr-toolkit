@@ -115,6 +115,9 @@ describe('PreprStack trackVariants', () => {
   ];
   const section = (resolved: { id: string }[]): ReactNode =>
     resolved.map((item) => createElement('section', { key: item.id }, item.id));
+  // The keys go on in the task after the commit.
+  const nextTask = () =>
+    act(() => new Promise<void>((resolve) => setTimeout(resolve)));
 
   it('is off by default: the markup stays as it was', () => {
     const out = renderToString(
@@ -142,6 +145,7 @@ describe('PreprStack trackVariants', () => {
         }),
       );
     });
+    await nextTask();
 
     const sections = [...container.querySelectorAll('section')];
     expect(
@@ -177,6 +181,7 @@ describe('PreprStack trackVariants', () => {
         }),
       );
     });
+    await nextTask();
 
     expect(
       [...container.querySelectorAll('section')].map((el) =>
@@ -212,10 +217,59 @@ describe('PreprStack trackVariants', () => {
       );
     });
     await act(async () => decide(new Map([['g', ['DEVELOPERS']]])));
+    await nextTask();
 
     const el = container.querySelector('section')!;
     expect(el.textContent).toBe('hero-dev');
     expect(el.getAttribute('data-prepr-variant-key')).toBe('key-DEVELOPERS');
+    act(() => root.unmount());
+  });
+
+  // Prepr's pixel starts watching an element (its own IntersectionObserver and
+  // Impression, no dedupe) once per mutation record that shows it a key: an
+  // added subtree containing a keyed element, or the key attribute appearing.
+  it('lets the pixel watch each variant once when it mounts on a client render', async () => {
+    const watched = new Map<Element, number>();
+    const watch = (el: Element) => watched.set(el, (watched.get(el) ?? 0) + 1);
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'attributes') {
+          watch(record.target as Element);
+          continue;
+        }
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.hasAttribute('data-prepr-variant-key')) watch(node);
+          node.querySelectorAll('[data-prepr-variant-key]').forEach(watch);
+        }
+      }
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-prepr-variant-key'],
+    });
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(PreprStack<{ id: string }>, {
+          items: abItems,
+          decisions: Promise.resolve(new Map()),
+          render: section,
+          trackVariants: true,
+        }),
+      );
+    });
+    await nextTask();
+    observer.disconnect();
+
+    expect([...watched].map(([el, count]) => [el.textContent, count])).toEqual([
+      ['cta-a', 1],
+      ['cta-b', 1],
+    ]);
     act(() => root.unmount());
   });
 });

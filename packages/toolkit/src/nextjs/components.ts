@@ -115,18 +115,27 @@ export function PreprVariantTracking({
   const ref = useRef<HTMLDivElement>(null);
   const keys = variantKeys.join(' ');
   useLayoutEffect(() => {
-    const elements = [...(ref.current?.children ?? [])];
-    const list = keys.split(' ');
-    const pairs =
-      elements.length === list.length
-        ? elements.map((element, i) => [element, list[i]!] as const)
-        : elements.slice(0, 1).map((element) => [element, list[0]!] as const);
-    const tagged = pairs.filter(([element, key]) => {
-      if (element.hasAttribute(VARIANT_KEY_ATTRIBUTE)) return false;
-      element.setAttribute(VARIANT_KEY_ATTRIBUTE, key);
-      return true;
+    let tagged: (readonly [Element, string])[] = [];
+    // Tags on the next task, not in the commit: after a client-side
+    // navigation the elements are inserted in this task, and the pixel
+    // watches an element (and sends its impression) once per mutation record
+    // that shows it a key. Tagging now would put the insertion and the
+    // attribute change in one record batch and count the impression twice.
+    const timer = setTimeout(() => {
+      const elements = [...(ref.current?.children ?? [])];
+      const list = keys.split(' ');
+      const pairs =
+        elements.length === list.length
+          ? elements.map((element, i) => [element, list[i]!] as const)
+          : elements.slice(0, 1).map((element) => [element, list[0]!] as const);
+      tagged = pairs.filter(([element, key]) => {
+        if (element.hasAttribute(VARIANT_KEY_ATTRIBUTE)) return false;
+        element.setAttribute(VARIANT_KEY_ATTRIBUTE, key);
+        return true;
+      });
     });
     return () => {
+      clearTimeout(timer);
       for (const [element] of tagged) {
         element.removeAttribute(VARIANT_KEY_ATTRIBUTE);
       }
