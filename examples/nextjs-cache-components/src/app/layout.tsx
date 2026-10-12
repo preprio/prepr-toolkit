@@ -4,6 +4,7 @@ import './globals.css';
 import { Ubuntu } from 'next/font/google';
 import {
   extractAccessToken,
+  PreprPersonalizationSwitch,
   PreprTrackingPixel,
 } from '@preprio/toolkit/nextjs';
 import { preprGraphqlUrl } from '@/prepr-env';
@@ -35,6 +36,7 @@ export default async function RootLayout({
       <body className={ubuntu.className}>
         <NavBar />
         {children}
+        <PreprPersonalizationSwitch />
       </body>
     </html>
   );

@@ -7,6 +7,7 @@ import {
 } from '../core/graphql';
 import { PREPR_REFRESH_HEADER, parseRefreshPaths } from '../core/refresh';
 import { PreprError } from '../core/server';
+import type { PreprFeatures } from '../core/types';
 import type { PreprDecisions } from '../core/variants';
 import { resolvePreprBucket } from './bucket';
 import {
@@ -38,6 +39,8 @@ export interface PreprProxyOptions {
   page: (url: URL) => PreprProxyPage<any> | null | undefined;
   /** Whether this deployment serves preview content (draft mode, toolbar overrides). */
   preview?: boolean;
+  /** Features disabled app-wide, as for `createPreprMiddleware`. */
+  features?: PreprFeatures;
   /** See `resolveDecisions`. Default 10 000 ms. */
   freshFor?: number;
   /** Give up on Prepr after this many ms; the default variant shows. Default 1000. */
@@ -146,7 +149,7 @@ export function createPreprProxy(
     if (request.headers.has(PREPR_REFRESH_HEADER)) {
       return refresh(
         request,
-        createPreprMiddleware(request, { preview }),
+        createPreprMiddleware(request, { preview, features: options.features }),
         parseRefreshPaths(request.headers.get(PREPR_REFRESH_HEADER)),
       );
     }
@@ -160,7 +163,10 @@ export function createPreprProxy(
       if (draft) return draft;
     }
 
-    const response = createPreprMiddleware(request, { preview });
+    const response = createPreprMiddleware(request, {
+      preview,
+      features: options.features,
+    });
 
     if (target) {
       await Promise.all([

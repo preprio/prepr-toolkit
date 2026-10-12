@@ -36,7 +36,9 @@ export {
 
 // 'use client' components
 export {
+  PreprPersonalizationSwitch,
   PreprToolbar,
   PreprTrackingPixel,
+  type PreprPersonalizationSwitchProps,
   type PreprTrackingPixelProps,
 } from './components';
