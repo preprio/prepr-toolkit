@@ -196,9 +196,12 @@ export function createPreprProxy(
       );
     }
 
-    const target = isPagePath(request.nextUrl.pathname)
-      ? lookup(request.nextUrl)
-      : null;
+    // Only a GET or HEAD renders a page view. Form posts and server actions
+    // get the visitor headers but never wait for a Prepr decision.
+    const rendersPage =
+      (request.method === 'GET' || request.method === 'HEAD') &&
+      isPagePath(request.nextUrl.pathname);
+    const target = rendersPage ? lookup(request.nextUrl) : null;
 
     if (target && preview) {
       const draft = preprDraftRedirect(request, { preview });

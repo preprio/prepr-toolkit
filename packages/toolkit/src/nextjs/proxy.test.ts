@@ -108,6 +108,24 @@ describe('createPreprProxy', () => {
     expect(response.cookies.get('__prepr_uid')?.value).toBeTruthy();
   });
 
+  it('asks Prepr nothing for form posts and server actions, which never render a page view', async () => {
+    const { handle, page, decisionCalls } = await setup();
+    const { NextRequest } = await import('next/server');
+
+    const response = await handle(
+      new NextRequest('https://site.test/', {
+        method: 'POST',
+        headers: { 'next-action': 'abc' },
+      }),
+    );
+
+    // The visitor headers still reach the action.
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(response.cookies.get('prepr_decisions')).toBeUndefined();
+    expect(page).not.toHaveBeenCalled();
+    expect(decisionCalls()).toHaveLength(0);
+  });
+
   it('asks Prepr nothing for pages the lookup does not know, API routes or files', async () => {
     const { handle, request, page, decisionCalls } = await setup();
 
