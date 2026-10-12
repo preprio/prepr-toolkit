@@ -16,7 +16,11 @@ import {
   type PreprDecisions,
 } from '../core/variants';
 import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
-import { PreprAbSwitch, PreprVariantTracking } from './components';
+import {
+  PreprAbSwitch,
+  PreprPersonalizationSwitch,
+  PreprVariantTracking,
+} from './components';
 
 export interface PreprStackProps<T> {
   /** A stack (e.g. `page.content`) from a query run with `variants: true`. */
@@ -37,10 +41,16 @@ export interface PreprStackProps<T> {
    * variant of a segment group (the default variant, shown until the
    * decision streams in). Leave `data-prepr-variant-key` off it: the tracking
    * pixel would count an impression of a variant the visitor may never get.
+   *
+   * `defaultVariant` is false for the variants that are in the page but
+   * hidden unless the visitor gets them: the other buckets of an A/B test and
+   * the other segment variants above the fold. Give only the default variant
+   * `priority` images, and the others `loading="lazy"`: the browser downloads
+   * a hidden eager image anyway, but skips a hidden lazy one.
    */
   render: (
     items: T[],
-    position: { index: number; placeholder: boolean },
+    position: { index: number; placeholder: boolean; defaultVariant: boolean },
   ) => ReactNode;
   /**
    * The visitor's A/B bucket, when the route already knows it (for example
@@ -65,14 +75,16 @@ export interface PreprStackProps<T> {
   trackVariants?: boolean;
   /**
    * How many blocks, from the top, are on screen before the visitor scrolls.
-   * Default `0`.
+   * Default `1`; set it higher when more sections fit on the first screen
+   * (take the larger screen when it differs per device), or `0` to stream
+   * every segment group.
    *
    * Their segment groups do not stream: every variant is in the cached page,
    * and the variant the proxy decided (`prepr.resolveDecisions`) shows before
    * first paint, so nothing on screen changes while the page loads. Without
    * a decision (no cookie yet, or the proxy's lookup failed) the default
-   * variant shows. Costs the HTML of the other variants; images in them still
-   * download. An item with a segment group nested inside it keeps streaming.
+   * variant shows. Costs the HTML of the other variants; see `defaultVariant`
+   * in `render` to keep their images from downloading. An item with a segment group nested inside it keeps streaming.
    */
   aboveTheFold?: number;
 }
@@ -120,6 +132,7 @@ function renderBuckets<T>(
     index: number;
     track?: boolean;
     placeholder?: boolean;
+    defaultVariant?: boolean;
   },
 ): ReactNode {
   const {
@@ -129,12 +142,17 @@ function renderBuckets<T>(
     index,
     track,
     placeholder = false,
+    defaultVariant = true,
   } = options;
   const renderVariant = (variant: string | undefined, key?: string) => {
     const resolved = resolveVariants(items, { decisions, bucket: variant });
-    const content = render(resolved, { index, placeholder });
-    const variantKeys = track ? variantKeysOf(resolved) : [];
     const ab = abTest && !bucket ? variant : undefined;
+    const content = render(resolved, {
+      index,
+      placeholder,
+      defaultVariant: defaultVariant && (ab === undefined || ab === 'A'),
+    });
+    const variantKeys = track ? variantKeysOf(resolved) : [];
     if (variantKeys.length > 0) {
       return createElement(
         PreprVariantTracking,
@@ -185,6 +203,7 @@ function renderAllVariants<T>(
         abTest: false,
         index: block.index,
         track: options.track,
+        defaultVariant: variant === PREPR_DEFAULT_VARIANT,
       }),
     ),
   );
@@ -251,7 +270,7 @@ export function PreprStack<T>({
   bucket,
   nonce,
   trackVariants = false,
-  aboveTheFold = 0,
+  aboveTheFold = 1,
 }: PreprStackProps<T>): ReactElement {
   // Blocks that never wait would leave a rejection unobserved.
   decisions.catch(() => undefined);
@@ -283,6 +302,8 @@ export function PreprStack<T>({
           dangerouslySetInnerHTML: { __html: AB_SWITCH_SCRIPT },
         }),
         createElement(PreprAbSwitch),
+        hasDecided &&
+          createElement(PreprPersonalizationSwitch, { refresh: false }),
       ),
     ...blocks.map((block) => {
       if (decidedInProxy(block)) {

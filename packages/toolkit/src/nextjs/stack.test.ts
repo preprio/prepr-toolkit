@@ -6,10 +6,18 @@ import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
+const navigation = vi.hoisted(() => ({ pathname: '/', search: '' }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => navigation.pathname,
+  useSearchParams: () => new URLSearchParams(navigation.search),
+  useRouter: () => ({ push: () => undefined, refresh: () => undefined }),
+}));
 
 const { PreprStack } = await import('./stack');
 const { PREPR_BUCKET_COOKIE } = await import('./bucket');
 const { applyPreprAbBucket, applyPreprDecisions } = await import('./ab-switch');
+const { PreprAbSwitch, PreprPersonalizationSwitch } =
+  await import('./components');
 
 const ctx = (kind: string, group: string, variant: string) => ({
   _preprContext: { kind, group_id: group, variant_id: variant },
@@ -40,6 +48,7 @@ afterEach(() => {
   delete (window as { __preprAbSheet?: unknown }).__preprAbSheet;
   delete (window as { __preprDecisions?: unknown }).__preprDecisions;
   delete (window as { __preprDecisionSheet?: unknown }).__preprDecisionSheet;
+  delete (window as { __preprDecisionsView?: unknown }).__preprDecisionsView;
   document.adoptedStyleSheets = [];
   document.head.innerHTML = '';
   document.body.innerHTML = '';
@@ -213,6 +222,8 @@ describe('PreprStack trackVariants', () => {
           decisions,
           render: section,
           trackVariants: true,
+          // The streaming path: an above-the-fold group never streams.
+          aboveTheFold: 0,
         }),
       );
     });
@@ -297,6 +308,66 @@ describe('PreprStack aboveTheFold', () => {
       }),
     );
 
+  it('treats the first block as above the fold unless told otherwise', () => {
+    const html = (aboveTheFold?: number) =>
+      renderToString(
+        createElement(PreprStack<{ id: string }>, {
+          items: heroItems,
+          decisions: new Promise<Map<string, string[]>>(() => {}),
+          render,
+          ...(aboveTheFold === undefined ? {} : { aboveTheFold }),
+        }),
+      );
+    expect(html()).toContain('data-prepr-group="hero"');
+    expect(html(0)).not.toContain('data-prepr-group="hero"');
+  });
+
+  it('tells render which variant shows by default, so only that one preloads its images', () => {
+    const seen: [string, boolean][] = [];
+    renderToString(
+      createElement(PreprStack<{ id: string }>, {
+        items: [
+          ...heroItems.slice(0, 2),
+          { id: 'cta-a', ...ctx('AB_TEST', 'g-cta', 'A') },
+          { id: 'cta-b', ...ctx('AB_TEST', 'g-cta', 'B') },
+        ],
+        decisions: Promise.resolve(new Map()),
+        render: (items, { defaultVariant }) => {
+          for (const item of items) seen.push([item.id, defaultVariant]);
+          return null;
+        },
+      }),
+    );
+    expect(seen).toEqual([
+      ['hero-default', true],
+      ['hero-dev', false],
+      ['cta-a', true],
+      ['cta-b', false],
+    ]);
+  });
+
+  it('shows the decided variant when the page arrives by client-side navigation', async () => {
+    document.cookie = 'prepr_decisions=hero%3ADEVELOPERS; path=/';
+    const root = createRoot(document.createElement('div'));
+    await act(() =>
+      root.render(
+        createElement(PreprStack<{ id: string }>, {
+          items: heroItems.slice(0, 2),
+          decisions: Promise.resolve(new Map()),
+          render,
+        }),
+      ),
+    );
+    const sheet = (
+      window as unknown as { __preprDecisionSheet?: CSSStyleSheet }
+    ).__preprDecisionSheet;
+    expect(
+      [...(sheet?.cssRules ?? [])].map((r) => r.cssText).join(''),
+    ).toContain('[data-prepr-variant="DEVELOPERS"]');
+    act(() => root.unmount());
+    document.cookie = 'prepr_decisions=; max-age=0; path=/';
+  });
+
   it('renders every variant of an above-the-fold group in the page, default marked', () => {
     const html = out();
     expect(html).toContain(
@@ -326,13 +397,13 @@ describe('PreprStack aboveTheFold', () => {
         .join('');
 
     document.cookie = 'prepr_decisions=hero%3ADEVELOPERS; path=/';
-    applyPreprDecisions();
+    applyPreprDecisions('/a');
     expect(rules()).toBe(
       '[data-prepr-group="hero"]{display:none!important;}[data-prepr-group="hero"][data-prepr-variant="DEVELOPERS"]{display:contents!important;}',
     );
 
     document.cookie = 'prepr_decisions=hero%3A; path=/';
-    applyPreprDecisions();
+    applyPreprDecisions('/b');
     expect(rules()).toBe('[data-prepr-group="hero"]{display:none!important;}');
     document.cookie = 'prepr_decisions=; max-age=0; path=/';
   });
@@ -373,5 +444,94 @@ describe('PreprStack placeholder flag', () => {
       ['cta-b', false],
       ['seg', true],
     ]);
+  });
+});
+
+describe('PreprPersonalizationSwitch', () => {
+  const rules = () =>
+    [
+      ...((window as unknown as { __preprDecisionSheet?: CSSStyleSheet })
+        .__preprDecisionSheet?.cssRules ?? []),
+    ]
+      .map((r) => r.cssText.replace(/\s+/g, ''))
+      .join('');
+  const shows = (variant: string) =>
+    `[data-prepr-group="hero"][data-prepr-variant="${variant}"]`;
+
+  afterEach(() => {
+    document.cookie = 'prepr_decisions=; max-age=0; path=/';
+    document.cookie = 'prepr_refresh=; max-age=0; path=/';
+    navigation.pathname = '/';
+    navigation.search = '';
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('applies the decision once per view: a cookie that changes on the page being read waits for the next view', () => {
+    document.cookie = 'prepr_decisions=hero%3AA; path=/';
+    applyPreprDecisions('/');
+    expect(rules()).toContain(shows('A'));
+
+    document.cookie = 'prepr_decisions=hero%3AB; path=/';
+    applyPreprDecisions('/');
+    expect(rules()).toContain(shows('A'));
+
+    applyPreprDecisions('/pricing');
+    expect(rules()).toContain(shows('B'));
+  });
+
+  it('re-applies on navigation, including a query change like the preview toolbar makes', async () => {
+    const root = createRoot(document.createElement('div'));
+    const mount = () =>
+      act(() =>
+        root.render(
+          createElement(PreprPersonalizationSwitch, { refresh: false }),
+        ),
+      );
+    document.cookie = 'prepr_decisions=hero%3AA; path=/';
+    await mount();
+    expect(rules()).toContain(shows('A'));
+
+    document.cookie = 'prepr_decisions=hero%3AB; path=/';
+    await mount();
+    expect(rules()).toContain(shows('A'));
+
+    navigation.search = 'prepr_preview_segment=vip';
+    await mount();
+    expect(rules()).toContain(shows('B'));
+    act(() => root.unmount());
+  });
+
+  it('refreshes decisions in the background, from the layout instance only', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    document.cookie = `prepr_refresh=${encodeURIComponent(`${Date.now()}~/`)}; path=/`;
+
+    const quiet = createRoot(document.createElement('div'));
+    await act(() =>
+      quiet.render(
+        createElement(PreprPersonalizationSwitch, { refresh: false }),
+      ),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(fetchMock).not.toHaveBeenCalled();
+    act(() => quiet.unmount());
+
+    const layout = createRoot(document.createElement('div'));
+    await act(() => layout.render(createElement(PreprPersonalizationSwitch)));
+    await act(() => vi.advanceTimersByTimeAsync(3_000));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    act(() => layout.unmount());
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves segment decisions to the personalization switch: the A/B switch only applies the bucket', async () => {
+    document.cookie = 'prepr_decisions=hero%3AA; path=/';
+    const root = createRoot(document.createElement('div'));
+    await act(() => root.render(createElement(PreprAbSwitch)));
+    expect(rules()).toBe('');
+    act(() => root.unmount());
   });
 });
