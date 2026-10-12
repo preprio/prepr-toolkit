@@ -119,6 +119,9 @@ export interface PreprPersonalizationSwitchProps {
  * @example
  * <PreprPersonalizationSwitch />
  */
+// Numbers page views so that returning to a URL is a view of its own.
+let viewCount = 0;
+
 export function PreprPersonalizationSwitch({
   refresh = true,
   freshFor,
@@ -127,12 +130,18 @@ export function PreprPersonalizationSwitch({
     null,
   );
 
-  // No dependency list: the preview toolbar switches variant by navigating
-  // to the same page with another query, which re-renders this without a new
-  // pathname. The switch itself applies once per URL, so other re-renders
-  // leave the page alone.
+  // A mount is a new page view, even on a URL seen before: the decision
+  // stored since then applies. The preview toolbar switches variant by
+  // navigating to the same page with another query, which re-renders this
+  // without remounting it, so a new URL is a new view too. Other re-renders
+  // leave the page alone: a decision that arrives while a page is read is for
+  // the next view.
+  const viewUrl = useRef<string | null>(null);
   useLayoutEffect(() => {
-    applyPreprDecisions();
+    const url = location.pathname + location.search;
+    if (viewUrl.current === url) return;
+    viewUrl.current = url;
+    applyPreprDecisions(`${url}#${++viewCount}`);
   });
 
   useEffect(() => {

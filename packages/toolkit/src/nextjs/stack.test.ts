@@ -482,6 +482,51 @@ describe('PreprPersonalizationSwitch', () => {
     expect(rules()).toContain(shows('B'));
   });
 
+  it('applies on returning to a URL by client-side navigation, when the cookie changed in between', async () => {
+    document.cookie = 'prepr_decisions=hero%3AA; path=/';
+    const first = createRoot(document.createElement('div'));
+    await act(() =>
+      first.render(
+        createElement(PreprPersonalizationSwitch, { refresh: false }),
+      ),
+    );
+    expect(rules()).toContain(shows('A'));
+    act(() => first.unmount());
+
+    // Another page without personalized content, then back home: the
+    // background refresh stored the new segment meanwhile.
+    history.pushState(null, '', '/pricing');
+    document.cookie = 'prepr_decisions=hero%3AB; path=/';
+    history.pushState(null, '', '/');
+    const again = createRoot(document.createElement('div'));
+    await act(() =>
+      again.render(
+        createElement(PreprPersonalizationSwitch, { refresh: false }),
+      ),
+    );
+    expect(rules()).toContain(shows('B'));
+    act(() => again.unmount());
+  });
+
+  it('leaves the page alone when one switch re-renders after another applied a newer view', async () => {
+    document.cookie = 'prepr_decisions=hero%3AA; path=/';
+    const layout = createRoot(document.createElement('div'));
+    const page = createRoot(document.createElement('div'));
+    const render = (root: typeof layout) =>
+      act(() =>
+        root.render(
+          createElement(PreprPersonalizationSwitch, { refresh: false }),
+        ),
+      );
+    await render(layout);
+    await render(page);
+    document.cookie = 'prepr_decisions=hero%3AB; path=/';
+    await render(layout);
+    expect(rules()).toContain(shows('A'));
+    act(() => layout.unmount());
+    act(() => page.unmount());
+  });
+
   it('re-applies on navigation, including a query change like the preview toolbar makes', async () => {
     const root = createRoot(document.createElement('div'));
     const mount = () =>
