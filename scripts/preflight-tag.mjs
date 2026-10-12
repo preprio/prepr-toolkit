@@ -21,9 +21,16 @@ const pkg = JSON.parse(
 const version = pkg.version;
 const tag = `v${version}`;
 
+// Prereleases (0.5.0-rc.1) may be tagged from any branch: they publish to a
+// non-latest dist-tag, so an unmerged feature can be installed for testing
+// without reaching anyone on `latest`.
+const prerelease = version.includes('-');
 const branch = run('git rev-parse --abbrev-ref HEAD');
-if (branch !== 'main') {
+if (branch !== 'main' && !prerelease) {
   fail(`On "${branch}". Releases are tagged from main.`);
+}
+if (prerelease && !/-[a-z]+\./.test(version)) {
+  fail(`Prerelease ${version} needs a named identifier, e.g. 0.5.0-rc.1.`);
 }
 
 if (run('git status --porcelain')) {
@@ -33,10 +40,15 @@ if (run('git status --porcelain')) {
 run('git fetch origin --tags --quiet');
 
 const local = run('git rev-parse HEAD');
-const remote = run('git rev-parse origin/main');
+let remote = '';
+try {
+  remote = run(`git rev-parse origin/${branch}`);
+} catch {
+  fail(`${branch} is not on origin. Run: git push -u origin ${branch}`);
+}
 if (local !== remote) {
   fail(
-    `main is not in sync with origin/main.\n  local  ${local}\n  origin ${remote}\n\n  Run: git pull`,
+    `${branch} is not in sync with origin/${branch}.\n  local  ${local}\n  origin ${remote}\n\n  Run: git pull, or git push`,
   );
 }
 
