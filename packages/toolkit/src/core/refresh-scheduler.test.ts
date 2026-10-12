@@ -6,7 +6,8 @@ const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
 
 function setRefreshCookie(at: number, paths: string[]) {
   // As Next.js writes it: the value URL-encoded.
-  document.cookie = `prepr_refresh=${encodeURIComponent(`${at}~${paths.join('|')}`)}; path=/`;
+  const value = paths.map((path) => `${path}~${at}`).join('|');
+  document.cookie = `prepr_refresh=${encodeURIComponent(value)}; path=/`;
 }
 
 function link(href: string): HTMLAnchorElement {
@@ -33,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   document.cookie = 'prepr_refresh=; max-age=0; path=/';
+  sessionStorage.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -162,5 +164,25 @@ describe('createPreprRefreshScheduler', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     scheduler.stop();
+  });
+
+  it('stops for the rest of the session when the proxy does not answer refreshes', async () => {
+    setRefreshCookie(1, ['/']);
+    fetchMock.mockResolvedValueOnce(new Response('<html>', { status: 200 }));
+    const scheduler = createPreprRefreshScheduler();
+    link('/').dispatchEvent(new Event('pointerover', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    link('/').dispatchEvent(new Event('pointerover', { bubbles: true }));
+    scheduler.view();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    scheduler.stop();
+
+    // A new page load in the same tab stays quiet too.
+    const next = createPreprRefreshScheduler();
+    next.view();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    next.stop();
   });
 });

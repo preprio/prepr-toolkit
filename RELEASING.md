@@ -200,6 +200,26 @@ A breaking change ships as a **major** bump (see [Version policy](#version-polic
 Every one gets an entry here, newest first, with the diff a consumer applies to
 upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
+### 0.6.0 — changes during the alpha
+
+`0.6.0` adds personalization to `PreprStack` (`decide`, `aboveTheFold`,
+`resolveDecisions`); nothing a stable or release-candidate version shipped
+changes. Sites that tried an alpha, upgrading to `0.6.0-alpha.3`:
+
+- `aboveTheFold` defaults to `1`: the first block's segment groups are
+  decided in the proxy and shown before first paint. Without a proxy decision
+  (`createPreprProxy` or `prepr.resolveDecisions`), that block now always
+  shows its default variant; pass `aboveTheFold={0}` to stream it as before.
+- `resolveDecisions` replaces `reuse` with `freshFor` (ms, default 10 000):
+  `reuse: false` becomes `freshFor: 0`; `reuse: true` (the old default) has
+  no equivalent, because a decision no longer lasts the whole visit.
+- `PreprAbSwitch` no longer applies segment decisions;
+  `PreprPersonalizationSwitch` does. `PreprStack` renders both, so only code
+  that mounted `PreprAbSwitch` by hand is affected.
+- New: `createPreprProxy` (one call in `proxy.ts`), `PreprPersonalizationSwitch`
+  (mount once in the root layout to keep decisions fresh within a visit), and
+  `defaultVariant` in `PreprStack`'s `render`.
+
 ### 0.5.0 — no breaking changes
 
 Adds `createPreprClient` on new `/graphql` subpaths (`@preprio/toolkit/graphql`,

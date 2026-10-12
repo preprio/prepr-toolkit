@@ -8,6 +8,7 @@ import {
 } from '../core/graphql';
 import {
   PREPR_REFRESH_COOKIE,
+  isFresh,
   parseRefresh,
   serializeRefresh,
 } from '../core/refresh';
@@ -120,10 +121,18 @@ export async function decidePage<TVariables>(
     seenGroups.set(document, byVariables);
   }
   const pageKey = JSON.stringify(variables ?? null);
-  if (!byVariables.has(pageKey) && byVariables.size >= SEEN_MAX_PAGES) {
-    byVariables.delete(byVariables.keys().next().value!);
+  let groups = byVariables.get(pageKey);
+  if (!groups) {
+    if (byVariables.size >= SEEN_MAX_PAGES) {
+      byVariables.delete(byVariables.keys().next().value!);
+    }
+    groups = new Set();
+    byVariables.set(pageKey, groups);
   }
-  byVariables.set(pageKey, new Set(decided.keys()));
+  // Every group any visitor got: Prepr leaves out a group without a default
+  // variant for a visitor in none of its segments, so one answer does not
+  // list them all.
+  for (const group of decided.keys()) groups.add(group);
   return decided;
 }
 
@@ -169,18 +178,24 @@ export function writeDecisions(
     );
   }
   if (paths.length > 0) {
-    const previous = parseRefresh(
-      request.cookies.get(PREPR_REFRESH_COOKIE)?.value,
-    );
+    const at = Date.now();
     response.cookies.set(
       PREPR_REFRESH_COOKIE,
-      serializeRefresh({
-        at: Date.now(),
-        paths: [...paths, ...previous.paths],
-      }),
+      serializeRefresh([
+        ...paths.map((path) => ({ path, at })),
+        ...parseRefresh(request.cookies.get(PREPR_REFRESH_COOKIE)?.value),
+      ]),
       options,
     );
   }
+}
+
+/**
+ * The page's path as the browser sees it, including `basePath`: the
+ * refresh scheduler matches it against link URLs.
+ */
+export function pagePath(request: NextRequest): string {
+  return request.nextUrl.basePath + request.nextUrl.pathname;
 }
 
 /** Whether something arrived that can move the visitor into another segment. */
@@ -216,17 +231,17 @@ export async function resolveDecisionsWith<TVariables>(
     const known = seenGroups
       .get(document)
       ?.get(JSON.stringify(variables ?? null));
-    // Decided before: the top of this page holds no segment group.
-    if (known?.size === 0) return;
+    const path = pagePath(request);
 
     const headers = mergePreprHeaders(forwardedHeaders(request, response));
     const stored = parseDecisions(
       request.cookies.get(PREPR_DECISIONS_COOKIE)?.value,
     );
-    const { at } = parseRefresh(
-      request.cookies.get(PREPR_REFRESH_COOKIE)?.value,
-    );
-    const fresh = Date.now() - at < (options?.freshFor ?? DEFAULT_FRESH_FOR_MS);
+    const decidedAt =
+      parseRefresh(request.cookies.get(PREPR_REFRESH_COOKIE)?.value).find(
+        (entry) => entry.path === path,
+      )?.at ?? 0;
+    const fresh = isFresh(decidedAt, options?.freshFor ?? DEFAULT_FRESH_FOR_MS);
     // One rule for full loads, navigations and prefetches: a fresh decision
     // that covers the page is what the browser already shows, so asking again
     // could only swap a variant the visitor is looking at.
@@ -248,7 +263,7 @@ export async function resolveDecisionsWith<TVariables>(
       options?.timeoutMs,
     );
     if (!decided || decided.size === 0) return;
-    writeDecisions(request, response, [decided], [request.nextUrl.pathname]);
+    writeDecisions(request, response, [decided], [path]);
   } catch (error) {
     if (isFrameworkSignal(error)) throw error;
     // The default variant shows; the next request asks again.

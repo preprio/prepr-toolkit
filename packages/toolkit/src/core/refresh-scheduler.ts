@@ -1,8 +1,9 @@
 import {
   PREPR_REFRESH_COOKIE,
   PREPR_REFRESH_HEADER,
+  isFresh,
   parseRefresh,
-  type PreprRefreshState,
+  type PreprRefreshEntry,
 } from './refresh';
 
 export interface PreprRefreshScheduler {
@@ -28,13 +29,25 @@ const INTENT_EVENTS = ['pointerover', 'focusin', 'touchstart'] as const;
 const LISTENER = { capture: true, passive: true } as const;
 
 const COOKIE_PATTERN = new RegExp(`(?:^|; )${PREPR_REFRESH_COOKIE}=([^;]*)`);
+// Set for the tab once a refresh got a page instead of the proxy's empty
+// answer: the site's proxy does not handle refreshes, and each one would
+// render a whole page for nothing.
+const UNSUPPORTED_KEY = 'prepr_refresh_unsupported';
 
-function readState(): PreprRefreshState {
+function readEntries(): PreprRefreshEntry[] {
   const match = document.cookie.match(COOKIE_PATTERN);
   try {
     return parseRefresh(match ? decodeURIComponent(match[1]!) : undefined);
   } catch {
-    return parseRefresh(undefined);
+    return [];
+  }
+}
+
+function unsupported(): boolean {
+  try {
+    return sessionStorage.getItem(UNSUPPORTED_KEY) === '1';
+  } catch {
+    return false;
   }
 }
 
@@ -54,17 +67,30 @@ export function createPreprRefreshScheduler(
   const freshFor = options.freshFor ?? 10_000;
   let timers: ReturnType<typeof setTimeout>[] = [];
   let inFlight = false;
+  let stopped = unsupported();
 
   function refresh(): void {
-    if (inFlight) return;
-    const { paths } = readState();
+    if (inFlight || stopped) return;
+    const paths = readEntries().map((entry) => entry.path);
     if (paths.length === 0) return;
     inFlight = true;
+    const controller = new AbortController();
     fetch(location.pathname, {
       headers: { [PREPR_REFRESH_HEADER]: paths.join('|') },
       cache: 'no-store',
       credentials: 'same-origin',
+      signal: controller.signal,
     })
+      .then((response) => {
+        if (response.status === 204) return;
+        stopped = true;
+        controller.abort();
+        try {
+          sessionStorage.setItem(UNSUPPORTED_KEY, '1');
+        } catch {
+          // Storage blocked: stop for this page only.
+        }
+      })
       .catch(() => undefined)
       .finally(() => {
         inFlight = false;
@@ -81,19 +107,14 @@ export function createPreprRefreshScheduler(
       return;
     }
     if (url.origin !== location.origin) return;
-    const state = readState();
-    if (
-      state.paths.includes(url.pathname) &&
-      Date.now() - state.at > INTENT_MIN_AGE_MS
-    ) {
-      refresh();
-    }
+    const entry = readEntries().find((e) => e.path === url.pathname);
+    if (entry && !isFresh(entry.at, INTENT_MIN_AGE_MS)) refresh();
   }
 
   function onVisibility(): void {
     if (
       document.visibilityState === 'visible' &&
-      Date.now() - readState().at > freshFor
+      readEntries().some((entry) => !isFresh(entry.at, freshFor))
     ) {
       refresh();
     }

@@ -5,7 +5,12 @@ import {
   mergePreprHeaders,
   type PreprDocument,
 } from '../core/graphql';
-import { PREPR_REFRESH_HEADER, parseRefreshPaths } from '../core/refresh';
+import {
+  PREPR_REFRESH_COOKIE,
+  PREPR_REFRESH_HEADER,
+  parseRefresh,
+  parseRefreshPaths,
+} from '../core/refresh';
 import { PreprError } from '../core/server';
 import type { PreprFeatures } from '../core/types';
 import type { PreprDecisions } from '../core/variants';
@@ -45,6 +50,13 @@ export interface PreprProxyOptions {
   freshFor?: number;
   /** Give up on Prepr after this many ms; the default variant shows. Default 1000. */
   timeoutMs?: number;
+  /**
+   * Skip the A/B bucket lookup and segment decisions (page requests and
+   * refreshes) when this resolves to false, for example for crawlers: they
+   * carry no cookies, so every crawler request is a first visit that waits
+   * for Prepr. Those requests get the default variants.
+   */
+  onlyIf?: (request: NextRequest) => boolean | Promise<boolean>;
 }
 
 // API routes, Next.js internals and files never render a CMS page.
@@ -93,6 +105,15 @@ export function createPreprProxy(
   const { client, seenGroups, url } = internals;
   const preview = options.preview ?? false;
 
+  const allowed = async (request: NextRequest): Promise<boolean> => {
+    if (!options.onlyIf) return true;
+    try {
+      return await options.onlyIf(request);
+    } catch {
+      return false;
+    }
+  };
+
   const lookup = (target: URL): PreprProxyPage | null => {
     try {
       return options.page(target) ?? null;
@@ -106,10 +127,37 @@ export function createPreprProxy(
     response: NextResponse,
     paths: string[],
   ): Promise<NextResponse> {
+    const answer = new NextResponse(null, {
+      status: 204,
+      headers: { 'Cache-Control': 'no-store' },
+    });
+    // The customer id the middleware may just have minted.
+    for (const cookie of response.cookies.getAll()) answer.cookies.set(cookie);
+
+    // Only what this visitor's own page asks for: a GET from the same site,
+    // for pages the proxy decided for them before. Anything else could make
+    // the proxy spend Prepr requests on someone else's behalf.
+    const site = request.headers.get('sec-fetch-site');
+    if (
+      request.method !== 'GET' ||
+      (site !== null && site !== 'same-origin') ||
+      !(await allowed(request))
+    ) {
+      return answer;
+    }
+    const own = new Set(
+      parseRefresh(request.cookies.get(PREPR_REFRESH_COOKIE)?.value).map(
+        (entry) => entry.path,
+      ),
+    );
+    const basePath = request.nextUrl.basePath;
     const headers = mergePreprHeaders(forwardedHeaders(request, response));
     const decided = await Promise.all(
       paths.map(async (path): Promise<[string, PreprDecisions] | undefined> => {
-        const target = lookup(new URL(path, request.url));
+        if (!own.has(path) || !path.startsWith(basePath)) return undefined;
+        const pathname = path.slice(basePath.length) || '/';
+        if (!isPagePath(pathname)) return undefined;
+        const target = lookup(new URL(pathname, request.url));
         if (!target) return undefined;
         try {
           const decisions = await decidePage(
@@ -128,12 +176,6 @@ export function createPreprProxy(
       }),
     );
     const found = decided.filter((entry) => entry !== undefined);
-    const answer = new NextResponse(null, {
-      status: 204,
-      headers: { 'Cache-Control': 'no-store' },
-    });
-    // The customer id the middleware may just have minted.
-    for (const cookie of response.cookies.getAll()) answer.cookies.set(cookie);
     writeDecisions(
       request,
       answer,
@@ -168,7 +210,7 @@ export function createPreprProxy(
       features: options.features,
     });
 
-    if (target) {
+    if (target && (await allowed(request))) {
       await Promise.all([
         resolvePreprBucket(request, response, {
           url,

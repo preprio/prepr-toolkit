@@ -1,12 +1,11 @@
 'use client';
 
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   createElement,
   useEffect,
   useLayoutEffect,
   useRef,
-  Suspense,
   type ReactElement,
   type ReactNode,
 } from 'react';
@@ -109,39 +108,30 @@ export interface PreprPersonalizationSwitchProps {
  * visitor who joins a segment mid-visit sees it on their next page view,
  * without anything on screen changing.
  *
- * Mount it once in the root layout. It needs `createPreprProxy` (or
- * `resolveDecisions`) in `proxy.ts`, which answers the refreshes.
+ * Mount it once in the root layout. The background refreshes are answered by
+ * `createPreprProxy`; with a proxy that calls `resolveDecisions` itself, the
+ * first refresh gets a page back and refreshing stops for the browser
+ * session. The decisions themselves come from `createPreprProxy` or
+ * `resolveDecisions` in `proxy.ts`.
  *
  * @example
  * <PreprPersonalizationSwitch />
  */
-export function PreprPersonalizationSwitch(
-  props: PreprPersonalizationSwitchProps,
-): ReactElement {
-  // useSearchParams needs a Suspense boundary to keep the route static; this
-  // renders nothing, so the fallback is nothing too.
-  return createElement(
-    Suspense,
-    { fallback: null },
-    createElement(DecisionSwitch, props),
-  );
-}
-
-function DecisionSwitch({
+export function PreprPersonalizationSwitch({
   refresh = true,
   freshFor,
 }: PreprPersonalizationSwitchProps): null {
+  // Re-renders on every client-side navigation; the scheduler counts views.
   const pathname = usePathname();
-  const search = useSearchParams().toString();
-  // The same key the inline script records on a full load, so hydration does
-  // not apply twice. The preview toolbar changes the query, which makes its
-  // variant switch a new view.
-  const view = pathname + (search ? `?${search}` : '');
   const scheduler = useRef<PreprRefreshScheduler | null>(null);
 
+  // No dependency list: the preview toolbar switches variant by navigating
+  // to the same page with another query, which re-renders this without a new
+  // pathname. The switch itself applies once per URL, so other re-renders
+  // leave the page alone.
   useLayoutEffect(() => {
-    applyPreprDecisions(view);
-  }, [view]);
+    applyPreprDecisions();
+  });
 
   useEffect(() => {
     if (!refresh) return;
@@ -155,7 +145,7 @@ function DecisionSwitch({
 
   useEffect(() => {
     scheduler.current?.view();
-  }, [view, refresh, freshFor]);
+  }, [pathname, refresh, freshFor]);
 
   return null;
 }

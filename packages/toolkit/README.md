@@ -375,7 +375,7 @@ import { PreprPersonalizationSwitch } from '@preprio/toolkit/nextjs';
 <PreprPersonalizationSwitch />;
 ```
 
-API routes, `/_next/` and file URLs are skipped, and so are pages without A/B tests or segment groups at the top (after a cached check). In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `resolvePreprBucket`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
+API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped, and so are pages without A/B tests or segment groups at the top (after a cached check). Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers: they carry no cookies, so every crawler request is a first visit that waits for Prepr. In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `resolvePreprBucket`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
 
 ##### A/B tests
 
@@ -963,7 +963,7 @@ The toolbar. Takes the props returned by `getToolbarProps`, and renders nothing 
 
 #### `PreprPersonalizationSwitch`
 
-From `@preprio/toolkit/nextjs`. Shows the segment variants the proxy decided for the groups above the fold before each page paints, and refreshes those decisions in the background (see [Personalized content above the fold](#personalized-content-above-the-fold)). Mount it once in the root layout; it needs `createPreprProxy` (or `prepr.resolveDecisions`) in `proxy.ts`. Renders nothing.
+From `@preprio/toolkit/nextjs`. Shows the segment variants the proxy decided for the groups above the fold before each page paints, and refreshes those decisions in the background (see [Personalized content above the fold](#personalized-content-above-the-fold)). Mount it once in the root layout. The decisions come from `createPreprProxy` or `prepr.resolveDecisions` in `proxy.ts`; the background refreshes only from `createPreprProxy` (with a hand-written `resolveDecisions` proxy, the first refresh gets a page back and refreshing stops for the browser session). Renders nothing.
 
 | Prop       | Default | Description                                     |
 | ---------- | ------- | ----------------------------------------------- |

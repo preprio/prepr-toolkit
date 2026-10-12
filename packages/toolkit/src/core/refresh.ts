@@ -1,10 +1,10 @@
 /**
  * State shared between the server, which decides segment variants, and the
- * browser, which asks for fresh decisions in the background: when the last
- * decision was made and which pages it was made for.
+ * browser, which asks for fresh decisions in the background: which pages were
+ * decided for this visitor, and when.
  */
 
-/** Cookie holding the time of the last segment decision and its pages. */
+/** Cookie holding the pages decided for this visitor, each with its decision time. */
 export const PREPR_REFRESH_COOKIE = 'prepr_refresh';
 
 /** Request header of a background refresh: the pages to decide, `|`-separated. */
@@ -18,11 +18,10 @@ export const REFRESH_MAX_PATHS = 5;
 // separators below must not appear inside a path.
 const SAFE_PATH = /^\/(?![/\\])[\w\-./%]{0,200}$/;
 
-export interface PreprRefreshState {
-  /** Epoch milliseconds of the last decision; `0` when unknown. */
+/** One page decided for this visitor, and when (epoch milliseconds; `0` when unknown). */
+export interface PreprRefreshEntry {
+  path: string;
   at: number;
-  /** Pages with segment groups at the top, most recently decided first. */
-  paths: string[];
 }
 
 /** The path when it is a same-site URL path this module accepts. */
@@ -30,31 +29,59 @@ export function safePath(path: string): string | undefined {
   return SAFE_PATH.test(path) ? path : undefined;
 }
 
-function cleanPaths(paths: readonly string[]): string[] {
-  const out: string[] = [];
-  for (const path of paths) {
+/**
+ * Whether a decision made at `at` is younger than `freshFor`. A time in the
+ * future (a tampered cookie, or clocks that disagree) is never fresh, so it
+ * cannot hold an old decision in place.
+ */
+export function isFresh(
+  at: number,
+  freshFor: number,
+  now = Date.now(),
+): boolean {
+  const age = now - at;
+  return at > 0 && age >= 0 && age < freshFor;
+}
+
+/** Newest first, one entry per page, at most `REFRESH_MAX_PATHS`. */
+function cleanEntries(
+  entries: readonly PreprRefreshEntry[],
+): PreprRefreshEntry[] {
+  const out: PreprRefreshEntry[] = [];
+  for (const entry of entries) {
     if (out.length === REFRESH_MAX_PATHS) break;
-    if (safePath(path) && !out.includes(path)) out.push(path);
+    if (safePath(entry.path) && !out.some((e) => e.path === entry.path)) {
+      out.push(entry);
+    }
   }
   return out;
 }
 
 /** Parses the refresh cookie. Never throws: bad input reads as empty. */
-export function parseRefresh(raw: string | undefined): PreprRefreshState {
-  const value = raw ?? '';
-  const split = value.indexOf('~');
-  const at = Number(split < 0 ? value : value.slice(0, split));
-  return {
-    at: Number.isFinite(at) && at > 0 ? at : 0,
-    paths: split < 0 ? [] : cleanPaths(value.slice(split + 1).split('|')),
-  };
+export function parseRefresh(raw: string | undefined): PreprRefreshEntry[] {
+  return cleanEntries(
+    (raw ?? '').split('|').map((pair) => {
+      const split = pair.lastIndexOf('~');
+      const at = Number(split < 0 ? '' : pair.slice(split + 1));
+      return {
+        path: split < 0 ? pair : pair.slice(0, split),
+        at: Number.isFinite(at) && at > 0 ? Math.floor(at) : 0,
+      };
+    }),
+  );
 }
 
-export function serializeRefresh(state: PreprRefreshState): string {
-  return `${Math.floor(state.at)}~${cleanPaths(state.paths).join('|')}`;
+export function serializeRefresh(
+  entries: readonly PreprRefreshEntry[],
+): string {
+  return cleanEntries(entries)
+    .map((entry) => `${entry.path}~${Math.floor(entry.at)}`)
+    .join('|');
 }
 
 /** Parses the refresh request header. Never throws. */
 export function parseRefreshPaths(header: string | null | undefined): string[] {
-  return cleanPaths((header ?? '').split('|'));
+  return cleanEntries(
+    (header ?? '').split('|').map((path) => ({ path, at: 0 })),
+  ).map((entry) => entry.path);
 }

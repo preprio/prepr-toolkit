@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   REFRESH_MAX_PATHS,
+  isFresh,
   parseRefresh,
   parseRefreshPaths,
   safePath,
@@ -44,15 +45,16 @@ describe('safePath', () => {
 });
 
 describe('parseRefresh', () => {
-  it('round-trips the time and the paths', () => {
-    const raw = serializeRefresh({
-      at: 1_700_000_000_000,
-      paths: ['/', '/pricing'],
-    });
-    expect(parseRefresh(raw)).toEqual({
-      at: 1_700_000_000_000,
-      paths: ['/', '/pricing'],
-    });
+  it('round-trips a decision time per page, most recent first', () => {
+    const raw = serializeRefresh([
+      { path: '/', at: 2_000 },
+      { path: '/pricing', at: 1_000 },
+    ]);
+    expect(raw).toBe('/~2000|/pricing~1000');
+    expect(parseRefresh(raw)).toEqual([
+      { path: '/', at: 2_000 },
+      { path: '/pricing', at: 1_000 },
+    ]);
   });
 
   it('never throws on hostile cookies', () => {
@@ -60,31 +62,43 @@ describe('parseRefresh', () => {
       undefined,
       '',
       '~',
-      'abc~/',
-      '-5~/',
-      '1e400~/',
-      '123~//evil.com|/ok',
-      '123~' + '/a|'.repeat(1000),
+      '/~abc',
+      '/~-5',
+      '/~1e400',
+      '//evil.com~1|/ok~1',
+      '/a~1|'.repeat(1000),
       '%E0%A4%A',
     ]) {
       expect(() => parseRefresh(hostile)).not.toThrow();
     }
-    expect(parseRefresh('abc~/')).toEqual({ at: 0, paths: ['/'] });
-    expect(parseRefresh('123~//evil.com|/ok').paths).toEqual(['/ok']);
+    expect(parseRefresh('/~abc')).toEqual([{ path: '/', at: 0 }]);
+    expect(parseRefresh('//evil.com~1|/ok~1')).toEqual([
+      { path: '/ok', at: 1 },
+    ]);
   });
 
-  it('keeps at most the maximum number of paths', () => {
-    const many = Array.from({ length: 20 }, (_, i) => `/p${i}`);
-    expect(parseRefresh(`1~${many.join('|')}`).paths).toHaveLength(
-      REFRESH_MAX_PATHS,
-    );
-    expect(serializeRefresh({ at: 1, paths: many }).split('|')).toHaveLength(
+  it('keeps the newest entry per page, at most the maximum number of pages', () => {
+    expect(parseRefresh('/~3|/~1|/a~2')).toEqual([
+      { path: '/', at: 3 },
+      { path: '/a', at: 2 },
+    ]);
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      path: `/p${i}`,
+      at: i,
+    }));
+    expect(parseRefresh(serializeRefresh(many))).toHaveLength(
       REFRESH_MAX_PATHS,
     );
   });
+});
 
-  it('drops duplicate paths', () => {
-    expect(parseRefresh('1~/|/|/a').paths).toEqual(['/', '/a']);
+describe('isFresh', () => {
+  it('is fresh only inside the window, and never for a time in the future', () => {
+    expect(isFresh(1_000, 10_000, 5_000)).toBe(true);
+    expect(isFresh(1_000, 10_000, 11_000)).toBe(false);
+    expect(isFresh(0, 10_000, 5_000)).toBe(false);
+    // A tampered or clock-skewed time must not read as fresh forever.
+    expect(isFresh(9_999_999, 10_000, 5_000)).toBe(false);
   });
 });
 

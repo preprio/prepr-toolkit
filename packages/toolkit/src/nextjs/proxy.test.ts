@@ -44,7 +44,10 @@ const introspection = {
 const PAGE =
   'query GetPage($slug: String) { Page(slug: $slug) { content { ... on Hero { heading } } } }';
 
-async function setup({ preview = false } = {}) {
+async function setup({
+  preview = false,
+  onlyIf,
+}: { preview?: boolean; onlyIf?: () => boolean } = {}) {
   vi.doMock('next/headers', () => ({ headers: async () => new Headers() }));
   const { createPreprClient, createPreprProxy } = await import('./graphql');
   const { NextRequest } = await import('next/server');
@@ -83,7 +86,7 @@ async function setup({ preview = false } = {}) {
       ? null
       : { document: PAGE, variables: { slug: url.pathname } },
   );
-  const handle = createPreprProxy({ client: prepr, page, preview });
+  const handle = createPreprProxy({ client: prepr, page, preview, onlyIf });
   const request = (path: string, headers: Record<string, string> = {}) =>
     new NextRequest(`https://site.test${path}`, { headers });
   const decisionCalls = () =>
@@ -101,7 +104,7 @@ describe('createPreprProxy', () => {
 
     expect(response.headers.get('x-middleware-next')).toBe('1');
     expect(response.cookies.get('prepr_decisions')?.value).toBe('g:VIP');
-    expect(response.cookies.get('prepr_refresh')?.value).toMatch(/^\d+~\/$/);
+    expect(response.cookies.get('prepr_refresh')?.value).toMatch(/^\/~\d+$/);
     expect(response.cookies.get('__prepr_uid')?.value).toBeTruthy();
   });
 
@@ -116,11 +119,15 @@ describe('createPreprProxy', () => {
     expect(decisionCalls()).toHaveLength(0);
   });
 
-  it('answers a refresh request with fresh decisions for every listed page, without rendering', async () => {
+  it("answers a refresh request with fresh decisions for the visitor's own pages, without rendering", async () => {
     const { handle, request, page } = await setup();
 
     const response = await handle(
-      request('/blog', { 'prepr-refresh': '/|//evil.com|/pricing|/missing' }),
+      request('/blog', {
+        'prepr-refresh': '/|//evil.com|/pricing|/missing|/not-in-cookie',
+        cookie: 'prepr_refresh=/~1|/pricing~1|/missing~1',
+        'sec-fetch-site': 'same-origin',
+      }),
     );
 
     expect(response.status).toBe(204);
@@ -130,13 +137,40 @@ describe('createPreprProxy', () => {
       'g:VIP~gpricing:VIP',
     );
     expect(response.cookies.get('prepr_refresh')?.value).toMatch(
-      /^\d+~\/\|\/pricing$/,
+      /^\/~\d{5,}\|\/pricing~\d{5,}\|\/missing~1$/,
     );
     expect(page.mock.calls.map(([url]) => url.pathname)).toEqual([
       '/',
       '/pricing',
       '/missing',
     ]);
+  });
+
+  it('decides nothing for a refresh from another site, a non-GET request, or one onlyIf rejects', async () => {
+    const cookie = 'prepr_refresh=/~1';
+    const cross = await setup();
+    const { NextRequest } = await import('next/server');
+    for (const req of [
+      cross.request('/', {
+        'prepr-refresh': '/',
+        cookie,
+        'sec-fetch-site': 'cross-site',
+      }),
+      new NextRequest('https://site.test/', {
+        method: 'POST',
+        headers: { 'prepr-refresh': '/', cookie },
+      }),
+    ]) {
+      const response = await cross.handle(req);
+      expect(response.status).toBe(204);
+    }
+    expect(cross.decisionCalls()).toHaveLength(0);
+
+    const bots = await setup({ onlyIf: () => false });
+    await bots.handle(bots.request('/', { 'prepr-refresh': '/', cookie }));
+    const page = await bots.handle(bots.request('/'));
+    expect(page.cookies.get('prepr_decisions')).toBeUndefined();
+    expect(bots.decisionCalls()).toHaveLength(0);
   });
 
   it('sends a preview visitor without draft mode through the draft route first', async () => {

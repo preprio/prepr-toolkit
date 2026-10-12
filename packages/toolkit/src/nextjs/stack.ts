@@ -84,7 +84,8 @@ export interface PreprStackProps<T> {
    * first paint, so nothing on screen changes while the page loads. Without
    * a decision (no cookie yet, or the proxy's lookup failed) the default
    * variant shows. Costs the HTML of the other variants; see `defaultVariant`
-   * in `render` to keep their images from downloading. An item with a segment group nested inside it keeps streaming.
+   * in `render` to keep their images from downloading. An item with a
+   * segment group nested inside it keeps streaming.
    */
   aboveTheFold?: number;
 }

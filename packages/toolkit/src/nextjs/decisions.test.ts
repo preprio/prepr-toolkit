@@ -188,7 +188,7 @@ describe('resolveDecisions', () => {
     const { prepr, request, response, decisionCalls } = await setup();
     const { NextRequest } = await import('next/server');
     const cookie = await decidedCookies(prepr, request, response);
-    const stale = cookie.replace(/prepr_refresh=\d+/, 'prepr_refresh=1');
+    const stale = cookie.replace(/prepr_refresh=\/~\d+/, 'prepr_refresh=/~1');
 
     await prepr.resolveDecisions(
       new NextRequest('https://site.test/', {
@@ -238,7 +238,7 @@ describe('resolveDecisions', () => {
     expect(decisionCalls()).toHaveLength(3);
   });
 
-  it('records the decision time and the page, most recent first', async () => {
+  it('records a decision time per page, most recent first', async () => {
     const { prepr, response } = await setup();
     const { NextRequest } = await import('next/server');
     const res = response();
@@ -246,7 +246,7 @@ describe('resolveDecisions', () => {
 
     await prepr.resolveDecisions(
       new NextRequest('https://site.test/pricing', {
-        headers: { cookie: 'prepr_refresh=5~/|/pricing|//evil.com' },
+        headers: { cookie: 'prepr_refresh=/~5|/pricing~4|//evil.com~3' },
       }),
       res,
       PAGE,
@@ -254,23 +254,64 @@ describe('resolveDecisions', () => {
     );
 
     const refresh = res.cookies.get('prepr_refresh')!;
-    const [at, paths] = refresh.value.split('~');
-    expect(Number(at)).toBeGreaterThanOrEqual(before);
-    expect(paths).toBe('/pricing|/');
+    const [pricing, home] = refresh.value.split('|');
+    expect(Number(pricing!.split('~')[1])).toBeGreaterThanOrEqual(before);
+    expect(pricing!.startsWith('/pricing~')).toBe(true);
+    expect(home).toBe('/~5');
     expect(refresh.httpOnly).toBe(false);
   });
 
-  it('stops asking for a page whose top holds no segment group', async () => {
-    const { prepr, request, response, decisionCalls } = await setup({
-      answer: { data: { Page: { content: [{ heading: 'plain' }] } } },
+  it("does not let another page's fresh decision stand in for this one", async () => {
+    const { prepr, request, response, decisionCalls } = await setup();
+    const cookie = await decidedCookies(prepr, request, response);
+    // `/` was decided long ago; another page just now.
+    const mixed = cookie.replace(
+      /prepr_refresh=\/~\d+/,
+      `prepr_refresh=/other~${Date.now()}|/~1`,
+    );
+
+    await prepr.resolveDecisions(request(mixed), response(), PAGE, {
+      slug: '/',
     });
+    expect(decisionCalls()).toHaveLength(2);
+  });
 
-    await prepr.resolveDecisions(request(), response(), PAGE, { slug: '/' });
-    const res = response();
-    await prepr.resolveDecisions(request(), res, PAGE, { slug: '/' });
+  it("keeps deciding a page after one visitor's answer named none of its groups", async () => {
+    // Prepr leaves a group without a default variant out of the answer for a
+    // visitor in none of its segments.
+    let answer: unknown = {
+      data: { Page: { content: [{ heading: 'plain' }] } },
+    };
+    const { createPreprClient } = await load();
+    const { NextRequest, NextResponse } = await import('next/server');
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      const body = String(init?.body);
+      if (body.includes('__schema'))
+        return new Response(JSON.stringify(introspection));
+      if (body.includes('AbCheck')) {
+        return new Response(JSON.stringify({ data: { Page: null } }), {
+          headers: { vary: 'Prepr-Segments' },
+        });
+      }
+      return new Response(JSON.stringify(answer));
+    });
+    const prepr = createPreprClient({ url: URL_, fetch });
+    const visit = () => {
+      const res = NextResponse.next();
+      return prepr
+        .resolveDecisions(new NextRequest('https://site.test/'), res, PAGE, {
+          slug: '/',
+        })
+        .then(() => res);
+    };
 
-    expect(decisionCalls()).toHaveLength(1);
-    expect(res.cookies.get('prepr_refresh')).toBeUndefined();
+    await visit();
+    answer = decision;
+    const member = await visit();
+
+    expect(member.cookies.get('prepr_decisions')?.value).toBe(
+      'hero:DEVELOPERS',
+    );
   });
 
   it('never throws: a failed lookup leaves the cookie alone', async () => {

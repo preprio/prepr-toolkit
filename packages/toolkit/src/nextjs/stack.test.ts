@@ -6,10 +6,12 @@ import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
-const navigation = vi.hoisted(() => ({ pathname: '/', search: '' }));
+const navigation = vi.hoisted(() => ({ pathname: '/' }));
 vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
-  useSearchParams: () => new URLSearchParams(navigation.search),
+  useSearchParams: () => {
+    throw new Error('useSearchParams makes every route dynamic');
+  },
   useRouter: () => ({ push: () => undefined, refresh: () => undefined }),
 }));
 
@@ -462,7 +464,7 @@ describe('PreprPersonalizationSwitch', () => {
     document.cookie = 'prepr_decisions=; max-age=0; path=/';
     document.cookie = 'prepr_refresh=; max-age=0; path=/';
     navigation.pathname = '/';
-    navigation.search = '';
+    history.replaceState(null, '', '/');
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -496,7 +498,7 @@ describe('PreprPersonalizationSwitch', () => {
     await mount();
     expect(rules()).toContain(shows('A'));
 
-    navigation.search = 'prepr_preview_segment=vip';
+    history.pushState(null, '', '/?prepr_preview_segment=vip');
     await mount();
     expect(rules()).toContain(shows('B'));
     act(() => root.unmount());
@@ -506,7 +508,7 @@ describe('PreprPersonalizationSwitch', () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
-    document.cookie = `prepr_refresh=${encodeURIComponent(`${Date.now()}~/`)}; path=/`;
+    document.cookie = `prepr_refresh=${encodeURIComponent(`/~${Date.now()}`)}; path=/`;
 
     const quiet = createRoot(document.createElement('div'));
     await act(() =>
