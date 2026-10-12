@@ -46,11 +46,21 @@ export function applyPreprAbBucket(): void {
  * the same way as the A/B switch. Groups the cookie does not mention keep
  * their default variant.
  *
+ * Applies once per page view (`view`, by default the current path and
+ * query): the cookie also changes while a page is being read, through
+ * background refreshes and prefetches, and those decisions are for the next
+ * view. Showing them right away would swap content under the reader.
+ *
  * Self-contained for the same reason as the A/B switch: its source is inlined
  * as a `<script>`. Only ids of letters, digits, `_` and `-` are used, so a
  * tampered cookie cannot inject CSS.
  */
-export function applyPreprDecisions(): void {
+export function applyPreprDecisions(view?: string): void {
+  const viewState = window as unknown as { __preprDecisionsView?: string };
+  const current =
+    view === undefined ? location.pathname + location.search : view;
+  if (viewState.__preprDecisionsView === current) return;
+  viewState.__preprDecisionsView = current;
   const match = document.cookie.match(/(?:^|; )prepr_decisions=([^;]*)/);
   let raw: string;
   try {

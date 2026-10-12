@@ -1,17 +1,22 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   createElement,
   useEffect,
   useLayoutEffect,
   useRef,
+  Suspense,
   type ReactElement,
   type ReactNode,
 } from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
 import { isReactHydrated } from '../react/hydration';
+import {
+  createPreprRefreshScheduler,
+  type PreprRefreshScheduler,
+} from '../core/refresh-scheduler';
 import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
 import type { PreprToolbarComponentProps } from '../core/types';
 
@@ -67,8 +72,7 @@ export function PreprToolbar({
 }
 
 /**
- * Applies the visitor's A/B bucket, and the segment variants decided in the
- * proxy, after client-side navigation. A full page
+ * Applies the visitor's A/B bucket after client-side navigation. A full page
  * load is covered by the inline script `PreprStack` renders, but React does
  * not run inline scripts that arrive with a client-side navigation; a layout
  * effect still runs before the browser paints the new page. Rendered by
@@ -81,8 +85,78 @@ export function PreprAbSwitch(): null {
   // early.
   useLayoutEffect(() => {
     applyPreprAbBucket();
-    applyPreprDecisions();
   });
+  return null;
+}
+
+export interface PreprPersonalizationSwitchProps {
+  /**
+   * Keep segment decisions fresh in the background. Default `true`. Leave it
+   * on for the instance in your root layout; `PreprStack` renders its own
+   * with `false`.
+   */
+  refresh?: boolean;
+  /** Same as `createPreprProxy`'s `freshFor`. Default 10 000 ms. */
+  freshFor?: number;
+}
+
+/**
+ * Shows the segment variants decided in the proxy for the groups above the
+ * fold, before the page paints, and keeps those decisions fresh while the
+ * visitor browses: a short while after each page view, when the visitor
+ * points at a link to a personalized page, and when the tab comes back.
+ * Because the next page's decision is already in place when it opens, a
+ * visitor who joins a segment mid-visit sees it on their next page view,
+ * without anything on screen changing.
+ *
+ * Mount it once in the root layout. It needs `createPreprProxy` (or
+ * `resolveDecisions`) in `proxy.ts`, which answers the refreshes.
+ *
+ * @example
+ * <PreprPersonalizationSwitch />
+ */
+export function PreprPersonalizationSwitch(
+  props: PreprPersonalizationSwitchProps,
+): ReactElement {
+  // useSearchParams needs a Suspense boundary to keep the route static; this
+  // renders nothing, so the fallback is nothing too.
+  return createElement(
+    Suspense,
+    { fallback: null },
+    createElement(DecisionSwitch, props),
+  );
+}
+
+function DecisionSwitch({
+  refresh = true,
+  freshFor,
+}: PreprPersonalizationSwitchProps): null {
+  const pathname = usePathname();
+  const search = useSearchParams().toString();
+  // The same key the inline script records on a full load, so hydration does
+  // not apply twice. The preview toolbar changes the query, which makes its
+  // variant switch a new view.
+  const view = pathname + (search ? `?${search}` : '');
+  const scheduler = useRef<PreprRefreshScheduler | null>(null);
+
+  useLayoutEffect(() => {
+    applyPreprDecisions(view);
+  }, [view]);
+
+  useEffect(() => {
+    if (!refresh) return;
+    const started = createPreprRefreshScheduler({ freshFor });
+    scheduler.current = started;
+    return () => {
+      started.stop();
+      scheduler.current = null;
+    };
+  }, [refresh, freshFor]);
+
+  useEffect(() => {
+    scheduler.current?.view();
+  }, [view, refresh, freshFor]);
+
   return null;
 }
 
