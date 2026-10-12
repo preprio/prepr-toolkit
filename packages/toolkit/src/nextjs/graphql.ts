@@ -10,7 +10,12 @@ import {
   type PreprQueryResult,
 } from '../core/graphql';
 import type { PreprDecisions } from '../core/variants';
-import { resolveDecisionsWith, type PreprSeenGroups } from './decisions';
+import {
+  preprClientInternals,
+  resolveDecisionsWith,
+  type PreprSeenGroups,
+  type ResolveDecisionsOptions,
+} from './decisions';
 import { getPreprHeaders } from './server';
 
 export interface PreprNextClientOptions extends PreprClientOptions {
@@ -74,36 +79,25 @@ export interface PreprNextClient {
   ): Promise<boolean>;
   /**
    * In middleware (`proxy.ts`): asks Prepr which segment variant this visitor
-   * gets for each personalization group on the page, and stores the answer in
-   * the `prepr_decisions` cookie on `response`. `PreprStack` with
-   * `aboveTheFold` then shows those variants before first paint instead of
-   * streaming them in.
+   * gets for each personalization group at the top of the page, and stores
+   * the answer in the `prepr_decisions` cookie on `response`. `PreprStack`
+   * then shows those variants before first paint instead of streaming them
+   * in. `createPreprProxy` calls this for you.
    *
    * Call it after `createPreprMiddleware`, whose visitor headers (customer id,
-   * UTM parameters, IP, HubSpot id) it forwards. A decision is an uncached
-   * Prepr request, made once per visit by default (see `reuse`); limit it
-   * with `onlyIf` to pages whose personalized content is above the fold.
-   * Pages without segment groups are skipped after a cached check. Never throws and gives up after `timeoutMs`
-   * (default 1000): the default variant shows instead.
+   * UTM parameters, IP, HubSpot id) it forwards. A stored decision that
+   * covers the page is kept for `freshFor` (default 10 s); a first visit, UTM
+   * parameters and a segment forced in preview always ask again. Pages
+   * without segment groups at the top are skipped after a cached check.
+   * Never throws and gives up after `timeoutMs` (default 1000): the default
+   * variant shows instead.
    */
   resolveDecisions<TVariables>(
     request: NextRequest,
     response: NextResponse,
     document: PreprDocument<unknown, TVariables>,
     variables?: TVariables,
-    options?: {
-      timeoutMs?: number;
-      /**
-       * Reuse the stored decision for the rest of the visit instead of asking
-       * Prepr on every page view. Default `true`. Asks again when UTM
-       * parameters arrive, on a first visit, and when preview forces a
-       * segment. A visitor who joins a segment mid-visit (say, by submitting
-       * a form) sees the change from their next asked request.
-       */
-      reuse?: boolean;
-      /** Skip the decision when this resolves to false, e.g. for pages without a personalized hero. */
-      onlyIf?: () => boolean | Promise<boolean>;
-    },
+    options?: ResolveDecisionsOptions,
   ): Promise<void>;
 }
 
@@ -144,7 +138,7 @@ export function createPreprClient(
   // whether the stored cookie already covers the page.
   const seenGroups: PreprSeenGroups = new Map();
 
-  return {
+  const nextClient: PreprNextClient = {
     async query<TResult, TVariables>(
       document: PreprDocument<TResult, TVariables>,
       variables?: TVariables,
@@ -204,9 +198,18 @@ export function createPreprClient(
         options,
       ),
   };
+  preprClientInternals.set(nextClient, {
+    client,
+    seenGroups,
+    url: coreOptions.url,
+  });
+  return nextClient;
 }
 
-export { PREPR_DECISIONS_COOKIE } from './decisions';
+export {
+  PREPR_DECISIONS_COOKIE,
+  type ResolveDecisionsOptions,
+} from './decisions';
 export { PreprStack, type PreprStackProps } from './stack';
 export { isPersonalizedResponse } from '../core/personalization';
 export { PreprError } from '../core/server';

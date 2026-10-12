@@ -6,7 +6,13 @@ import {
   type PreprClient,
   type PreprDocument,
 } from '../core/graphql';
+import {
+  PREPR_REFRESH_COOKIE,
+  parseRefresh,
+  serializeRefresh,
+} from '../core/refresh';
 import { getPreprHeadersFromHeaders } from '../core/server';
+import type { PreprDecisions } from '../core/variants';
 
 /** The cookie `resolveDecisions` writes and the `PreprStack` switch reads. */
 export const PREPR_DECISIONS_COOKIE = 'prepr_decisions';
@@ -62,6 +68,136 @@ export function forwardedHeaders(request: NextRequest, response: NextResponse) {
 export type PreprSeenGroups = Map<unknown, Map<string, Set<string>>>;
 
 /**
+ * What `createPreprProxy` needs from a client made by the Next
+ * `createPreprClient`, kept off its public type.
+ */
+export const preprClientInternals = new WeakMap<
+  object,
+  { client: PreprClient; seenGroups: PreprSeenGroups; url: string }
+>();
+
+/** How long a decision is kept before Prepr is asked again. */
+export const DEFAULT_FRESH_FOR_MS = 10_000;
+
+export interface ResolveDecisionsOptions {
+  /** Give up after this many ms; the default variant shows. Default 1000. */
+  timeoutMs?: number;
+  /**
+   * Keep the stored decision for this many ms instead of asking Prepr again.
+   * Default 10 000; `0` asks on every request. Background refreshes by
+   * `PreprPersonalizationSwitch` keep it fresh, so a page view rarely waits.
+   */
+  freshFor?: number;
+  /** Skip the decision when this resolves to false. */
+  onlyIf?: () => boolean | Promise<boolean>;
+}
+
+/**
+ * Asks Prepr for the variants of the groups at the top of one page and
+ * remembers which groups that page has. `undefined` when the page holds no
+ * segment content at all.
+ */
+export async function decidePage<TVariables>(
+  client: PreprClient,
+  seenGroups: PreprSeenGroups,
+  headers: Headers,
+  document: PreprDocument<unknown, TVariables>,
+  variables: TVariables | undefined,
+  timeoutMs = 1000,
+): Promise<PreprDecisions | undefined> {
+  // A cached check: pages without segment groups cost no request.
+  if (!(await client.hasSegments(document, variables))) return undefined;
+  // Only the top-level lists: `aboveTheFold` renders those groups, and
+  // Prepr answers this far faster than for every nested list.
+  const decided = await client.decide(document, variables, {
+    topLevelOnly: true,
+    headers,
+    init: { signal: AbortSignal.timeout(timeoutMs) },
+  });
+  let byVariables = seenGroups.get(document);
+  if (!byVariables) {
+    byVariables = new Map();
+    seenGroups.set(document, byVariables);
+  }
+  const pageKey = JSON.stringify(variables ?? null);
+  if (!byVariables.has(pageKey) && byVariables.size >= SEEN_MAX_PAGES) {
+    byVariables.delete(byVariables.keys().next().value!);
+  }
+  byVariables.set(pageKey, new Set(decided.keys()));
+  return decided;
+}
+
+/**
+ * Stores decisions in the `prepr_decisions` cookie (the decided groups first,
+ * then what other pages stored) and records the decision time and the pages
+ * decided in `prepr_refresh`.
+ */
+export function writeDecisions(
+  request: NextRequest,
+  response: NextResponse,
+  decided: readonly PreprDecisions[],
+  paths: readonly string[],
+): void {
+  const next = new Map<string, string[]>();
+  for (const decisions of decided) {
+    for (const [group, variants] of decisions) {
+      if (SAFE_ID.test(group) && !next.has(group)) {
+        next.set(
+          group,
+          variants.filter((v) => SAFE_ID.test(v)),
+        );
+      }
+    }
+  }
+  for (const [group, variants] of parseDecisions(
+    request.cookies.get(PREPR_DECISIONS_COOKIE)?.value,
+  )) {
+    if (!next.has(group)) next.set(group, variants);
+  }
+  // Read by the switch in the browser, before first paint and for refreshes.
+  const options = {
+    path: '/',
+    sameSite: 'lax' as const,
+    httpOnly: false,
+    secure: request.nextUrl.protocol === 'https:',
+  };
+  if (next.size > 0) {
+    response.cookies.set(
+      PREPR_DECISIONS_COOKIE,
+      serializeDecisions(next),
+      options,
+    );
+  }
+  if (paths.length > 0) {
+    const previous = parseRefresh(
+      request.cookies.get(PREPR_REFRESH_COOKIE)?.value,
+    );
+    response.cookies.set(
+      PREPR_REFRESH_COOKIE,
+      serializeRefresh({
+        at: Date.now(),
+        paths: [...paths, ...previous.paths],
+      }),
+      options,
+    );
+  }
+}
+
+/** Whether something arrived that can move the visitor into another segment. */
+export function contextChanged(
+  request: NextRequest,
+  headers: Headers,
+): boolean {
+  return (
+    headers.get('Prepr-Customer-Id-Created') === 'true' ||
+    headers.has('Prepr-Segments') ||
+    [...request.nextUrl.searchParams.keys()].some((key) =>
+      key.startsWith('utm_'),
+    )
+  );
+}
+
+/**
  * The body of the Next client's `resolveDecisions`, against the core
  * `client` and the per-client `seenGroups` memory.
  */
@@ -72,83 +208,47 @@ export async function resolveDecisionsWith<TVariables>(
   response: NextResponse,
   document: PreprDocument<unknown, TVariables>,
   variables?: TVariables,
-  options?: {
-    timeoutMs?: number;
-    reuse?: boolean;
-    onlyIf?: () => boolean | Promise<boolean>;
-  },
+  options?: ResolveDecisionsOptions,
 ): Promise<void> {
   try {
     if (options?.onlyIf && !(await options.onlyIf())) return;
-    // A cached check: pages without segment groups cost no request.
-    if (!(await client.hasSegments(document, variables))) return;
+
+    const known = seenGroups
+      .get(document)
+      ?.get(JSON.stringify(variables ?? null));
+    // Decided before: the top of this page holds no segment group.
+    if (known?.size === 0) return;
 
     const headers = mergePreprHeaders(forwardedHeaders(request, response));
     const stored = parseDecisions(
       request.cookies.get(PREPR_DECISIONS_COOKIE)?.value,
     );
-    const pageKey = `${JSON.stringify(variables ?? null)}`;
-    let byVariables = seenGroups.get(document);
-    if (!byVariables) {
-      byVariables = new Map();
-      seenGroups.set(document, byVariables);
-    }
-    const known = byVariables.get(pageKey);
-    const isNewVisitor = headers.get('Prepr-Customer-Id-Created') === 'true';
-
-    // Within a visit the segments rarely change: reuse the stored decision
-    // unless something arrived that can change it (UTM parameters, a first
-    // visit, a segment forced in preview).
-    const contextChanged =
-      isNewVisitor ||
-      headers.has('Prepr-Segments') ||
-      [...request.nextUrl.searchParams.keys()].some((key) =>
-        key.startsWith('utm_'),
-      );
+    const { at } = parseRefresh(
+      request.cookies.get(PREPR_REFRESH_COOKIE)?.value,
+    );
+    const fresh = Date.now() - at < (options?.freshFor ?? DEFAULT_FRESH_FOR_MS);
+    // One rule for full loads, navigations and prefetches: a fresh decision
+    // that covers the page is what the browser already shows, so asking again
+    // could only swap a variant the visitor is looking at.
     if (
-      options?.reuse !== false &&
-      !contextChanged &&
+      fresh &&
       known &&
+      !contextChanged(request, headers) &&
       [...known].every((group) => stored.has(group))
     ) {
       return;
     }
 
-    // Only the top-level lists: `aboveTheFold` renders those groups, and
-    // Prepr answers this far faster than for every nested list.
-    const decided = await client.decide(document, variables, {
-      topLevelOnly: true,
+    const decided = await decidePage(
+      client,
+      seenGroups,
       headers,
-      init: { signal: AbortSignal.timeout(options?.timeoutMs ?? 1000) },
-    });
-
-    if (!known && byVariables.size >= SEEN_MAX_PAGES) {
-      byVariables.delete(byVariables.keys().next().value!);
-    }
-    const groups = known ?? new Set<string>();
-    for (const group of decided.keys()) groups.add(group);
-    byVariables.set(pageKey, groups);
-
-    // This page's groups first, then what other pages stored.
-    const next = new Map<string, string[]>();
-    for (const [group, variants] of decided) {
-      if (SAFE_ID.test(group)) {
-        next.set(
-          group,
-          variants.filter((v) => SAFE_ID.test(v)),
-        );
-      }
-    }
-    for (const [group, variants] of stored) {
-      if (!next.has(group)) next.set(group, variants);
-    }
-    if (next.size === 0) return;
-    response.cookies.set(PREPR_DECISIONS_COOKIE, serializeDecisions(next), {
-      path: '/',
-      sameSite: 'lax',
-      // Read by the inline switch script before first paint.
-      httpOnly: false,
-    });
+      document,
+      variables,
+      options?.timeoutMs,
+    );
+    if (!decided || decided.size === 0) return;
+    writeDecisions(request, response, [decided], [request.nextUrl.pathname]);
   } catch (error) {
     if (isFrameworkSignal(error)) throw error;
     // The default variant shows; the next request asks again.

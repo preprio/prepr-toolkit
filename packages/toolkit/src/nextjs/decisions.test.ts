@@ -151,21 +151,70 @@ describe('resolveDecisions', () => {
     expect(skipped.decisionCalls()).toHaveLength(0);
   });
 
-  it('reuses the stored decision for the rest of the visit, and asks again when the context changes', async () => {
-    const { prepr, request, response, decisionCalls } = await setup();
-    const { NextRequest } = await import('next/server');
+  async function decidedCookies(
+    prepr: Awaited<ReturnType<typeof setup>>['prepr'],
+    request: Awaited<ReturnType<typeof setup>>['request'],
+    response: Awaited<ReturnType<typeof setup>>['response'],
+  ) {
     const first = response();
     await prepr.resolveDecisions(request(), first, PAGE, { slug: '/' });
-    const cookie = `prepr_decisions=${first.cookies.get('prepr_decisions')!.value}`;
+    return ['prepr_decisions', 'prepr_refresh']
+      .map((name) => `${name}=${first.cookies.get(name)!.value}`)
+      .join('; ');
+  }
+
+  it('keeps a fresh decision that covers the page, for full loads, navigations and prefetches alike', async () => {
+    const { prepr, request, response, decisionCalls } = await setup();
+    const { NextRequest } = await import('next/server');
+    const cookie = await decidedCookies(prepr, request, response);
     expect(decisionCalls()).toHaveLength(1);
 
-    // Same visit, cookie covers the page: no request.
-    await prepr.resolveDecisions(request(cookie), response(), PAGE, {
-      slug: '/',
-    });
+    for (const headers of <Record<string, string>[]>[
+      { cookie },
+      { cookie, rsc: '1' },
+      { cookie, rsc: '1', 'next-router-prefetch': '1' },
+    ]) {
+      await prepr.resolveDecisions(
+        new NextRequest('https://site.test/', { headers }),
+        response(),
+        PAGE,
+        { slug: '/' },
+      );
+    }
     expect(decisionCalls()).toHaveLength(1);
+  });
 
-    // UTM parameters can change the segment.
+  it('asks again once the decision is older than freshFor', async () => {
+    const { prepr, request, response, decisionCalls } = await setup();
+    const { NextRequest } = await import('next/server');
+    const cookie = await decidedCookies(prepr, request, response);
+    const stale = cookie.replace(/prepr_refresh=\d+/, 'prepr_refresh=1');
+
+    await prepr.resolveDecisions(
+      new NextRequest('https://site.test/', {
+        headers: { cookie: stale, 'next-router-prefetch': '1', rsc: '1' },
+      }),
+      response(),
+      PAGE,
+      { slug: '/' },
+    );
+    expect(decisionCalls()).toHaveLength(2);
+
+    await prepr.resolveDecisions(
+      request(cookie),
+      response(),
+      PAGE,
+      { slug: '/' },
+      { freshFor: 0 },
+    );
+    expect(decisionCalls()).toHaveLength(3);
+  });
+
+  it('always asks for a first visit or UTM parameters, however fresh the decision', async () => {
+    const { prepr, request, response, decisionCalls } = await setup();
+    const { NextRequest } = await import('next/server');
+    const cookie = await decidedCookies(prepr, request, response);
+
     await prepr.resolveDecisions(
       new NextRequest('https://site.test/?utm_source=ad', {
         headers: { cookie },
@@ -174,24 +223,54 @@ describe('resolveDecisions', () => {
       PAGE,
       { slug: '/' },
     );
-    expect(decisionCalls()).toHaveLength(2);
-
-    // So can a first visit, and reuse can be turned off.
-    const fresh = response();
-    fresh.headers.set(
+    const firstVisit = response();
+    firstVisit.headers.set(
       'x-middleware-override-headers',
       'prepr-customer-id,prepr-customer-id-created',
     );
-    fresh.headers.set('x-middleware-request-prepr-customer-id-created', 'true');
-    await prepr.resolveDecisions(request(cookie), fresh, PAGE, { slug: '/' });
-    await prepr.resolveDecisions(
-      request(cookie),
-      response(),
-      PAGE,
-      { slug: '/' },
-      { reuse: false },
+    firstVisit.headers.set(
+      'x-middleware-request-prepr-customer-id-created',
+      'true',
     );
-    expect(decisionCalls()).toHaveLength(4);
+    await prepr.resolveDecisions(request(cookie), firstVisit, PAGE, {
+      slug: '/',
+    });
+    expect(decisionCalls()).toHaveLength(3);
+  });
+
+  it('records the decision time and the page, most recent first', async () => {
+    const { prepr, response } = await setup();
+    const { NextRequest } = await import('next/server');
+    const res = response();
+    const before = Date.now();
+
+    await prepr.resolveDecisions(
+      new NextRequest('https://site.test/pricing', {
+        headers: { cookie: 'prepr_refresh=5~/|/pricing|//evil.com' },
+      }),
+      res,
+      PAGE,
+      { slug: 'pricing' },
+    );
+
+    const refresh = res.cookies.get('prepr_refresh')!;
+    const [at, paths] = refresh.value.split('~');
+    expect(Number(at)).toBeGreaterThanOrEqual(before);
+    expect(paths).toBe('/pricing|/');
+    expect(refresh.httpOnly).toBe(false);
+  });
+
+  it('stops asking for a page whose top holds no segment group', async () => {
+    const { prepr, request, response, decisionCalls } = await setup({
+      answer: { data: { Page: { content: [{ heading: 'plain' }] } } },
+    });
+
+    await prepr.resolveDecisions(request(), response(), PAGE, { slug: '/' });
+    const res = response();
+    await prepr.resolveDecisions(request(), res, PAGE, { slug: '/' });
+
+    expect(decisionCalls()).toHaveLength(1);
+    expect(res.cookies.get('prepr_refresh')).toBeUndefined();
   });
 
   it('never throws: a failed lookup leaves the cookie alone', async () => {
