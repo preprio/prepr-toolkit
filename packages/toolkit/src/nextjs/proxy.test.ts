@@ -108,7 +108,9 @@ describe('createPreprProxy', () => {
     const response = await handle(request('/'));
 
     expect(response.headers.get('x-middleware-next')).toBe('1');
-    expect(response.cookies.get('prepr_decisions')?.value).toBe('/@g:VIP');
+    expect(response.cookies.get('prepr_decisions')?.value).toMatch(
+      /^\d+\|\/@g:VIP$/,
+    );
     expect(response.cookies.get('__prepr_uid')?.value).toBeTruthy();
   });
 
@@ -141,11 +143,17 @@ describe('createPreprProxy', () => {
     expect(decisionCalls()).toHaveLength(0);
   });
 
-  it('decides again at every page view', async () => {
+  it('decides each page view, reusing only a reload of the same view', async () => {
     const { handle, request, decisionCalls } = await setup();
     const first = await handle(request('/'));
-    const cookie = `prepr_decisions=${first.cookies.get('prepr_decisions')!.value}`;
+    // The browser sends back everything the first response set.
+    const cookie = first.cookies
+      .getAll()
+      .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
+      .join('; ');
     await handle(request('/', { cookie }));
+    expect(decisionCalls()).toHaveLength(1);
+    await handle(request('/pricing', { cookie }));
     expect(decisionCalls()).toHaveLength(2);
   });
 

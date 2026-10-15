@@ -11,8 +11,9 @@ import type { PreprDecisions } from '../core/variants';
 
 /**
  * The cookie `resolveDecisions` writes on a page response: that page view's
- * decisions, keyed by its URL. `PreprStack` reads it once while the page
- * loads and then deletes it, so no later view reuses it.
+ * decisions, the URL they are for and when they were made. The browser
+ * deletes it as soon as the visitor views another page, so only a reload of
+ * the same view can reuse it.
  */
 export const PREPR_DECISIONS_COOKIE = 'prepr_decisions';
 
@@ -25,6 +26,14 @@ export const PREPR_DECIDE_HEADER = 'Prepr-Decide';
 
 /** A decision that shows the default variant of every group. */
 export const DEFAULT_DECISION = '*';
+
+/**
+ * How long a reload of the same view, with no other page view in between,
+ * reuses its decision instead of asking Prepr again. Prepr needs a few
+ * seconds to process a visitor's activity, so asking again sooner would
+ * mostly get the same answer.
+ */
+const REUSE_MS = 10_000;
 
 // More groups than a page shows; the cap keeps the cookie small.
 const DECISIONS_MAX_GROUPS = 40;
@@ -111,10 +120,40 @@ export function viewKey(request: NextRequest): string {
   return url.basePath + url.pathname + url.search;
 }
 
+/** Whether something arrived that can move the visitor into another segment. */
+function contextChanged(request: NextRequest, headers: Headers): boolean {
+  return (
+    headers.get('Prepr-Customer-Id-Created') === 'true' ||
+    headers.has('Prepr-Segments') ||
+    [...request.nextUrl.searchParams.keys()].some((key) =>
+      key.startsWith('utm_'),
+    )
+  );
+}
+
+/**
+ * Whether the decision stored for this exact view is recent, with nothing
+ * that can change a segment arrived since.
+ */
+function reusable(request: NextRequest, headers: Headers): boolean {
+  const raw = request.cookies.get(PREPR_DECISIONS_COOKIE)?.value ?? '';
+  const bar = raw.indexOf('|');
+  const at = raw.lastIndexOf('@');
+  if (bar < 0 || at < bar) return false;
+  const age = Date.now() - Number(raw.slice(0, bar));
+  return (
+    age >= 0 &&
+    age < REUSE_MS &&
+    raw.slice(bar + 1, at) === viewKey(request) &&
+    !contextChanged(request, headers)
+  );
+}
+
 /**
  * The body of the Next client's `resolveDecisions`: decides the page view
- * and stores the answer on `response`. A page without segment groups gets no
- * cookie.
+ * and stores the answer on `response`. A reload of the same view within
+ * {@link REUSE_MS}, with no other page view in between, keeps the stored
+ * decision. A page without segment groups gets no cookie.
  */
 export async function resolveDecisionsWith<TVariables>(
   client: PreprClient,
@@ -124,12 +163,15 @@ export async function resolveDecisionsWith<TVariables>(
   variables?: TVariables,
   options?: ResolveDecisionsOptions,
 ): Promise<void> {
+  const headers = mergePreprHeaders(forwardedHeaders(request, response));
+  // The browser still has it: nothing to write.
+  if (reusable(request, headers)) return;
   let decision: string | null = DEFAULT_DECISION;
   try {
     if (!options?.onlyIf || (await options.onlyIf())) {
       decision = await decideView(
         client,
-        mergePreprHeaders(forwardedHeaders(request, response)),
+        headers,
         document,
         variables,
         options?.timeoutMs,
@@ -141,7 +183,7 @@ export async function resolveDecisionsWith<TVariables>(
   if (decision === null) return;
   response.cookies.set(
     PREPR_DECISIONS_COOKIE,
-    `${viewKey(request)}@${decision}`,
+    `${Date.now()}|${viewKey(request)}@${decision}`,
     {
       path: '/',
       sameSite: 'lax',

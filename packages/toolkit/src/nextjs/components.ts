@@ -124,6 +124,14 @@ function requestDecision(key: string): PendingDecision {
 let pressed: PendingDecision | null = null;
 // The anchor whose click is replayed once its decision is in.
 let replaying: Element | null = null;
+// What this tab showed on each URL: Back and Forward show a page as the
+// visitor last saw it, instead of hiding its sections until Prepr answers.
+const shown = new Map<string, string>();
+// Set by Back and Forward until the page they open applies its decision.
+let historyStep = false;
+const onPopState = () => {
+  historyStep = true;
+};
 
 /** The same-site page a pointer or click event on a link goes to. */
 function linkTarget(
@@ -213,11 +221,13 @@ function useDecisionRequests(): void {
     if (listeners++ === 0) {
       window.addEventListener('pointerdown', onPointerDown, true);
       window.addEventListener('click', onClick, true);
+      window.addEventListener('popstate', onPopState);
     }
     return () => {
       if (--listeners === 0) {
         window.removeEventListener('pointerdown', onPointerDown, true);
         window.removeEventListener('click', onClick, true);
+        window.removeEventListener('popstate', onPopState);
       }
     };
   }, []);
@@ -244,20 +254,33 @@ export function PreprPersonalizationSwitch(): null {
 
 /**
  * Applies this page view's decision to the variant wrappers of the
- * `PreprStack` it is rendered by, before the page paints. A view without a
- * decision (back and forward, a navigation started from code) asks for one;
- * its personalized sections stay hidden until it arrives. Rendered by
- * `PreprStack`; you do not need it yourself.
+ * `PreprStack` it is rendered by, before the page paints. Back and Forward
+ * show the page as this tab last showed it. Any other view without a
+ * decision (a navigation started from code, or Back to a page this tab never
+ * showed) asks for one, and its personalized sections stay hidden until it
+ * arrives. Rendered by `PreprStack`; you do not need it yourself.
  */
 export function PreprDecisionApplier(): null {
   useDecisionRequests();
   useLayoutEffect(() => {
-    if (applyPreprDecisions()) return;
     const key = location.pathname + location.search;
+    const remember = () => {
+      const state = (
+        window as unknown as { __preprDecision?: { value: string } }
+      ).__preprDecision;
+      if (state) shown.set(key, state.value);
+    };
+    const previous = historyStep ? shown.get(key) : undefined;
+    historyStep = false;
+    if (applyPreprDecisions(previous)) {
+      remember();
+      return;
+    }
     let live = true;
     void requestDecision(key).value.then((value) => {
       if (live && location.pathname + location.search === key) {
         applyPreprDecisions(value);
+        remember();
       }
     });
     return () => {

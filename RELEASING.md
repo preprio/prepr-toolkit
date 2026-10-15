@@ -220,8 +220,9 @@ upgrading to the next alpha after `0.6.0-alpha.6`:
   `prepr.resolveDecisions` itself cannot answer those requests: use
   `createPreprProxy`, or navigations show their personalized sections only
   once the decision request falls back to the defaults.
-- The `prepr_decisions` cookie now holds one page view's decision, keyed by
-  its URL, and is deleted once read.
+- The `prepr_decisions` cookie now holds one page view's decision, with its
+  URL and time. The browser deletes it once the visitor views another page;
+  until then a reload of that view within 10 seconds reuses it.
 
 Upgrading to `0.6.0-alpha.3`:
 

@@ -286,7 +286,7 @@ describe('PreprStack segment groups', () => {
   function load(path: string, cookie: string | null, stackItems: Item[]) {
     history.replaceState(null, '', path);
     if (cookie !== null) {
-      document.cookie = `prepr_decisions=${encodeURIComponent(cookie)}; path=/`;
+      document.cookie = `prepr_decisions=${encodeURIComponent(`${Date.now()}|${cookie}`)}; path=/`;
     }
     document.body.innerHTML = renderToString(stack(stackItems));
     applyPreprDecisions();
@@ -324,11 +324,35 @@ describe('PreprStack segment groups', () => {
     expect(html).toContain('data-prepr-v="logos:DEVELOPERS quotes:MARKETERS"');
   });
 
-  it("shows the proxy's decision for this URL before paint, and only once", () => {
+  it("shows the proxy's decision for this URL before paint, and keeps it only until another page is viewed", () => {
     load('/solutions/astro-cms', '/solutions/astro-cms@hero:DEVELOPERS', hero);
     expect(shown()).toEqual(['hero-dev']);
-    // Read once: a later view of this URL asks again.
+    // A reload of this view may reuse it...
+    expect(document.cookie).toContain('DEVELOPERS');
+    // ...until a decision for another page applies.
+    history.replaceState(null, '', '/pricing');
+    applyPreprDecisions('hero:ALL_OTHER_USERS');
     expect(document.cookie).not.toContain('DEVELOPERS');
+  });
+
+  it('shows a page on Back as this tab last showed it, without asking again', async () => {
+    const container = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(container);
+    // Viewed /a with the Developers variant, then went to /b.
+    history.replaceState(null, '', '/a');
+    applyPreprDecisions('hero:DEVELOPERS');
+    await act(async () => root.render(stack(hero)));
+    history.pushState(null, '', '/b');
+    applyPreprDecisions('hero:ALL_OTHER_USERS');
+    await act(async () => root.render(stack([logoStrip('DEVELOPERS')])));
+    decisionRequests.mockClear();
+
+    history.replaceState(null, '', '/a');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await act(async () => root.render(stack(hero)));
+    expect(shown()).toEqual(['hero-dev']);
+    expect(decisionRequests).not.toHaveBeenCalled();
+    act(() => root.unmount());
   });
 
   it('never shows a variant, not even the default, without a decision for this view', () => {

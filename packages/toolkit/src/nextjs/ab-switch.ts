@@ -49,10 +49,12 @@ export function applyPreprAbBucket(): void {
  * variant never stands in for a decision that is still on its way.
  *
  * `decision` is the decision for the current URL (from a click's decision
- * request). Without it, the one already applied to this URL is used, or the
- * one the proxy left in the `prepr_decisions` cookie for this URL, which is
- * read once and deleted so no later view reuses it. Returns false when there
- * is none.
+ * request, or the one this tab showed before on Back and Forward). Without
+ * it, the one already applied to this URL is used, or the one the proxy left
+ * in the `prepr_decisions` cookie for this URL. The cookie lasts until the
+ * visitor views another page: it is deleted as soon as a decision for another
+ * URL applies, so only a reload of the same view can reuse it. Returns false
+ * when there is no decision for this view.
  *
  * Self-contained for the same reason as the A/B switch: its source is inlined
  * as a `<script>`. Ids are only compared, never put into selectors.
@@ -63,20 +65,24 @@ export function applyPreprDecisions(decision?: string): boolean {
   };
   const key = location.pathname + location.search;
   if (decision !== undefined) state.__preprDecision = { key, value: decision };
+  const match = document.cookie.match(/(?:^|; )prepr_decisions=([^;]*)/);
+  let raw: string;
+  try {
+    raw = match ? decodeURIComponent(match[1]!) : '';
+  } catch {
+    raw = '';
+  }
+  // `<decided at>|<url>@<decision>`
+  const at = raw.lastIndexOf('@');
+  const stored = raw.slice(raw.indexOf('|') + 1, at < 0 ? 0 : at);
   let current = state.__preprDecision;
-  if (!current || current.key !== key) {
-    const match = document.cookie.match(/(?:^|; )prepr_decisions=([^;]*)/);
-    let raw: string;
-    try {
-      raw = match ? decodeURIComponent(match[1]!) : '';
-    } catch {
-      raw = '';
-    }
-    const at = raw.lastIndexOf('@');
-    if (at < 0 || raw.slice(0, at) !== key) return false;
-    document.cookie = 'prepr_decisions=; max-age=0; path=/';
+  if ((!current || current.key !== key) && at >= 0 && stored === key) {
     current = state.__preprDecision = { key, value: raw.slice(at + 1) };
   }
+  if (match && stored !== key) {
+    document.cookie = 'prepr_decisions=; max-age=0; path=/';
+  }
+  if (!current || current.key !== key) return false;
   // `*`: Prepr could not be asked, so every group shows its default variant
   // (Prepr's id for visitors outside every segment).
   const defaults = current.value === '*';

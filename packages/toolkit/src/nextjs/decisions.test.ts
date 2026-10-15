@@ -121,7 +121,9 @@ describe('resolveDecisions', () => {
 
     await prepr.resolveDecisions(request(), res, PAGE, { slug: '/' });
 
-    expect(res.cookies.get('prepr_decisions')?.value).toBe('/@hero:DEVELOPERS');
+    expect(res.cookies.get('prepr_decisions')?.value).toMatch(
+      /^\d+\|\/@hero:DEVELOPERS$/,
+    );
     expect(res.cookies.get('prepr_decisions')?.httpOnly).toBe(false);
     expect(
       new Headers(decisionCalls()[0]![1]!.headers).get('prepr-customer-id'),
@@ -147,6 +149,38 @@ describe('resolveDecisions', () => {
     expect(decisionCalls()).toHaveLength(2);
   });
 
+  it('reuses the decision for a reload of the same view within 10 seconds, and asks again after that, for another URL or with UTM parameters', async () => {
+    const { prepr, request, response, decisionCalls } = await setup();
+    const { NextRequest } = await import('next/server');
+    const first = response();
+    await prepr.resolveDecisions(request(), first, PAGE, { slug: '/' });
+    const stored = first.cookies.get('prepr_decisions')!.value;
+    const cookie = `prepr_decisions=${encodeURIComponent(stored)}`;
+
+    const reload = response();
+    await prepr.resolveDecisions(request(cookie), reload, PAGE, { slug: '/' });
+    expect(decisionCalls()).toHaveLength(1);
+    expect(reload.cookies.get('prepr_decisions')).toBeUndefined();
+
+    const old = `prepr_decisions=${encodeURIComponent(stored.replace(/^\d+/, String(Date.now() - 11_000)))}`;
+    await prepr.resolveDecisions(request(old), response(), PAGE, { slug: '/' });
+    await prepr.resolveDecisions(
+      new NextRequest('https://site.test/pricing', { headers: { cookie } }),
+      response(),
+      PAGE,
+      { slug: '/pricing' },
+    );
+    await prepr.resolveDecisions(
+      new NextRequest('https://site.test/?utm_source=ad', {
+        headers: { cookie },
+      }),
+      response(),
+      PAGE,
+      { slug: '/' },
+    );
+    expect(decisionCalls()).toHaveLength(4);
+  });
+
   it('asks nothing on a page without segment groups; onlyIf saying no stores the defaults', async () => {
     const plain = await setup({ vary: 'Authorization' });
     const res = plain.response();
@@ -166,7 +200,9 @@ describe('resolveDecisions', () => {
       { onlyIf: () => false },
     );
     expect(skipped.decisionCalls()).toHaveLength(0);
-    expect(skippedRes.cookies.get('prepr_decisions')?.value).toBe('/@*');
+    expect(skippedRes.cookies.get('prepr_decisions')?.value).toMatch(
+      /^\d+\|\/@\*$/,
+    );
   });
 
   it('never throws: when Prepr fails, the page view gets the defaults', async () => {
@@ -186,8 +222,8 @@ describe('resolveDecisions', () => {
         { slug: '/pricing' },
       ),
     ).resolves.toBeUndefined();
-    expect(res.cookies.get('prepr_decisions')?.value).toBe(
-      '/pricing?utm_source=x@*',
+    expect(res.cookies.get('prepr_decisions')?.value).toMatch(
+      /^\d+\|\/pricing\?utm_source=x@\*$/,
     );
   });
 });
