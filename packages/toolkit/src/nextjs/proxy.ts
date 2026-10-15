@@ -47,6 +47,17 @@ export interface PreprProxyOptions {
   onlyIf?: (request: NextRequest) => boolean | Promise<boolean>;
 }
 
+// Prefetches and client-side navigations fetch the page's RSC payload. Next.js
+// strips its own `RSC` and `Next-Router-*` headers before the proxy runs, but
+// keeps `Next-Url`, and the browser marks a fetch as `Sec-Fetch-Dest: empty`.
+function isRouterFetch(request: NextRequest): boolean {
+  return (
+    request.headers.has('rsc') ||
+    request.headers.has('next-url') ||
+    request.headers.get('sec-fetch-dest') === 'empty'
+  );
+}
+
 // API routes, Next.js internals and files never render a CMS page.
 function isPagePath(pathname: string): boolean {
   return (
@@ -181,7 +192,7 @@ export function createPreprProxy(
           }),
         // Prefetches and client-side navigations: the browser asks its own
         // decision when the visitor clicks.
-        !request.headers.has('rsc') &&
+        !isRouterFetch(request) &&
           resolveDecisionsWith(
             client,
             request,

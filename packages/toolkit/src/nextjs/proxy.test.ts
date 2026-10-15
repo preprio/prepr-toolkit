@@ -154,6 +154,9 @@ describe('createPreprProxy', () => {
     for (const headers of <Record<string, string>[]>[
       { rsc: '1' },
       { rsc: '1', 'next-router-prefetch': '1' },
+      // What reaches the proxy: Next.js strips its RSC headers first.
+      { 'next-url': '/solutions/developers' },
+      { 'sec-fetch-dest': 'empty' },
     ]) {
       const response = await handle(request('/pricing', headers));
       expect(response.cookies.get('prepr_decisions')).toBeUndefined();
