@@ -120,3 +120,38 @@ describe('toDecisionDocument topLevelOnly', () => {
     expect(printed).not.toContain('cards');
   });
 });
+
+describe('decision for the nested lists only', () => {
+  it('asks about the lists inside the items, not the top-level list the proxy decided', () => {
+    const top = compact(
+      toDecisionDocument(PAGE_QUERY, schema, undefined, { topLevelOnly: true }),
+    );
+    const nested = compact(
+      toDecisionDocument(PAGE_QUERY, schema, undefined, { nestedOnly: true }),
+    );
+    // Together they cover what the full decision covers.
+    expect(top).toContain(`... on Hero { ${CTX}: _context`);
+    expect(top).not.toContain('buttons');
+    expect(nested).not.toContain(`... on Hero { ${CTX}: _context`);
+    expect(nested).not.toContain(`... on Cards { ${CTX}: _context`);
+    expect(nested).toContain(`buttons { ${CTX}: _context`);
+    expect(nested).toContain(`... on Post { ${CTX}: _context`);
+  });
+
+  it('is null when the page has no nested groups, so no request is sent', () => {
+    const data = {
+      Page: {
+        content: [
+          {
+            [CTX]: { kind: 'PERSONALIZATION', group_id: 'g', variant_id: 'V' },
+          },
+        ],
+      },
+    };
+    expect(
+      toDecisionDocument(PAGE_QUERY, schema, personalizationPaths(data), {
+        nestedOnly: true,
+      }),
+    ).toBeNull();
+  });
+});

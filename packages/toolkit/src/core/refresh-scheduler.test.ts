@@ -40,21 +40,27 @@ afterEach(() => {
 });
 
 describe('createPreprRefreshScheduler', () => {
-  it('refreshes about 3 s and 10 s after a view, and starts over on the next view', async () => {
+  it('refreshes once, 4 s after a view, and starts over on the next view', async () => {
     setRefreshCookie(Date.now(), ['/', '/pricing']);
     const scheduler = createPreprRefreshScheduler();
 
     scheduler.view();
-    await vi.advanceTimersByTimeAsync(2_999);
+    await vi.advanceTimersByTimeAsync(3_999);
     expect(fetchMock).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(refreshes()).toEqual(['/|/pricing']);
 
-    scheduler.view(); // the 10 s timer of the first view is dropped
-    await vi.advanceTimersByTimeAsync(9_999);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // One Prepr request per view by default: no second timed refresh.
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    scheduler.view();
+    await vi.advanceTimersByTimeAsync(2_000);
+    scheduler.view(); // the pending timer of the previous view is dropped
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [
       string,
       RequestInit,
@@ -63,6 +69,26 @@ describe('createPreprRefreshScheduler', () => {
     expect(init.cache).toBe('no-store');
     expect(init.credentials).toBe('same-origin');
     scheduler.stop();
+  });
+
+  it('refreshes at each refreshAfter delay, or not at all with []', async () => {
+    setRefreshCookie(Date.now(), ['/']);
+    const twice = createPreprRefreshScheduler({
+      refreshAfter: [3_000, 10_000],
+    });
+    twice.view();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    twice.stop();
+
+    fetchMock.mockClear();
+    const never = createPreprRefreshScheduler({ refreshAfter: [] });
+    never.view();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+    never.stop();
   });
 
   it('does nothing without pages to refresh', async () => {

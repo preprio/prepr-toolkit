@@ -3,6 +3,7 @@ export {
   PREPR_DEFAULT_VARIANT,
   PREPR_TYPE_ALIAS,
 } from './constants';
+export { batchDocuments, type PreprBatch } from './batch';
 export { toDecisionDocument } from './decision-document';
 export { toAbProbeDocument } from './probe-document';
 export {

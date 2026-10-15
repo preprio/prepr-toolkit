@@ -1,6 +1,9 @@
 import type { NextRequest, NextResponse } from 'next/server';
 
+import type { DocumentNode } from 'graphql';
+
 import {
+  clientSchemas,
   isFrameworkSignal,
   mergePreprHeaders,
   type PreprClient,
@@ -13,10 +16,57 @@ import {
   serializeRefresh,
 } from '../core/refresh';
 import { getPreprHeadersFromHeaders } from '../core/server';
-import type { PreprDecisions } from '../core/variants';
+import {
+  batchDocuments,
+  decisionsFrom,
+  toDecisionDocument,
+  type PreprDecisions,
+} from '../core/variants';
 
 /** The cookie `resolveDecisions` writes and the `PreprStack` switch reads. */
 export const PREPR_DECISIONS_COOKIE = 'prepr_decisions';
+
+/**
+ * Request header from the proxy to the page render: the decisions of the
+ * page's top-level lists, so `decide()` asks Prepr only about nested ones.
+ * Visitors can send it too; like the decisions cookie, it only picks which
+ * variant shows and is no access control.
+ */
+export const PREPR_DECIDED_HEADER = 'x-prepr-decided';
+
+/**
+ * Sets (or, with `null`, removes) the decided header on the request the
+ * page renders, through Next's request-header override protocol. Removing it
+ * keeps a value the visitor sent from reaching the render.
+ */
+export function forwardDecided(
+  request: NextRequest,
+  response: NextResponse,
+  decisions: PreprDecisions | null,
+): void {
+  const existing = response.headers.get('x-middleware-override-headers');
+  const names = new Set<string>();
+  if (existing) {
+    for (const name of existing.split(',')) {
+      if (name.trim()) names.add(name.trim());
+    }
+  } else {
+    // Overriding replaces the request's headers: carry the others over.
+    request.headers.forEach((value, key) => {
+      names.add(key);
+      response.headers.set(`x-middleware-request-${key}`, value);
+    });
+  }
+  const forwarded = `x-middleware-request-${PREPR_DECIDED_HEADER}`;
+  if (decisions) {
+    names.add(PREPR_DECIDED_HEADER);
+    response.headers.set(forwarded, serializeDecisions(decisions));
+  } else {
+    names.delete(PREPR_DECIDED_HEADER);
+    response.headers.delete(forwarded);
+  }
+  response.headers.set('x-middleware-override-headers', [...names].join(','));
+}
 
 // Groups remembered across pages; prefetches of several pages each add theirs.
 const DECISIONS_MAX_GROUPS = 40;
@@ -40,7 +90,7 @@ export function parseDecisions(raw: string | undefined): Map<string, string[]> {
   return out;
 }
 
-export function serializeDecisions(decisions: Map<string, string[]>): string {
+export function serializeDecisions(decisions: PreprDecisions): string {
   return [...decisions]
     .slice(0, DECISIONS_MAX_GROUPS)
     .map(([group, variants]) => `${group}:${variants.join('|')}`)
@@ -115,6 +165,113 @@ export async function decidePage<TVariables>(
     headers,
     init: { signal: AbortSignal.timeout(timeoutMs) },
   });
+  rememberGroups(seenGroups, document, variables, decided);
+  return decided;
+}
+
+/** A page to decide: the query it renders and its variables. */
+export interface PreprPageQuery {
+  document: PreprDocument<unknown, any>;
+  variables?: unknown;
+}
+
+// Per client and document: the top-level decision document, built once.
+const topLevelDocuments = new WeakMap<
+  PreprClient,
+  Map<unknown, DocumentNode | null>
+>();
+
+async function topLevelDocument(
+  client: PreprClient,
+  document: unknown,
+): Promise<DocumentNode | null> {
+  let byDocument = topLevelDocuments.get(client);
+  if (!byDocument) {
+    byDocument = new Map();
+    topLevelDocuments.set(client, byDocument);
+  }
+  if (!byDocument.has(document)) {
+    const schema = await clientSchemas.get(client)!();
+    byDocument.set(
+      document,
+      toDecisionDocument(document, schema, undefined, { topLevelOnly: true }),
+    );
+  }
+  return byDocument.get(document)!;
+}
+
+/**
+ * {@link decidePage} for several pages in one Prepr request: their decision
+ * queries are merged into one operation. `undefined` for a page without
+ * segment content, or for every page when the request fails.
+ */
+export async function decidePages(
+  client: PreprClient,
+  seenGroups: PreprSeenGroups,
+  headers: Headers,
+  pages: readonly PreprPageQuery[],
+  timeoutMs = 1000,
+): Promise<(PreprDecisions | undefined)[]> {
+  // Cached checks: pages without segment groups are left out of the batch.
+  const segmented = await Promise.all(
+    pages.map((page) => client.hasSegments(page.document, page.variables)),
+  );
+  const asked = pages.filter((_, index) => segmented[index]);
+  if (asked.length <= 1) {
+    return Promise.all(
+      pages.map((page, index) =>
+        segmented[index]
+          ? decidePage(
+              client,
+              seenGroups,
+              headers,
+              page.document,
+              page.variables,
+              timeoutMs,
+            )
+          : undefined,
+      ),
+    );
+  }
+
+  const documents = await Promise.all(
+    asked.map((page) => topLevelDocument(client, page.document)),
+  );
+  const batch = batchDocuments(
+    asked.flatMap((page, index) =>
+      documents[index]
+        ? [
+            {
+              document: documents[index],
+              variables: (page.variables ?? {}) as Record<string, unknown>,
+            },
+          ]
+        : [],
+    ),
+  );
+  const { data } = await client.query(batch.document, batch.variables, {
+    headers,
+    init: { signal: AbortSignal.timeout(timeoutMs) },
+  });
+
+  let batchIndex = 0;
+  let askedIndex = 0;
+  return pages.map((page, index) => {
+    if (!segmented[index]) return undefined;
+    const hasDocument = documents[askedIndex++] !== null;
+    if (!hasDocument) return new Map();
+    const decided = decisionsFrom(batch.split(data, batchIndex++));
+    rememberGroups(seenGroups, page.document, page.variables, decided);
+    return decided;
+  });
+}
+
+function rememberGroups(
+  seenGroups: PreprSeenGroups,
+  document: unknown,
+  variables: unknown,
+  decided: PreprDecisions,
+): void {
   let byVariables = seenGroups.get(document);
   if (!byVariables) {
     byVariables = new Map();
@@ -133,7 +290,6 @@ export async function decidePage<TVariables>(
   // variant for a visitor in none of its segments, so one answer does not
   // list them all.
   for (const group of decided.keys()) groups.add(group);
-  return decided;
 }
 
 /**
@@ -225,6 +381,8 @@ export async function resolveDecisionsWith<TVariables>(
   variables?: TVariables,
   options?: ResolveDecisionsOptions,
 ): Promise<void> {
+  // Until a decision is in hand, the render decides the whole page itself.
+  forwardDecided(request, response, null);
   try {
     if (options?.onlyIf && !(await options.onlyIf())) return;
 
@@ -251,6 +409,7 @@ export async function resolveDecisionsWith<TVariables>(
       !contextChanged(request, headers) &&
       [...known].every((group) => stored.has(group))
     ) {
+      forwardDecided(request, response, stored);
       return;
     }
 
@@ -262,7 +421,9 @@ export async function resolveDecisionsWith<TVariables>(
       variables,
       options?.timeoutMs,
     );
-    if (!decided || decided.size === 0) return;
+    if (!decided) return;
+    forwardDecided(request, response, decided);
+    if (decided.size === 0) return;
     writeDecisions(request, response, [decided], [path]);
   } catch (error) {
     if (isFrameworkSignal(error)) throw error;

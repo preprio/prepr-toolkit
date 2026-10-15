@@ -60,25 +60,30 @@ async function setup({
         headers: { vary: 'Prepr-Segments' },
       });
     }
-    // Each page decides its own group: the slug is in the variables.
-    const slug = JSON.parse(body).variables?.slug ?? '?';
-    return new Response(
-      JSON.stringify({
-        data: {
-          Page: {
-            content: [
-              {
-                _preprContext: {
-                  kind: 'PERSONALIZATION',
-                  group_id: `g${slug.replace(/\W/g, '')}`,
-                  variant_id: 'VIP',
-                },
-              },
-            ],
+    // Each page decides its own group: the slug is in the variables. A
+    // batch prefixes each page's variables and root fields with p<index>_.
+    const page = (slug: string) => ({
+      content: [
+        {
+          _preprContext: {
+            kind: 'PERSONALIZATION',
+            group_id: `g${slug.replace(/\W/g, '')}`,
+            variant_id: 'VIP',
           },
         },
-      }),
-    );
+      ],
+    });
+    const variables: Record<string, string> = JSON.parse(body).variables ?? {};
+    const batched = Object.keys(variables).filter((key) => /^p\d+_/.test(key));
+    const data = batched.length
+      ? Object.fromEntries(
+          batched.map((key) => [
+            `${key.split('_')[0]}_Page`,
+            page(variables[key]!),
+          ]),
+        )
+      : { Page: page(variables.slug ?? '?') };
+    return new Response(JSON.stringify({ data }));
   });
   const prepr = createPreprClient({ url: URL_, fetch });
   const page = vi.fn((url: URL) =>
@@ -138,7 +143,7 @@ describe('createPreprProxy', () => {
   });
 
   it("answers a refresh request with fresh decisions for the visitor's own pages, without rendering", async () => {
-    const { handle, request, page } = await setup();
+    const { handle, request, page, decisionCalls } = await setup();
 
     const response = await handle(
       request('/blog', {
@@ -162,6 +167,8 @@ describe('createPreprProxy', () => {
       '/pricing',
       '/missing',
     ]);
+    // Both pages in one Prepr request, not one per page.
+    expect(decisionCalls()).toHaveLength(1);
   });
 
   it('decides nothing for a refresh from another site, a non-GET request, or one onlyIf rejects', async () => {
@@ -189,6 +196,41 @@ describe('createPreprProxy', () => {
     const page = await bots.handle(bots.request('/'));
     expect(page.cookies.get('prepr_decisions')).toBeUndefined();
     expect(bots.decisionCalls()).toHaveLength(0);
+  });
+
+  it('hands its decisions to the render, also when it reuses a fresh one', async () => {
+    const { handle, request, decisionCalls } = await setup();
+    const forwarded = (response: Response) =>
+      response.headers
+        .get('x-middleware-override-headers')
+        ?.split(',')
+        .includes('x-prepr-decided')
+        ? response.headers.get('x-middleware-request-x-prepr-decided')
+        : null;
+
+    const first = await handle(request('/'));
+    expect(forwarded(first)).toBe('g:VIP');
+
+    const uid = first.cookies.get('__prepr_uid')?.value;
+    const cookie = `__prepr_uid=${uid}; prepr_decisions=g:VIP; prepr_refresh=/~${Date.now()}`;
+    const again = await handle(request('/', { cookie }));
+    expect(forwarded(again)).toBe('g:VIP');
+    expect(decisionCalls()).toHaveLength(1);
+  });
+
+  it('never lets a visitor-sent decided header reach the render', async () => {
+    const { handle, request } = await setup({ onlyIf: () => false });
+
+    const response = await handle(
+      request('/', { 'x-prepr-decided': 'g:FORGED' }),
+    );
+
+    expect(
+      response.headers.get('x-middleware-override-headers')?.split(','),
+    ).not.toContain('x-prepr-decided');
+    expect(
+      response.headers.get('x-middleware-request-x-prepr-decided'),
+    ).toBeNull();
   });
 
   it('sends a preview visitor without draft mode through the draft route first', async () => {

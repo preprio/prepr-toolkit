@@ -99,6 +99,13 @@ export interface PreprPersonalizationSwitchProps {
   refresh?: boolean;
   /** Same as `createPreprProxy`'s `freshFor`. Default 10 000 ms. */
   freshFor?: number;
+  /**
+   * When to refresh after each page view, in ms. Default `[4000]`. Each
+   * delay is one Prepr request per page view; `[3000, 10000]` also catches
+   * segments Prepr takes longer to process, and `[]` refreshes only on link
+   * intent and when the tab comes back into view.
+   */
+  refreshAfter?: readonly number[];
 }
 
 /**
@@ -125,6 +132,7 @@ let viewCount = 0;
 export function PreprPersonalizationSwitch({
   refresh = true,
   freshFor,
+  refreshAfter,
 }: PreprPersonalizationSwitchProps): ReactElement | null {
   const [scheduler, setScheduler] = useState<PreprRefreshScheduler | null>(
     null,
@@ -144,15 +152,20 @@ export function PreprPersonalizationSwitch({
     applyPreprDecisions(`${url}#${++viewCount}`);
   });
 
+  // A string key: an inline `refreshAfter={[…]}` is a new array every render.
+  const delays = refreshAfter?.join(',');
   useEffect(() => {
     if (!refresh) return;
-    const started = createPreprRefreshScheduler({ freshFor });
+    const started = createPreprRefreshScheduler({
+      freshFor,
+      refreshAfter: delays === undefined ? undefined : parseDelays(delays),
+    });
     setScheduler(started);
     return () => {
       started.stop();
       setScheduler(null);
     };
-  }, [refresh, freshFor]);
+  }, [refresh, freshFor, delays]);
 
   // The pathname is request data on routes whose params are only known at
   // request time, and reading it outside a Suspense boundary stops Next.js
@@ -166,6 +179,9 @@ export function PreprPersonalizationSwitch({
       )
     : null;
 }
+
+const parseDelays = (delays: string): number[] =>
+  delays === '' ? [] : delays.split(',').map(Number);
 
 function ViewCounter({
   scheduler,

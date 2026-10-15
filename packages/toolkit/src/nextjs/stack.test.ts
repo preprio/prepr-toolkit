@@ -567,7 +567,7 @@ describe('PreprPersonalizationSwitch', () => {
 
     const layout = createRoot(document.createElement('div'));
     await act(() => layout.render(createElement(PreprPersonalizationSwitch)));
-    await act(() => vi.advanceTimersByTimeAsync(3_000));
+    await act(() => vi.advanceTimersByTimeAsync(4_000));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     act(() => layout.unmount());
     await act(() => vi.advanceTimersByTimeAsync(10_000));

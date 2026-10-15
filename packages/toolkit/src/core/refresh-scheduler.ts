@@ -16,12 +16,19 @@ export interface PreprRefreshScheduler {
 export interface PreprRefreshSchedulerOptions {
   /** Same as the proxy's `freshFor`: how old a decision may get. Default 10 000 ms. */
   freshFor?: number;
+  /**
+   * When to refresh after each page view, in ms. Default `[4000]`: Prepr
+   * needs a few seconds after a tracked page view before a segment change
+   * shows in its decisions. Add a later delay (e.g. `[3000, 10000]`) to also
+   * catch slower processing, at one more Prepr request per page view; `[]`
+   * refreshes only on link intent and when the tab comes back.
+   */
+  refreshAfter?: readonly number[];
 }
 
 // Prepr needs a few seconds after a tracked event (the page view the pixel
-// just sent) before a segment change shows in its decisions: the first
-// refresh waits for that, the second catches slower processing.
-const VIEW_DELAYS_MS = [3_000, 10_000];
+// just sent) before a segment change shows in its decisions.
+const DEFAULT_REFRESH_AFTER_MS = [4_000];
 // A link the visitor is about to follow gets a check of its own, unless the
 // last decision is this recent.
 const INTENT_MIN_AGE_MS = 2_000;
@@ -65,6 +72,7 @@ export function createPreprRefreshScheduler(
   options: PreprRefreshSchedulerOptions = {},
 ): PreprRefreshScheduler {
   const freshFor = options.freshFor ?? 10_000;
+  const refreshAfter = options.refreshAfter ?? DEFAULT_REFRESH_AFTER_MS;
   let timers: ReturnType<typeof setTimeout>[] = [];
   let inFlight = false;
   let stopped = unsupported();
@@ -131,7 +139,7 @@ export function createPreprRefreshScheduler(
   return {
     view() {
       timers.forEach(clearTimeout);
-      timers = VIEW_DELAYS_MS.map((delay) => setTimeout(refresh, delay));
+      timers = refreshAfter.map((delay) => setTimeout(refresh, delay));
     },
     stop() {
       timers.forEach(clearTimeout);

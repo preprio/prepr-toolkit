@@ -1,6 +1,7 @@
 // A namespace import: `cacheTag` only exists from Next 16, and a named import
 // would fail to resolve on the older versions the peer range allows.
 import * as nextCache from 'next/cache';
+import { headers as nextHeaders } from 'next/headers';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import {
@@ -20,6 +21,8 @@ import {
 import type { PreprDecisions } from '../core/variants';
 import { documentOf } from '../core/variants/ast';
 import {
+  parseDecisions,
+  PREPR_DECIDED_HEADER,
   preprClientInternals,
   resolveDecisionsWith,
   type PreprSeenGroups,
@@ -229,13 +232,21 @@ export function createPreprClient(
       variables?: TVariables,
       queryOptions: PreprDecideOptions = {},
     ): Promise<PreprDecisions> {
-      return client.decide(document, variables, {
+      const [preprHeaders, decided] = await Promise.all([
+        getPreprHeaders(),
+        nextHeaders().then((h) => h.get(PREPR_DECIDED_HEADER)),
+      ]);
+      const headers = mergePreprHeaders(preprHeaders, queryOptions.headers);
+      if (decided === null) {
+        return client.decide(document, variables, { ...queryOptions, headers });
+      }
+      // The proxy decided the top-level lists for this request already.
+      const nested = await client.decide(document, variables, {
         ...queryOptions,
-        headers: mergePreprHeaders(
-          await getPreprHeaders(),
-          queryOptions.headers,
-        ),
+        headers,
+        nestedOnly: true,
       });
+      return new Map([...parseDecisions(decided), ...nested]);
     },
 
     hasAbTests: (document, variables) => client.hasAbTests(document, variables),

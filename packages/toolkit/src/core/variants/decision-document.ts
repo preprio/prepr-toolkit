@@ -23,6 +23,8 @@ interface DecisionContext {
   fragments: Record<string, FragmentDefinitionNode>;
   /** Ask only about the first personalizable list on each path, not the ones nested in its items. */
   topLevelOnly?: boolean;
+  /** The opposite: only the lists nested in the items of the first one. */
+  nestedOnly?: boolean;
   /**
    * When known: the response paths whose lists hold personalization groups
    * (with the item types that do), and every prefix of those paths. Fields
@@ -39,6 +41,8 @@ function decisionSelectionSet(
   typeName: string,
   path: string,
   ctx: DecisionContext,
+  // Whether a personalizable list encloses this selection.
+  nested = false,
 ): SelectionSetNode | null {
   const selections: SelectionNode[] = [];
   for (const selection of set.selections) {
@@ -50,6 +54,7 @@ function decisionSelectionSet(
         fragment.typeCondition.name.value,
         path,
         ctx,
+        nested,
       );
       if (pruned) {
         selections.push(
@@ -66,6 +71,7 @@ function decisionSelectionSet(
         selection.typeCondition?.name.value ?? typeName,
         path,
         ctx,
+        nested,
       );
       if (pruned) selections.push({ ...selection, selectionSet: pruned });
       continue;
@@ -84,11 +90,21 @@ function decisionSelectionSet(
       field.type,
       fieldPath,
       ctx,
+      nested || field.personalizable,
     );
     const groupTypes = ctx.paths?.groups.get(fieldPath);
     const holdsGroups =
       field.personalizable && (!ctx.paths || groupTypes !== undefined);
-    if (holdsGroups) {
+    if (holdsGroups && ctx.nestedOnly && !nested) {
+      // Decided elsewhere: keep only the way to the lists inside its items.
+      if (child) {
+        selections.push({
+          ...selection,
+          arguments: withoutPersonalizeArg(selection.arguments),
+          selectionSet: child,
+        });
+      }
+    } else if (holdsGroups) {
       selections.push({
         ...selection,
         arguments: withoutPersonalizeArg(selection.arguments),
@@ -121,14 +137,14 @@ function decisionSelectionSet(
  * item's `_context`. With `groupPaths` (from {@link personalizationPaths}),
  * only the fields, and the item types, that actually hold personalization
  * groups are kept. With `topLevelOnly`, lists nested inside the items of a
- * personalizable list are left out.
+ * personalizable list are left out; with `nestedOnly`, only those are kept.
  * Returns null when nothing is left to ask.
  */
 export function toDecisionDocument(
   document: unknown,
   schema: PreprSchemaInfo,
   groupPaths?: PreprGroupPaths,
-  options?: { topLevelOnly?: boolean },
+  options?: { topLevelOnly?: boolean; nestedOnly?: boolean },
 ): DocumentNode | null {
   const doc = documentOf(document);
   const fragments: Record<string, FragmentDefinitionNode> = {};
@@ -158,7 +174,13 @@ export function toDecisionDocument(
     operation.selectionSet,
     schema.queryType,
     '',
-    { schema, fragments, paths, topLevelOnly: options?.topLevelOnly },
+    {
+      schema,
+      fragments,
+      paths,
+      topLevelOnly: options?.topLevelOnly,
+      nestedOnly: options?.nestedOnly,
+    },
   );
   if (!pruned) return null;
 

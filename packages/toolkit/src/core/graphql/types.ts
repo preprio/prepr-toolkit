@@ -112,6 +112,11 @@ export interface PreprDecideOptions extends Omit<
    * without `from`: what middleware needs for groups at the top of a stack.
    */
   topLevelOnly?: boolean;
+  /**
+   * @internal Ask only about the lists nested in the items of the first
+   * personalizable list on each path: the proxy decided the rest.
+   */
+  nestedOnly?: boolean;
 }
 
 export interface PreprQueryResult<TResult> {

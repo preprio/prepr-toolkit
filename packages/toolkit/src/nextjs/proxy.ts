@@ -16,7 +16,8 @@ import type { PreprFeatures } from '../core/types';
 import type { PreprDecisions } from '../core/variants';
 import { resolvePreprBucket } from './bucket';
 import {
-  decidePage,
+  decidePages,
+  forwardDecided,
   forwardedHeaders,
   preprClientInternals,
   resolveDecisionsWith,
@@ -152,28 +153,30 @@ export function createPreprProxy(
     );
     const basePath = request.nextUrl.basePath;
     const headers = mergePreprHeaders(forwardedHeaders(request, response));
-    const decided = await Promise.all(
-      paths.map(async (path): Promise<[string, PreprDecisions] | undefined> => {
-        if (!own.has(path) || !path.startsWith(basePath)) return undefined;
-        const pathname = path.slice(basePath.length) || '/';
-        if (!isPagePath(pathname)) return undefined;
-        const target = lookup(new URL(pathname, request.url));
-        if (!target) return undefined;
-        try {
-          const decisions = await decidePage(
-            client,
-            seenGroups,
-            headers,
-            target.document,
-            target.variables,
-            options.timeoutMs,
-          );
-          return decisions?.size ? [path, decisions] : undefined;
-        } catch (error) {
-          if (isFrameworkSignal(error)) throw error;
-          return undefined;
-        }
-      }),
+    const targets: [string, PreprProxyPage][] = [];
+    for (const path of paths) {
+      if (!own.has(path) || !path.startsWith(basePath)) continue;
+      const pathname = path.slice(basePath.length) || '/';
+      if (!isPagePath(pathname)) continue;
+      const target = lookup(new URL(pathname, request.url));
+      if (target) targets.push([path, target]);
+    }
+    let decisions: (PreprDecisions | undefined)[] = [];
+    try {
+      // Every listed page in one Prepr request.
+      decisions = await decidePages(
+        client,
+        seenGroups,
+        headers,
+        targets.map(([, target]) => target),
+        options.timeoutMs,
+      );
+    } catch (error) {
+      if (isFrameworkSignal(error)) throw error;
+    }
+    const decided = targets.map(
+      ([path], index): [string, PreprDecisions] | undefined =>
+        decisions[index]?.size ? [path, decisions[index]] : undefined,
     );
     const found = decided.filter((entry) => entry !== undefined);
     writeDecisions(
@@ -212,6 +215,8 @@ export function createPreprProxy(
       preview,
       features: options.features,
     });
+    // Only a decision made below reaches the render as decided.
+    forwardDecided(request, response, null);
 
     if (target && (await allowed(request))) {
       await Promise.all([
