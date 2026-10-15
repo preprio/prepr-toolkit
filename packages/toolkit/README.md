@@ -396,7 +396,12 @@ Every page view is decided. Nothing is reused from a prefetch, the router cache 
 
 ##### Deploying
 
-Every page load waits for one decision from Prepr before the proxy sends the page. Prepr answers in tens of milliseconds; what makes a decision slow is the connection to `graphql.prepr.io`: a new connection adds about 100 ms, and the first one after minutes without traffic, or on a fresh server instance, can take most of a second. That part is your deployment's to tune:
+Every page load waits for one decision from Prepr before the proxy sends the page. Most of that time is spent at Prepr, in two steps:
+
+- **Who is the visitor?** For a visitor Prepr has not seen before, it first works out their segments, which takes a few hundred milliseconds on pages with segment groups. A returning visitor is resolved at once.
+- **The answer.** Prepr's CDN caches each decision per page, segment set and A/B bucket, and shares it between visitors who get the same. A cached answer takes tens of milliseconds; working one out takes most of a second, once per page and combination until Prepr's cache drops it.
+
+Under steady traffic most answers come from that cache. Your deployment adds the rest:
 
 - **Region.** Run your functions, the proxy included, in the region closest to your visitors and to Prepr.
 - **Keep connections open.** Node.js closes idle connections after a few seconds. On the Node.js runtime, give the client a `fetch` that keeps them longer; this affects only the client's own requests:
