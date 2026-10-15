@@ -336,7 +336,7 @@ Conversions stay your choice: put `data-prepr-variant-event` (or `data-prepr-var
 
 ##### The proxy
 
-One call in `proxy.ts` gives `PreprStack` what it needs from the request: the visitor's Prepr headers and customer id, the A/B bucket, and, at every page view, the variant of every personalization group on the page, in one Prepr request. Tell it which query each URL renders; most sites route every page through one query:
+One call in `proxy.ts` gives `PreprStack` what it needs from the request: the visitor's Prepr headers and customer id and, at every page view, the visitor's variant of every A/B test and personalization group on the page, in one Prepr request. Tell it which query each URL renders; most sites route every page through one query:
 
 ```ts
 // proxy.ts
@@ -364,11 +364,11 @@ import { PreprPersonalizationSwitch } from '@preprio/toolkit/nextjs';
 <PreprPersonalizationSwitch />;
 ```
 
-API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped, and so are pages without A/B tests or segment groups (after a cached check). Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers, which then get the default variants. In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `resolvePreprBucket`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
+API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped. Every other URL `page` maps to a query gets one decision query per page view; a page without groups gets an empty answer. Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers, which then get the default variants. In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
 
 ##### A/B tests
 
-`PreprStack` renders both variants of an A/B test in the static shell and shows the visitor's one before first paint; A is the default, also for crawlers. Prepr assigns the bucket once per visitor; the proxy stores it in a cookie, and only on pages that have an A/B test. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
+A/B tests go through the same decision as segment groups: both variants are in the prerendered page, and the page view's decision shows the visitor's one before first paint. Prepr assigns a variant per experiment, from the visitor's customer id and that experiment's split, so the decision is the only reliable source; one stored bucket per visitor cannot follow a 20/80 and a 50/50 test at once. A is the default, also for crawlers and when Prepr cannot be asked. Pass `bucket` to `PreprStack` only when the route already knows it. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
 
 ##### How each visitor gets their variant
 
@@ -470,7 +470,7 @@ Next.js accepts at most 128 tags per `cacheTag()` call. A page with more items i
 - **`variants: true`** adds `personalize: false` to every personalizable field in your query, at any depth, and selects each item's `_context`. The client learns which fields are personalizable from one schema introspection request per client, kept in the Data Cache.
 - **Decisions** send your query cut down to the lists that hold segment groups, selecting only `_context`, with the visitor's headers and never cached. Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id. A page without segment groups makes no request. `prepr.decide()` does the same inside a render, for rendering variants yourself with `resolveVariants`; `PreprStack` does not need it.
 - **`PreprStack`** renders every variant of each segment group, and each item with groups nested inside it once per combination of their variants, in `display: contents` wrappers that stay hidden until the view's decision marks one to show. A group with no default variant still gets its place.
-- **A/B variants** are both in the HTML, each in a `display: contents` wrapper; an inline script (and a layout effect after in-app navigation) shows the bucket from the cookie. A hidden variant never becomes visible, so the tracking pixel records no impression for it.
+- **A/B variants** are both in the HTML and picked by the same decision as segment groups. A hidden variant never becomes visible, so the tracking pixel records no impression for it.
 - **`hasAbTests`** sends your query without its leaf fields and no visitor headers, so Prepr's CDN caches it, and reads the answer from the `Vary` header. Answers are reused for a minute.
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call. `tagItems` adds a tag per item; see [Refreshing on publish](#refreshing-on-publish).
 - **Outside `'use cache'`, set `revalidate`** on the client (`false` or seconds). Otherwise a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
@@ -530,7 +530,7 @@ const decisions = decisionQuery
 const content = resolveVariants(page.Page.content, { decisions, bucket });
 ```
 
-`visitorPreprHeaders` are the headers the middleware forwards (`getPreprHeaders()` in Next.js); `bucket` is the visitor's A/B bucket (`resolvePreprBucket` stores it in a cookie).
+`visitorPreprHeaders` are the headers the middleware forwards (`getPreprHeaders()` in Next.js); `bucket` is the visitor's A/B bucket, when you know it; leave it out and A/B tests use the decision too (see below).
 
 With Apollo, parse the strings once and use them like any document:
 
@@ -575,7 +575,7 @@ import {
 
 Only named queries with personalizable fields get exports; two queries with the same name fail the run. The generated decision query asks about every personalizable list. When you have the variants result at hand, `toDecisionQuery(query, schema, { from })` is smaller and markedly faster for visitors Prepr has not seen before.
 
-A/B tests need no decision query: render both variants and pick the visitor's bucket, as `PreprStack` and `resolvePreprBucket` do, or pass the bucket to `resolveVariants`.
+A decision query without `from` also returns the visitor's variant of each A/B test, per experiment and its split; `from` limits it to the lists with segment groups. Otherwise pass a known bucket to `resolveVariants`.
 
 ### Image loader
 

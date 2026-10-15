@@ -75,7 +75,7 @@ export function forwardedHeaders(request: NextRequest, response: NextResponse) {
  */
 export const preprClientInternals = new WeakMap<
   object,
-  { client: PreprClient; url: string }
+  { client: PreprClient }
 >();
 
 export interface ResolveDecisionsOptions {
@@ -86,10 +86,10 @@ export interface ResolveDecisionsOptions {
 }
 
 /**
- * The decisions for one page view, serialized: every personalization group
- * on the page, nested lists included, in one Prepr request.
- * {@link DEFAULT_DECISION} when Prepr cannot answer in time, `null` when the
- * page holds no segment content (a cached check, no request).
+ * The decisions for one page view, serialized: the visitor's variant of
+ * every A/B test and segment personalization group on the page, nested lists
+ * included, in one Prepr request. Empty when the page has none;
+ * {@link DEFAULT_DECISION} when Prepr cannot answer in time.
  */
 export async function decideView<TVariables>(
   client: PreprClient,
@@ -97,9 +97,8 @@ export async function decideView<TVariables>(
   document: PreprDocument<unknown, TVariables>,
   variables: TVariables | undefined,
   timeoutMs = 1000,
-): Promise<string | null> {
+): Promise<string> {
   try {
-    if (!(await client.hasSegments(document, variables))) return null;
     const decided = await client.decide(document, variables, {
       headers,
       init: { signal: AbortSignal.timeout(timeoutMs) },
@@ -153,7 +152,7 @@ function reusable(request: NextRequest, headers: Headers): boolean {
  * The body of the Next client's `resolveDecisions`: decides the page view
  * and stores the answer on `response`. A reload of the same view within
  * {@link REUSE_MS}, with no other page view in between, keeps the stored
- * decision. A page without segment groups gets no cookie.
+ * decision.
  */
 export async function resolveDecisionsWith<TVariables>(
   client: PreprClient,
@@ -166,7 +165,7 @@ export async function resolveDecisionsWith<TVariables>(
   const headers = mergePreprHeaders(forwardedHeaders(request, response));
   // The browser still has it: nothing to write.
   if (reusable(request, headers)) return;
-  let decision: string | null = DEFAULT_DECISION;
+  let decision = DEFAULT_DECISION;
   try {
     if (!options?.onlyIf || (await options.onlyIf())) {
       decision = await decideView(
@@ -180,7 +179,6 @@ export async function resolveDecisionsWith<TVariables>(
   } catch (error) {
     if (isFrameworkSignal(error)) throw error;
   }
-  if (decision === null) return;
   response.cookies.set(
     PREPR_DECISIONS_COOKIE,
     `${Date.now()}|${viewKey(request)}@${decision}`,

@@ -16,10 +16,8 @@ vi.mock('next/navigation', () => ({
 }));
 
 const { PreprStack } = await import('./stack');
-const { PREPR_BUCKET_COOKIE } = await import('./bucket');
-const { applyPreprAbBucket, applyPreprDecisions } = await import('./ab-switch');
-const { PreprAbSwitch, PreprPersonalizationSwitch } =
-  await import('./components');
+const { applyPreprDecisions } = await import('./decision-switch');
+const { PreprPersonalizationSwitch } = await import('./components');
 
 // Decision requests a client render sends: none unless a test answers them.
 const decisionRequests = vi.fn(
@@ -30,8 +28,7 @@ vi.stubGlobal('fetch', decisionRequests);
 const ctx = (kind: string, group: string, variant: string) => ({
   _preprContext: { kind, group_id: group, variant_id: variant },
 });
-// Static content and one A/B test; nothing segment-personalized, so the whole
-// stack renders synchronously.
+// Static content and one A/B test.
 const items = [
   { id: 'intro' },
   { id: 'cta-a', ...ctx('AB_TEST', 'g-cta', 'A') },
@@ -51,68 +48,45 @@ function html(props: { bucket?: string } = {}) {
 }
 
 afterEach(() => {
-  delete (window as { __preprAbBucket?: string }).__preprAbBucket;
-  delete (window as { __preprAbSheet?: unknown }).__preprAbSheet;
   delete (window as { __preprDecision?: unknown }).__preprDecision;
   decisionRequests.mockClear();
   history.replaceState(null, '', '/');
   document.cookie = 'prepr_decisions=; max-age=0; path=/';
-  document.adoptedStyleSheets = [];
   document.head.innerHTML = '';
   document.body.innerHTML = '';
-  document.cookie = 'prepr_ab_bucket=; max-age=0; path=/';
 });
 
-describe('PreprStack A/B switch', () => {
-  it('renders both variants in wrappers, plus the base style and switch script', () => {
-    const out = html();
-    expect(out).toContain('<div data-prepr-ab="A"><p>cta-a</p></div>');
-    expect(out).toContain('<div data-prepr-ab="B"><p>cta-b</p></div>');
-    expect(out).toContain(
-      '[data-prepr-ab]:not([data-prepr-ab="A"]){display:none}',
+describe('PreprStack A/B tests', () => {
+  const shown = () =>
+    [...document.querySelectorAll('[data-prepr-show]')].map(
+      (el) => el.textContent,
     );
-    expect(out).toContain('<script>');
+
+  it('renders both variants hidden, picked by the same decision as segment groups', () => {
+    const out = html();
+    expect(out).toContain(
+      '<div data-prepr-v="g-cta:A" data-prepr-default=""><p>cta-a</p></div>',
+    );
+    expect(out).toContain('<div data-prepr-v="g-cta:B"><p>cta-b</p></div>');
     expect(out).toContain('<p>intro</p>');
+
+    history.replaceState(null, '', '/pricing');
+    document.body.innerHTML = out;
+    applyPreprDecisions('g-cta:B');
+    expect(shown()).toEqual(['cta-b']);
   });
 
-  it('renders only the known bucket, without a script, when bucket is passed', () => {
+  it('shows A when Prepr could not be asked', () => {
+    document.body.innerHTML = html();
+    applyPreprDecisions('*');
+    expect(shown()).toEqual(['cta-a']);
+  });
+
+  it('renders only the known bucket, with nothing to decide, when bucket is passed', () => {
     const out = html({ bucket: 'B' });
     expect(out).toContain('<p>cta-b</p>');
     expect(out).not.toContain('cta-a');
     expect(out).not.toContain('<script>');
-  });
-
-  it('shows B before paint for a bucket-B visitor, and leaves A as the default', () => {
-    const script = /<script>([\s\S]*?)<\/script>/.exec(html())![1]!;
-    const rules = () =>
-      [
-        ...(document.adoptedStyleSheets ?? []).flatMap((sheet) =>
-          [...sheet.cssRules].map((rule) => rule.cssText),
-        ),
-        ...[...document.head.querySelectorAll('style')].map(
-          (s) => s.textContent,
-        ),
-      ].join(' ');
-
-    // No cookie: nothing added, the base style shows A.
-    new Function(script)();
-    expect(rules()).not.toContain('display: none');
-    expect(rules()).not.toContain('display:none');
-
-    document.cookie = 'prepr_ab_bucket=B; path=/';
-    new Function(script)();
-    const added = rules().replace(/\s/g, '');
-    expect(added).toContain('[data-prepr-ab="A"]{display:none!important');
-    expect(added).toContain('[data-prepr-ab="B"]{display:contents!important');
-
-    // Several stacks on one page add the rule once.
-    const before = rules();
-    new Function(script)();
-    expect(rules()).toBe(before);
-  });
-
-  it('reads the same cookie resolvePreprBucket writes', () => {
-    expect(applyPreprAbBucket.toString()).toContain(`${PREPR_BUCKET_COOKIE}=`);
   });
 });
 
@@ -143,11 +117,13 @@ describe('PreprStack trackVariants', () => {
         render: section,
       }),
     );
-    expect(out).toContain('<div data-prepr-ab="A"><section>cta-a</section>');
+    expect(out).toContain(
+      '<div data-prepr-v="g-cta:A" data-prepr-default=""><section>cta-a</section>',
+    );
     expect(out).not.toContain('data-prepr-variant-key');
   });
 
-  it('puts each variant key on its section once mounted, keeping the A/B wrapper', async () => {
+  it('puts each variant key on its section once mounted, inside its variant wrapper', async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -167,12 +143,12 @@ describe('PreprStack trackVariants', () => {
       sections.map((el) => [
         el.textContent,
         el.getAttribute('data-prepr-variant-key'),
-        el.parentElement?.getAttribute('data-prepr-ab') ?? null,
+        el.closest('[data-prepr-v]')?.getAttribute('data-prepr-v') ?? null,
       ]),
     ).toEqual([
       ['intro', null, null],
-      ['cta-a', 'key-A', 'A'],
-      ['cta-b', 'key-B', 'B'],
+      ['cta-a', 'key-A', 'g-cta:A'],
+      ['cta-b', 'key-B', 'g-cta:B'],
     ]);
     act(() => root.unmount());
   });
@@ -559,15 +535,6 @@ describe('PreprStack segment groups', () => {
     expect(click('local', { metaKey: true })).toBe(false);
     expect(click('other')).toBe(false);
     expect(decisionRequests).not.toHaveBeenCalled();
-    act(() => root.unmount());
-  });
-
-  it('leaves segment decisions to the decision switch: the A/B switch only applies the bucket', async () => {
-    history.replaceState(null, '', '/x');
-    document.cookie = `prepr_decisions=${encodeURIComponent('/x@hero:DEVELOPERS')}; path=/`;
-    const root = createRoot(document.createElement('div'));
-    await act(() => root.render(createElement(PreprAbSwitch)));
-    expect(document.cookie).toContain('prepr_decisions');
     act(() => root.unmount());
   });
 });

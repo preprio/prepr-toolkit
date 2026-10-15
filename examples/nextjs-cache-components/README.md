@@ -26,11 +26,10 @@ The page uses its ordinary query ([`get-page-by-slug.graphql`](./src/queries/get
   variant of each segment group sits hidden until the view's decision shows
   the visitor's one, before first paint. Nothing streams, and the default
   variant never shows first.
-- **A/B tests never stream or swap.** Both variants are in the cached page;
-  [`src/proxy.ts`](./src/proxy.ts) stores the visitor's bucket in a cookie
-  with `resolvePreprBucket` (asked from Prepr once), and a tiny inline script
-  from `PreprStack` shows that bucket's variant before first paint. A is the
-  default, also for crawlers and visitors without JavaScript.
+- **A/B tests never stream or swap.** Both variants are in the cached page,
+  and the same per-view decision as segment groups shows the visitor's one
+  before first paint. A is the default, also for crawlers and visitors
+  without JavaScript.
 - The preview toolbar reads request headers, so it sits in its own
   `<Suspense>` boundary.
 - **Preview is always fresh.** `preprDraftRedirect` in the proxy sends a

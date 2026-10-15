@@ -93,8 +93,8 @@ export interface PreprNextClient {
     options?: PreprDecideOptions,
   ): Promise<PreprDecisions>;
   /**
-   * Whether the query's result holds an A/B test: see `resolvePreprBucket`'s
-   * `onlyIf`. Never reads request headers, so it also works in middleware.
+   * Whether the query's result holds an A/B test. Never reads request
+   * headers, so it also works in middleware.
    */
   hasAbTests<TVariables>(
     document: PreprDocument<unknown, TVariables>,
@@ -244,7 +244,7 @@ export function createPreprClient(
         options,
       ),
   };
-  preprClientInternals.set(nextClient, { client, url: coreOptions.url });
+  preprClientInternals.set(nextClient, { client });
   return nextClient;
 }
 

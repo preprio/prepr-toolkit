@@ -12,7 +12,7 @@ import {
 
 import { createPreprPreview } from '../core/create-preview';
 import { isReactHydrated } from '../react/hydration';
-import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
+import { applyPreprDecisions } from './decision-switch';
 import type { PreprToolbarComponentProps } from '../core/types';
 
 // Nothing Next-specific about the pixel — it lives on the framework-free
@@ -63,24 +63,6 @@ export function PreprToolbar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return null;
-}
-
-/**
- * Applies the visitor's A/B bucket after client-side navigation. A full page
- * load is covered by the inline script `PreprStack` renders, but React does
- * not run inline scripts that arrive with a client-side navigation; a layout
- * effect still runs before the browser paints the new page. Rendered by
- * `PreprStack`; you do not need it yourself.
- */
-export function PreprAbSwitch(): null {
-  // No dependency list: a navigation to the same route (the preview toolbar
-  // switching variant) re-renders this without remounting it, and the bucket
-  // cookie may have changed with it. Re-applying an unchanged bucket returns
-  // early.
-  useLayoutEffect(() => {
-    applyPreprAbBucket();
-  });
   return null;
 }
 
@@ -308,12 +290,9 @@ const VARIANT_KEY_ATTRIBUTE = 'data-prepr-variant-key';
  */
 export function PreprVariantTracking({
   variantKeys,
-  ab,
   children,
 }: {
   variantKeys: string[];
-  /** The A/B bucket wrapper this also serves as; its CSS decides `display`. */
-  ab?: string;
   children?: ReactNode;
 }): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
@@ -347,9 +326,7 @@ export function PreprVariantTracking({
   }, [keys]);
   return createElement(
     'div',
-    ab === undefined
-      ? { ref, style: { display: 'contents' } }
-      : { ref, 'data-prepr-ab': ab },
+    { ref, style: { display: 'contents' } },
     children,
   );
 }

@@ -13,12 +13,8 @@ import {
   type PreprDecisions,
 } from '../core/variants';
 import { contextOf } from '../core/variants/resolve';
-import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
-import {
-  PreprAbSwitch,
-  PreprDecisionApplier,
-  PreprVariantTracking,
-} from './components';
+import { applyPreprDecisions } from './decision-switch';
+import { PreprDecisionApplier, PreprVariantTracking } from './components';
 
 export interface PreprStackProps<T> {
   /** A stack (e.g. `page.content`) from a query run with `variants: true`. */
@@ -41,8 +37,9 @@ export interface PreprStackProps<T> {
   ) => ReactNode;
   /**
    * The visitor's A/B bucket, when the route already knows it (for example
-   * from a URL segment). Leave it out to render both variants of each A/B
-   * test and pick the visitor's in the browser before first paint.
+   * from a URL segment): A/B tests then render that bucket only. Leave it out
+   * to render both variants, and let this page view's decision pick the
+   * visitor's, like a segment group's.
    */
   bucket?: string;
   /** Nonce for the inline scripts, under a strict CSP. */
@@ -62,24 +59,13 @@ export interface PreprStackProps<T> {
   trackVariants?: boolean;
 }
 
-const AB_ATTRIBUTE = 'data-prepr-ab';
-const AB_BUCKETS = ['A', 'B'] as const;
-
-// The variant wrappers never affect layout, and only A shows by default: what
-// visitors without JavaScript, crawlers and anonymous visitors get.
-const AB_BASE_CSS = `[${AB_ATTRIBUTE}]{display:contents}[${AB_ATTRIBUTE}]:not([${AB_ATTRIBUTE}="A"]){display:none}`;
-
-// Runs while the HTML is parsed, so the visitor's variant is the first one
-// painted. A hidden variant never reaches 50% visibility, so the tracking
-// pixel never records an impression for it.
-const AB_SWITCH_SCRIPT = `(${applyPreprAbBucket.toString()})();`;
-
 const VARIANT_ATTRIBUTE = 'data-prepr-v';
 const DEFAULT_ATTRIBUTE = 'data-prepr-default';
 const NESTED_ATTRIBUTE = 'data-prepr-nested';
 
-// Segment variants stay hidden until this view's decision shows one: no
-// variant, the default included, paints before it is decided.
+// Variants stay hidden until this view's decision shows one: no variant, the
+// default included, paints before it is decided. A hidden variant never
+// reaches 50% visibility, so the tracking pixel records no impression for it.
 const GROUP_BASE_CSS = `[${VARIANT_ATTRIBUTE}]{display:none}[${VARIANT_ATTRIBUTE}][data-prepr-show]{display:contents}`;
 // Without JavaScript nothing is decided: the default variants show.
 const NOSCRIPT_HTML = `<style>[${VARIANT_ATTRIBUTE}][${DEFAULT_ATTRIBUTE}]{display:contents}</style>`;
@@ -97,63 +83,54 @@ function variantKeysOf(items: unknown[]): string[] {
   });
 }
 
-/**
- * Renders items for every A/B bucket the visitor might have, each in a
- * wrapper the switch script shows or hides; or for the known bucket only.
- */
-function renderBuckets<T>(
+function renderItems<T>(
   items: T[],
   render: StackRender<T>,
   options: {
     bucket?: string;
     decisions?: PreprDecisions;
-    abTest: boolean;
     index: number;
     track?: boolean;
-    defaultVariant?: boolean;
+    defaultVariant: boolean;
   },
 ): ReactNode {
-  const {
-    bucket,
-    decisions,
-    abTest,
-    index,
-    track,
-    defaultVariant = true,
-  } = options;
-  const renderVariant = (variant: string | undefined, key?: string) => {
-    const resolved = resolveVariants(items, { decisions, bucket: variant });
-    const ab = abTest && !bucket ? variant : undefined;
-    const content = render(resolved, {
-      index,
-      defaultVariant: defaultVariant && (ab === undefined || ab === 'A'),
-    });
-    const variantKeys = track ? variantKeysOf(resolved) : [];
-    if (variantKeys.length > 0) {
-      return createElement(
-        PreprVariantTracking,
-        { key, variantKeys, ab },
-        content,
-      );
-    }
-    if (ab) return createElement('div', { key, [AB_ATTRIBUTE]: ab }, content);
-    return content;
-  };
-  if (!abTest || bucket) return renderVariant(bucket);
-  return AB_BUCKETS.map((variant) => renderVariant(variant, variant));
+  const resolved = resolveVariants(items, {
+    decisions: options.decisions,
+    bucket: options.bucket,
+  });
+  const content = render(resolved, {
+    index: options.index,
+    defaultVariant: options.defaultVariant,
+  });
+  const variantKeys = options.track ? variantKeysOf(resolved) : [];
+  return variantKeys.length > 0
+    ? createElement(PreprVariantTracking, { variantKeys }, content)
+    : content;
 }
 
-/** Every segment group in `items`, at any depth, with its variants in order. */
-function segmentGroups(items: unknown[]): Map<string, Set<string>> {
-  const groups = new Map<string, Set<string>>();
+/**
+ * Every group in `items` the decision picks a variant for, at any depth: the
+ * segment personalization groups, and the A/B tests unless the bucket is
+ * known. Each with its variants in order and its default variant.
+ */
+function decidedGroups(
+  items: unknown[],
+  bucket: string | undefined,
+): Map<string, { variants: Set<string>; fallback: string }> {
+  const groups = new Map<string, { variants: Set<string>; fallback: string }>();
   const walk = (value: unknown): void => {
     if (Array.isArray(value)) return value.forEach(walk);
     if (!value || typeof value !== 'object') return;
     const ctx = contextOf(value);
-    if (ctx?.kind === 'PERSONALIZATION' && ctx.variant_id) {
-      const variants = groups.get(ctx.group_id!) ?? new Set<string>();
-      variants.add(ctx.variant_id);
-      groups.set(ctx.group_id!, variants);
+    const decided =
+      ctx?.kind === 'PERSONALIZATION' || (ctx?.kind === 'AB_TEST' && !bucket);
+    if (decided && ctx.variant_id) {
+      const group = groups.get(ctx.group_id!) ?? {
+        variants: new Set<string>(),
+        fallback: ctx.kind === 'AB_TEST' ? 'A' : PREPR_DEFAULT_VARIANT,
+      };
+      group.variants.add(ctx.variant_id);
+      groups.set(ctx.group_id!, group);
     }
     Object.values(value).forEach(walk);
   };
@@ -162,24 +139,24 @@ function segmentGroups(items: unknown[]): Map<string, Set<string>> {
 }
 
 /**
- * Every variant combination of one personalized block, each in a hidden
- * wrapper listing its `group:variant` pairs. A top-level group renders once
- * per variant. An item with groups nested inside renders once per
- * combination of their variants, the default included, since the item shows
- * for visitors in none of the segments too.
+ * Every variant combination of one varying block, each in a hidden wrapper
+ * listing its `group:variant` pairs. A top-level group renders once per
+ * variant. An item with groups nested inside renders once per combination of
+ * their variants, the default included, since the item shows for visitors in
+ * none of the segments too.
  */
 function renderVariants<T>(
-  block: { key: string; items: T[]; index: number; abTest: boolean },
+  block: { key: string; items: T[]; index: number },
+  groups: Map<string, { variants: Set<string>; fallback: string }>,
   render: StackRender<T>,
   options: { bucket?: string; track?: boolean },
 ): ReactNode {
-  const groups = segmentGroups(block.items);
   const top = block.key.startsWith('group:')
     ? block.key.slice('group:'.length)
     : undefined;
   const nested = !(top !== undefined && groups.size === 1);
-  const choices = [...groups].map(([group, variants]) => {
-    const ids = nested ? [PREPR_DEFAULT_VARIANT, ...variants] : [...variants];
+  const choices = [...groups].map(([group, { variants, fallback }]) => {
+    const ids = nested ? [fallback, ...variants] : [...variants];
     return [...new Set(ids)].map((variant) => [group, variant] as const);
   });
   const combinations = choices.reduce<(readonly [string, string])[][]>(
@@ -189,7 +166,7 @@ function renderVariants<T>(
   return combinations.map((combination) => {
     const pairs = combination.map(([group, variant]) => `${group}:${variant}`);
     const isDefault = combination.every(
-      ([, variant]) => variant === PREPR_DEFAULT_VARIANT,
+      ([group, variant]) => variant === groups.get(group)!.fallback,
     );
     return createElement(
       'div',
@@ -201,10 +178,9 @@ function renderVariants<T>(
         // The decision script marks the shown wrapper before hydration.
         suppressHydrationWarning: true,
       },
-      renderBuckets(block.items, render, {
+      renderItems(block.items, render, {
         bucket: options.bucket,
         decisions: new Map(combination.map(([g, v]) => [g, [v]])),
-        abTest: block.abTest,
         index: block.index,
         track: options.track,
         defaultVariant: isDefault,
@@ -217,11 +193,9 @@ function renderVariants<T>(
  * Renders a personalized stack, entirely in the prerendered page.
  *
  * - Items that never vary render as they are.
- * - A/B tests render once per bucket; a tiny inline script shows the
- *   visitor's bucket (from `resolvePreprBucket`'s cookie) before first paint.
- *   `A` is the default. Pass `bucket` instead when the route already knows it.
- * - Every segment personalization group, at the top of the stack or nested
- *   inside an item, renders every variant, hidden. This page view's decision
+ * - Every A/B test and segment personalization group, at the top of the
+ *   stack or nested inside an item, renders every variant, hidden. This page
+ *   view's decision
  *   (made by `createPreprProxy` for a page load, or requested by
  *   `PreprPersonalizationSwitch` for a client-side navigation) shows the
  *   visitor's variant before first paint. Nothing streams, and the default
@@ -244,55 +218,52 @@ export function PreprStack<T>({
   nonce,
   trackVariants = false,
 }: PreprStackProps<T>): ReactElement {
-  const blocks = splitStack(items);
-  const abSwitch = !bucket && blocks.some((block) => block.abTest);
-  const personalized = blocks.some((block) => block.personalized);
+  const blocks = splitStack(items).map((block) => ({
+    ...block,
+    groups: decidedGroups(block.items, bucket),
+  }));
+  const varies = blocks.some((block) => block.groups.size > 0);
 
   return createElement(
     Fragment,
     null,
-    (abSwitch || personalized) &&
+    varies &&
       createElement(
         Fragment,
         { key: 'prepr-switch' },
         createElement('style', {
           nonce,
-          dangerouslySetInnerHTML: {
-            __html: AB_BASE_CSS + (personalized ? GROUP_BASE_CSS : ''),
-          },
+          dangerouslySetInnerHTML: { __html: GROUP_BASE_CSS },
         }),
-        personalized &&
-          createElement('noscript', {
-            dangerouslySetInnerHTML: { __html: NOSCRIPT_HTML },
-          }),
+        createElement('noscript', {
+          dangerouslySetInnerHTML: { __html: NOSCRIPT_HTML },
+        }),
         createElement('script', {
           nonce,
-          dangerouslySetInnerHTML: {
-            __html:
-              (abSwitch ? AB_SWITCH_SCRIPT : '') +
-              (personalized ? DECISION_SCRIPT : ''),
-          },
+          dangerouslySetInnerHTML: { __html: DECISION_SCRIPT },
         }),
-        abSwitch && createElement(PreprAbSwitch),
-        personalized && createElement(PreprDecisionApplier),
+        createElement(PreprDecisionApplier),
       ),
     ...blocks.map((block) => {
-      if (!block.personalized) {
+      if (block.groups.size === 0) {
         return createElement(
           Fragment,
           { key: block.key },
-          renderBuckets(block.items, render, {
+          renderItems(block.items, render, {
             bucket,
-            abTest: block.abTest,
             index: block.index,
             track: trackVariants,
+            defaultVariant: true,
           }),
         );
       }
       return createElement(
         Fragment,
         { key: block.key },
-        renderVariants(block, render, { bucket, track: trackVariants }),
+        renderVariants(block, block.groups, render, {
+          bucket,
+          track: trackVariants,
+        }),
         createElement('script', {
           nonce,
           dangerouslySetInnerHTML: { __html: APPLY_SCRIPT },

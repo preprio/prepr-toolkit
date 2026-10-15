@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { mergePreprHeaders, type PreprDocument } from '../core/graphql';
 import { PreprError } from '../core/server';
 import type { PreprFeatures } from '../core/types';
-import { resolvePreprBucket } from './bucket';
 import {
   DEFAULT_DECISION,
   PREPR_DECIDE_HEADER,
@@ -39,8 +38,8 @@ export interface PreprProxyOptions {
   /** Give up on Prepr after this many ms; the default variants show. Default 1000. */
   timeoutMs?: number;
   /**
-   * Skip the A/B bucket lookup and segment decisions (page views and
-   * client-side navigations) when this resolves to false, for example for
+   * Skip the decisions (page views and client-side navigations) when this
+   * resolves to false, for example for
    * crawlers, so they never wait for Prepr. Those requests get the default
    * variants.
    */
@@ -70,9 +69,9 @@ function isPagePath(pathname: string): boolean {
 /**
  * Everything Prepr needs in the proxy (`proxy.ts`), in one call: the visitor's
  * Prepr headers and customer id (`createPreprMiddleware`), the draft-mode
- * redirect in preview, the A/B bucket, and, at every page view, the segment
- * variant of every personalization group on the page, asked from Prepr in
- * one request, so `PreprStack` shows them before first paint.
+ * redirect in preview, and, at every page view, the visitor's variant of every
+ * A/B test and personalization group on the page, asked from Prepr in one
+ * request, so `PreprStack` shows them before first paint.
  *
  * Prefetches and client-side navigations (requests with an `RSC` header) are
  * never decided: their answer would be reused later. Instead it answers the
@@ -104,7 +103,7 @@ export function createPreprProxy(
       'createPreprProxy',
     );
   }
-  const { client, url } = internals;
+  const { client } = internals;
   const preview = options.preview ?? false;
 
   const allowed = async (request: NextRequest): Promise<boolean> => {
@@ -131,7 +130,7 @@ export function createPreprProxy(
     response: NextResponse,
     target: PreprProxyPage | null,
   ): Promise<NextResponse> {
-    let decision: string | null = DEFAULT_DECISION;
+    let decision = DEFAULT_DECISION;
     // Only the visitor's own page asks: a GET from the same site. Anything
     // else could make the proxy spend Prepr requests on someone else's behalf.
     const site = request.headers.get('sec-fetch-site');
@@ -149,7 +148,7 @@ export function createPreprProxy(
         options.timeoutMs,
       );
     }
-    const answer = new NextResponse(decision ?? DEFAULT_DECISION, {
+    const answer = new NextResponse(decision, {
       headers: {
         'Cache-Control': 'private, no-store',
         'Content-Type': 'text/plain; charset=utf-8',
@@ -180,28 +179,17 @@ export function createPreprProxy(
     });
     if (decisionRequest) return answerDecision(request, response, target);
 
-    if (target) {
-      const ok = await allowed(request);
-      await Promise.all([
-        ok &&
-          resolvePreprBucket(request, response, {
-            url,
-            preview,
-            onlyIf: () =>
-              options.client.hasAbTests(target.document, target.variables),
-          }),
-        // Prefetches and client-side navigations: the browser asks its own
-        // decision when the visitor clicks.
-        !isRouterFetch(request) &&
-          resolveDecisionsWith(
-            client,
-            request,
-            response,
-            target.document,
-            target.variables,
-            { timeoutMs: options.timeoutMs, onlyIf: () => ok },
-          ),
-      ]);
+    // Prefetches and client-side navigations: the browser asks its own
+    // decision when the visitor clicks.
+    if (target && !isRouterFetch(request)) {
+      await resolveDecisionsWith(
+        client,
+        request,
+        response,
+        target.document,
+        target.variables,
+        { timeoutMs: options.timeoutMs, onlyIf: () => allowed(request) },
+      );
     }
     return response;
   };

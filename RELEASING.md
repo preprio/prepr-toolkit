@@ -220,6 +220,12 @@ upgrading to the next alpha after `0.6.0-alpha.6`:
   `prepr.resolveDecisions` itself cannot answer those requests: use
   `createPreprProxy`, or navigations show their personalized sections only
   once the decision request falls back to the defaults.
+- A/B tests are picked by the page view's decision, like segment groups:
+  `resolvePreprBucket`, `PREPR_BUCKET_COOKIE` and the `prepr_ab_bucket`
+  cookie are gone. Prepr assigns a variant per experiment and split, which
+  one stored bucket per visitor could not follow. The proxy no longer runs a
+  separate check before deciding: every CMS page view sends one decision
+  query.
 - The `prepr_decisions` cookie now holds one page view's decision, with its
   URL and time. The browser deletes it once the visitor views another page;
   until then a reload of that view within 10 seconds reuses it.

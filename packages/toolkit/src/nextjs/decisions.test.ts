@@ -112,7 +112,12 @@ describe('resolveDecisions', () => {
       fetch.mock.calls.filter((call) =>
         String(call[1]?.body).includes('Decision'),
       );
-    return { prepr, request, response, decisionCalls };
+    // Every request to Prepr except the one-time schema introspection.
+    const preprCalls = () =>
+      fetch.mock.calls
+        .map((call) => String(call[1]?.body))
+        .filter((body) => !body.includes('__schema'));
+    return { prepr, request, response, decisionCalls, preprCalls };
   }
 
   it("stores this page view's decision, keyed by its URL, asked with the forwarded visitor headers", async () => {
@@ -181,15 +186,7 @@ describe('resolveDecisions', () => {
     expect(decisionCalls()).toHaveLength(4);
   });
 
-  it('asks nothing on a page without segment groups; onlyIf saying no stores the defaults', async () => {
-    const plain = await setup({ vary: 'Authorization' });
-    const res = plain.response();
-    await plain.prepr.resolveDecisions(plain.request(), res, PAGE, {
-      slug: '/plain',
-    });
-    expect(res.cookies.get('prepr_decisions')).toBeUndefined();
-    expect(plain.decisionCalls()).toHaveLength(0);
-
+  it('onlyIf saying no stores the defaults without asking Prepr', async () => {
     const skipped = await setup();
     const skippedRes = skipped.response();
     await skipped.prepr.resolveDecisions(
@@ -203,6 +200,14 @@ describe('resolveDecisions', () => {
     expect(skippedRes.cookies.get('prepr_decisions')?.value).toMatch(
       /^\d+\|\/@\*$/,
     );
+  });
+
+  it('sends one query per page view, A/B tests included, with no separate check first', async () => {
+    const { prepr, request, response, preprCalls } = await setup();
+    await prepr.resolveDecisions(request(), response(), PAGE, { slug: '/' });
+    expect(preprCalls().map((body) => /query (\w+)/.exec(body)?.[1])).toEqual([
+      'GetPageDecision',
+    ]);
   });
 
   it('never throws: when Prepr fails, the page view gets the defaults', async () => {

@@ -16,13 +16,6 @@ export {
 export { isPersonalizedResponse } from '../core/personalization';
 
 export {
-  resolvePreprBucket,
-  PREPR_BUCKET_COOKIE,
-  type PreprBucket,
-  type ResolvePreprBucketOptions,
-} from './bucket';
-
-export {
   createPreprDraftRoute,
   preprDraftRedirect,
   type PreprDraftOptions,
