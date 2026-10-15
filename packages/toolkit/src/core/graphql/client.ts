@@ -116,7 +116,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
       variables?: TVariables,
       queryOptions: PreprDecideOptions = {},
     ): Promise<PreprDecisions> {
-      const { from, topLevelOnly, nestedOnly, ...rest } = queryOptions;
+      const { from, ...rest } = queryOptions;
       const paths = from === undefined ? undefined : personalizationPaths(from);
       // Nothing on the page depends on a segment: no request at all.
       if (paths && paths.size === 0) return new Map();
@@ -126,22 +126,16 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
             .map(([path, types]) => `${path}:${[...types].sort().join(',')}`)
             .sort()
             .join('|')
-        : topLevelOnly
-          ? 'top'
-          : '*';
-      const key = nestedOnly ? `nested:${signature}` : signature;
+        : '*';
       let byPaths = decisionDocuments.get(document);
       if (!byPaths) {
         byPaths = new Map();
         decisionDocuments.set(document, byPaths);
       }
-      let derived = byPaths.get(key);
+      let derived = byPaths.get(signature);
       if (derived === undefined) {
-        derived = toDecisionDocument(document, await loadSchema(), paths, {
-          topLevelOnly: !paths && topLevelOnly,
-          nestedOnly,
-        });
-        byPaths.set(key, derived);
+        derived = toDecisionDocument(document, await loadSchema(), paths);
+        byPaths.set(signature, derived);
       }
       if (!derived) return new Map();
       const { data } = await run(derived, variables, rest);

@@ -21,6 +21,12 @@ const { applyPreprAbBucket, applyPreprDecisions } = await import('./ab-switch');
 const { PreprAbSwitch, PreprPersonalizationSwitch } =
   await import('./components');
 
+// Decision requests a client render sends: none unless a test answers them.
+const decisionRequests = vi.fn(
+  async (_url: string, _init?: RequestInit) => new Response('*'),
+);
+vi.stubGlobal('fetch', decisionRequests);
+
 const ctx = (kind: string, group: string, variant: string) => ({
   _preprContext: { kind, group_id: group, variant_id: variant },
 });
@@ -38,7 +44,6 @@ function html(props: { bucket?: string } = {}) {
   return renderToString(
     createElement(PreprStack<{ id: string }>, {
       items,
-      decisions: Promise.resolve(new Map()),
       render,
       ...props,
     }),
@@ -48,9 +53,10 @@ function html(props: { bucket?: string } = {}) {
 afterEach(() => {
   delete (window as { __preprAbBucket?: string }).__preprAbBucket;
   delete (window as { __preprAbSheet?: unknown }).__preprAbSheet;
-  delete (window as { __preprDecisions?: unknown }).__preprDecisions;
-  delete (window as { __preprDecisionSheet?: unknown }).__preprDecisionSheet;
-  delete (window as { __preprDecisionsView?: unknown }).__preprDecisionsView;
+  delete (window as { __preprDecision?: unknown }).__preprDecision;
+  decisionRequests.mockClear();
+  history.replaceState(null, '', '/');
+  document.cookie = 'prepr_decisions=; max-age=0; path=/';
   document.adoptedStyleSheets = [];
   document.head.innerHTML = '';
   document.body.innerHTML = '';
@@ -134,7 +140,6 @@ describe('PreprStack trackVariants', () => {
     const out = renderToString(
       createElement(PreprStack<{ id: string }>, {
         items: abItems,
-        decisions: Promise.resolve(new Map()),
         render: section,
       }),
     );
@@ -150,7 +155,6 @@ describe('PreprStack trackVariants', () => {
       root.render(
         createElement(PreprStack<{ id: string }>, {
           items: abItems,
-          decisions: Promise.resolve(new Map()),
           render: section,
           trackVariants: true,
         }),
@@ -186,7 +190,6 @@ describe('PreprStack trackVariants', () => {
       root.render(
         createElement(PreprStack<{ id: string }>, {
           items,
-          decisions: Promise.resolve(new Map()),
           render: section,
           trackVariants: true,
         }),
@@ -199,42 +202,6 @@ describe('PreprStack trackVariants', () => {
         el.getAttribute('data-prepr-variant-key'),
       ),
     ).toEqual(['key-ALL_OTHER_USERS', 'key-private']);
-    act(() => root.unmount());
-  });
-
-  it("tags a segment group's variant only once the visitor's variant is in", async () => {
-    const items = [
-      {
-        id: 'hero-default',
-        ...tracked('PERSONALIZATION', 'g', 'ALL_OTHER_USERS'),
-      },
-      { id: 'hero-dev', ...tracked('PERSONALIZATION', 'g', 'DEVELOPERS') },
-    ];
-    let decide!: (decisions: Map<string, string[]>) => void;
-    const decisions = new Promise<Map<string, string[]>>((resolve) => {
-      decide = resolve;
-    });
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        createElement(PreprStack<{ id: string }>, {
-          items,
-          decisions,
-          render: section,
-          trackVariants: true,
-          // The streaming path: an above-the-fold group never streams.
-          aboveTheFold: 0,
-        }),
-      );
-    });
-    await act(async () => decide(new Map([['g', ['DEVELOPERS']]])));
-    await nextTask();
-
-    const el = container.querySelector('section')!;
-    expect(el.textContent).toBe('hero-dev');
-    expect(el.getAttribute('data-prepr-variant-key')).toBe('key-DEVELOPERS');
     act(() => root.unmount());
   });
 
@@ -270,7 +237,6 @@ describe('PreprStack trackVariants', () => {
       root.render(
         createElement(PreprStack<{ id: string }>, {
           items: abItems,
-          decisions: Promise.resolve(new Map()),
           render: section,
           trackVariants: true,
         }),
@@ -287,41 +253,114 @@ describe('PreprStack trackVariants', () => {
   });
 });
 
-describe('PreprStack aboveTheFold', () => {
-  const seg = (variant: string) => ({
-    _preprContext: {
-      kind: 'PERSONALIZATION',
-      group_id: 'hero',
-      variant_id: variant,
-    },
-  });
-  const heroItems = [
-    { id: 'hero-default', ...seg('ALL_OTHER_USERS') },
-    { id: 'hero-dev', ...seg('DEVELOPERS') },
-    { id: 'below', ...ctx('PERSONALIZATION', 'g-below', 'ALL_OTHER_USERS') },
+describe('PreprStack segment groups', () => {
+  type Item = { id: string; logos?: { id: string }[] };
+  const seg = (group: string, variant: string) =>
+    ctx('PERSONALIZATION', group, variant);
+  const hero = [
+    { id: 'hero-default', ...seg('hero', 'ALL_OTHER_USERS') },
+    { id: 'hero-dev', ...seg('hero', 'DEVELOPERS') },
   ];
-  const out = () =>
-    renderToString(
-      createElement(PreprStack<{ id: string }>, {
-        items: heroItems,
-        decisions: new Promise<Map<string, string[]>>(() => {}),
-        render,
-        aboveTheFold: 1,
-      }),
+  // A personalization item whose own stack holds the segment group, like a
+  // logo strip that varies per segment.
+  const logoStrip = (...variants: string[]): Item => ({
+    id: 'logos',
+    logos: variants.map((v) => ({ id: `logo-${v}`, ...seg('logos', v) })),
+  });
+  const renderItems = (resolved: Item[]): ReactNode =>
+    resolved.map((item) =>
+      createElement(
+        'p',
+        { key: item.id },
+        [item.id, ...(item.logos ?? []).map((l) => l.id)].join(' '),
+      ),
     );
+  const stack = (stackItems: Item[]) =>
+    createElement(PreprStack<Item>, { items: stackItems, render: renderItems });
+  const shown = () =>
+    [...document.querySelectorAll('[data-prepr-show]')].map(
+      (el) => el.textContent,
+    );
+  // Loads a page the way the browser does: the proxy's cookie, then the HTML
+  // with its inline decision calls.
+  function load(path: string, cookie: string | null, stackItems: Item[]) {
+    history.replaceState(null, '', path);
+    if (cookie !== null) {
+      document.cookie = `prepr_decisions=${encodeURIComponent(cookie)}; path=/`;
+    }
+    document.body.innerHTML = renderToString(stack(stackItems));
+    applyPreprDecisions();
+  }
 
-  it('treats the first block as above the fold unless told otherwise', () => {
-    const html = (aboveTheFold?: number) =>
-      renderToString(
-        createElement(PreprStack<{ id: string }>, {
-          items: heroItems,
-          decisions: new Promise<Map<string, string[]>>(() => {}),
-          render,
-          ...(aboveTheFold === undefined ? {} : { aboveTheFold }),
-        }),
-      );
-    expect(html()).toContain('data-prepr-group="hero"');
-    expect(html(0)).not.toContain('data-prepr-group="hero"');
+  it('renders every variant in the page, hidden until decided: nothing streams', () => {
+    const html = renderToString(stack([...hero, { id: 'outro' }]));
+    expect(html).toContain(
+      '<div data-prepr-v="hero:ALL_OTHER_USERS" data-prepr-default=""><p>hero-default</p></div>',
+    );
+    expect(html).toContain(
+      '<div data-prepr-v="hero:DEVELOPERS"><p>hero-dev</p></div>',
+    );
+    expect(html).toContain('[data-prepr-v]{display:none}');
+    expect(html).not.toContain('<!--$');
+  });
+
+  it('renders an item with a nested group once per variant, the default included', () => {
+    const html = renderToString(stack([logoStrip('DEVELOPERS')]));
+    expect(html).toContain(
+      '<div data-prepr-v="logos:ALL_OTHER_USERS" data-prepr-default="" data-prepr-nested=""><p>logos</p></div>',
+    );
+    expect(html).toContain(
+      '<div data-prepr-v="logos:DEVELOPERS" data-prepr-nested=""><p>logos logo-DEVELOPERS</p></div>',
+    );
+  });
+
+  it('renders an item with several nested groups once per combination of their variants', () => {
+    const item: Item & { quotes: object[] } = {
+      ...logoStrip('ALL_OTHER_USERS', 'DEVELOPERS'),
+      quotes: [{ id: 'q', ...seg('quotes', 'MARKETERS') }],
+    };
+    const html = renderToString(stack([item]));
+    expect(html.match(/data-prepr-v="/g)).toHaveLength(4);
+    expect(html).toContain('data-prepr-v="logos:DEVELOPERS quotes:MARKETERS"');
+  });
+
+  it("shows the proxy's decision for this URL before paint, and only once", () => {
+    load('/solutions/astro-cms', '/solutions/astro-cms@hero:DEVELOPERS', hero);
+    expect(shown()).toEqual(['hero-dev']);
+    // Read once: a later view of this URL asks again.
+    expect(document.cookie).not.toContain('DEVELOPERS');
+  });
+
+  it('never shows a variant, not even the default, without a decision for this view', () => {
+    load('/pricing', '/solutions/astro-cms@hero:DEVELOPERS', hero);
+    expect(shown()).toEqual([]);
+  });
+
+  it('shows the defaults when Prepr could not be asked, and nothing for a group the decision leaves out', () => {
+    load('/a', '/a@*', [...hero, logoStrip('DEVELOPERS')]);
+    expect(shown()).toEqual(['hero-default', 'logos']);
+    delete (window as { __preprDecision?: unknown }).__preprDecision;
+    load('/b', '/b@logos:DEVELOPERS', [...hero, logoStrip('DEVELOPERS')]);
+    expect(shown()).toEqual(['logos logo-DEVELOPERS']);
+  });
+
+  it('shows every decided variant of a group, but an item with a nested group only once', () => {
+    load(
+      '/c',
+      '/c@hero:DEVELOPERS|ALL_OTHER_USERS~logos:MARKETERS|DEVELOPERS',
+      [...hero, logoStrip('DEVELOPERS', 'MARKETERS')],
+    );
+    expect(shown()).toEqual([
+      'hero-default',
+      'hero-dev',
+      'logos logo-MARKETERS',
+    ]);
+  });
+
+  it('shows the defaults to visitors without JavaScript', () => {
+    expect(renderToString(stack(hero))).toContain(
+      '<noscript><style>[data-prepr-v][data-prepr-default]{display:contents}</style></noscript>',
+    );
   });
 
   it('tells render which variant shows by default, so only that one preloads its images', () => {
@@ -329,13 +368,12 @@ describe('PreprStack aboveTheFold', () => {
     renderToString(
       createElement(PreprStack<{ id: string }>, {
         items: [
-          ...heroItems.slice(0, 2),
+          ...hero,
           { id: 'cta-a', ...ctx('AB_TEST', 'g-cta', 'A') },
           { id: 'cta-b', ...ctx('AB_TEST', 'g-cta', 'B') },
         ],
-        decisions: Promise.resolve(new Map()),
-        render: (items, { defaultVariant }) => {
-          for (const item of items) seen.push([item.id, defaultVariant]);
+        render: (resolved, { defaultVariant }) => {
+          for (const item of resolved) seen.push([item.id, defaultVariant]);
           return null;
         },
       }),
@@ -348,237 +386,164 @@ describe('PreprStack aboveTheFold', () => {
     ]);
   });
 
-  it('shows the decided variant when the page arrives by client-side navigation', async () => {
-    document.cookie = 'prepr_decisions=hero%3ADEVELOPERS; path=/';
-    const root = createRoot(document.createElement('div'));
-    await act(() =>
-      root.render(
-        createElement(PreprStack<{ id: string }>, {
-          items: heroItems.slice(0, 2),
-          decisions: Promise.resolve(new Map()),
-          render,
-        }),
-      ),
+  it('asks for a decision on a view that has none (back and forward), holding the sections until it arrives', async () => {
+    history.replaceState(null, '', '/solutions/astro-cms');
+    let answer!: (body: string) => void;
+    decisionRequests.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => (answer = (b) => resolve(new Response(b)))),
     );
-    const sheet = (
-      window as unknown as { __preprDecisionSheet?: CSSStyleSheet }
-    ).__preprDecisionSheet;
-    expect(
-      [...(sheet?.cssRules ?? [])].map((r) => r.cssText).join(''),
-    ).toContain('[data-prepr-variant="DEVELOPERS"]');
+    const container = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(container);
+    await act(async () => root.render(stack([logoStrip('DEVELOPERS')])));
+    expect(decisionRequests.mock.calls[0]![0]).toBe('/solutions/astro-cms');
+    expect(shown()).toEqual([]);
+    await act(async () => answer('logos:DEVELOPERS'));
+    expect(shown()).toEqual(['logos logo-DEVELOPERS']);
     act(() => root.unmount());
-    document.cookie = 'prepr_decisions=; max-age=0; path=/';
   });
 
-  it('renders every variant of an above-the-fold group in the page, default marked', () => {
-    const html = out();
-    expect(html).toContain(
-      '<div data-prepr-group="hero" data-prepr-variant="ALL_OTHER_USERS" data-prepr-default=""><p>hero-default</p></div>',
+  it('a visitor who viewed /solutions/developers navigates to /solutions/astro-cms and sees the Developers variant, never the default first', async () => {
+    history.replaceState(null, '', '/solutions/developers');
+    let answer!: (body: string) => void;
+    decisionRequests.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => (answer = (b) => resolve(new Response(b)))),
     );
-    expect(html).toContain(
-      '<div data-prepr-group="hero" data-prepr-variant="DEVELOPERS"><p>hero-dev</p></div>',
-    );
-    expect(html).toContain(
-      '[data-prepr-group]:not([data-prepr-default]){display:none}',
-    );
-  });
+    // Every moment any wrapper is shown, from the click to the new page.
+    const everShown = new Set<string>();
+    const watcher = new MutationObserver(() => {
+      for (const text of shown()) everShown.add(text ?? '');
+    });
+    watcher.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+    });
 
-  it('keeps streaming groups below the fold', () => {
-    const html = out();
-    expect(html).toContain('<p>below</p>');
-    expect(html).not.toContain('data-prepr-group="g-below"');
-  });
-
-  it('shows the decided variant before paint, and none for a group decided as "none"', () => {
-    const rules = () =>
-      [
-        ...(window as unknown as { __preprDecisionSheet: CSSStyleSheet })
-          .__preprDecisionSheet.cssRules,
-      ]
-        .map((r) => r.cssText.replace(/\s+/g, ''))
-        .join('');
-
-    document.cookie = 'prepr_decisions=hero%3ADEVELOPERS; path=/';
-    applyPreprDecisions('/a');
-    expect(rules()).toBe(
-      '[data-prepr-group="hero"]{display:none!important;}[data-prepr-group="hero"][data-prepr-variant="DEVELOPERS"]{display:contents!important;}',
-    );
-
-    document.cookie = 'prepr_decisions=hero%3A; path=/';
-    applyPreprDecisions('/b');
-    expect(rules()).toBe('[data-prepr-group="hero"]{display:none!important;}');
-    document.cookie = 'prepr_decisions=; max-age=0; path=/';
-  });
-
-  it('ignores ids that could inject CSS', () => {
-    document.cookie = `prepr_decisions=${encodeURIComponent('x"]{}body{display:none}:a~hero:B')}; path=/`;
-    applyPreprDecisions();
-    const sheet = (window as unknown as { __preprDecisionSheet: CSSStyleSheet })
-      .__preprDecisionSheet;
-    const css = [...sheet.cssRules].map((r) => r.cssText).join('');
-    expect(css).not.toContain('body');
-    document.cookie = 'prepr_decisions=; max-age=0; path=/';
-  });
-});
-
-describe('PreprStack placeholder flag', () => {
-  it('marks only the stand-in for a streaming segment group as a placeholder', () => {
-    const seen: [string, boolean][] = [];
-    renderToString(
-      createElement(PreprStack<{ id: string }>, {
-        items: [
-          { id: 'intro' },
-          { id: 'cta-a', ...ctx('AB_TEST', 'g-cta', 'A') },
-          { id: 'cta-b', ...ctx('AB_TEST', 'g-cta', 'B') },
-          { id: 'seg', ...ctx('PERSONALIZATION', 'g-seg', 'ALL_OTHER_USERS') },
-        ],
-        // Never resolves: only the stand-in renders.
-        decisions: new Promise<Map<string, string[]>>(() => {}),
-        render: (items, { placeholder }) => {
-          for (const item of items) seen.push([item.id, placeholder]);
-          return null;
+    const container = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(container);
+    let navigations = 0;
+    // Stands in for a Next.js `Link`: the router renders the next page.
+    const link = createElement(
+      'a',
+      {
+        href: '/solutions/astro-cms',
+        onClick: (event: { preventDefault(): void }) => {
+          event.preventDefault();
+          navigations++;
+          history.pushState(null, '', '/solutions/astro-cms');
+          root.render(stack([logoStrip('DEVELOPERS', 'MARKETERS')]));
         },
-      }),
+      },
+      'Astro CMS',
     );
-    expect(seen).toEqual([
-      ['intro', false],
-      ['cta-a', false],
-      ['cta-b', false],
-      ['seg', true],
-    ]);
-  });
-});
-
-describe('PreprPersonalizationSwitch', () => {
-  const rules = () =>
-    [
-      ...((window as unknown as { __preprDecisionSheet?: CSSStyleSheet })
-        .__preprDecisionSheet?.cssRules ?? []),
-    ]
-      .map((r) => r.cssText.replace(/\s+/g, ''))
-      .join('');
-  const shows = (variant: string) =>
-    `[data-prepr-group="hero"][data-prepr-variant="${variant}"]`;
-
-  afterEach(() => {
-    document.cookie = 'prepr_decisions=; max-age=0; path=/';
-    document.cookie = 'prepr_refresh=; max-age=0; path=/';
-    navigation.pathname = '/';
-    history.replaceState(null, '', '/');
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
-  it('applies the decision once per view: a cookie that changes on the page being read waits for the next view', () => {
-    document.cookie = 'prepr_decisions=hero%3AA; path=/';
-    applyPreprDecisions('/');
-    expect(rules()).toContain(shows('A'));
-
-    document.cookie = 'prepr_decisions=hero%3AB; path=/';
-    applyPreprDecisions('/');
-    expect(rules()).toContain(shows('A'));
-
-    applyPreprDecisions('/pricing');
-    expect(rules()).toContain(shows('B'));
-  });
-
-  it('applies on returning to a URL by client-side navigation, when the cookie changed in between', async () => {
-    document.cookie = 'prepr_decisions=hero%3AA; path=/';
-    const first = createRoot(document.createElement('div'));
-    await act(() =>
-      first.render(
-        createElement(PreprPersonalizationSwitch, { refresh: false }),
+    await act(async () =>
+      root.render(
+        createElement(
+          'div',
+          null,
+          createElement(PreprPersonalizationSwitch),
+          link,
+        ),
       ),
     );
-    expect(rules()).toContain(shows('A'));
-    act(() => first.unmount());
+    const anchor = container.querySelector('a')!;
 
-    // Another page without personalized content, then back home: the
-    // background refresh stored the new segment meanwhile.
-    history.pushState(null, '', '/pricing');
-    document.cookie = 'prepr_decisions=hero%3AB; path=/';
-    history.pushState(null, '', '/');
-    const again = createRoot(document.createElement('div'));
-    await act(() =>
-      again.render(
-        createElement(PreprPersonalizationSwitch, { refresh: false }),
-      ),
-    );
-    expect(rules()).toContain(shows('B'));
-    act(() => again.unmount());
-  });
-
-  it('leaves the page alone when one switch re-renders after another applied a newer view', async () => {
-    document.cookie = 'prepr_decisions=hero%3AA; path=/';
-    const layout = createRoot(document.createElement('div'));
-    const page = createRoot(document.createElement('div'));
-    const render = (root: typeof layout) =>
-      act(() =>
-        root.render(
-          createElement(PreprPersonalizationSwitch, { refresh: false }),
-        ),
+    await act(async () => {
+      anchor.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, button: 0 }),
       );
-    await render(layout);
-    await render(page);
-    document.cookie = 'prepr_decisions=hero%3AB; path=/';
-    await render(layout);
-    expect(rules()).toContain(shows('A'));
-    act(() => layout.unmount());
-    act(() => page.unmount());
-  });
-
-  it('re-applies on navigation, including a query change like the preview toolbar makes', async () => {
-    const root = createRoot(document.createElement('div'));
-    const mount = () =>
-      act(() =>
-        root.render(
-          createElement(PreprPersonalizationSwitch, { refresh: false }),
-        ),
+      anchor.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
       );
-    document.cookie = 'prepr_decisions=hero%3AA; path=/';
-    await mount();
-    expect(rules()).toContain(shows('A'));
+    });
+    // Asked on press, for the page the link opens.
+    const [url, init] = decisionRequests.mock.calls[0]!;
+    expect(url).toBe('/solutions/astro-cms');
+    expect(new Headers(init?.headers).get('Prepr-Decide')).toBe('1');
+    // Held: the page does not change before the decision is in.
+    expect(navigations).toBe(0);
 
-    document.cookie = 'prepr_decisions=hero%3AB; path=/';
-    await mount();
-    expect(rules()).toContain(shows('A'));
-
-    history.pushState(null, '', '/?prepr_preview_segment=vip');
-    await mount();
-    expect(rules()).toContain(shows('B'));
+    await act(async () => answer('logos:DEVELOPERS'));
+    expect(navigations).toBe(1);
+    expect(shown()).toEqual(['logos logo-DEVELOPERS']);
+    watcher.disconnect();
+    expect([...everShown]).toEqual(['logos logo-DEVELOPERS']);
     act(() => root.unmount());
   });
 
-  it('refreshes decisions in the background, from the layout instance only', async () => {
-    vi.useFakeTimers();
-    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
-    vi.stubGlobal('fetch', fetchMock);
-    document.cookie = `prepr_refresh=${encodeURIComponent(`/~${Date.now()}`)}; path=/`;
-
-    const quiet = createRoot(document.createElement('div'));
-    await act(() =>
-      quiet.render(
-        createElement(PreprPersonalizationSwitch, { refresh: false }),
+  it('lets a click through at once when its decision arrived during the press', async () => {
+    history.replaceState(null, '', '/');
+    const container = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(container);
+    let navigations = 0;
+    await act(async () =>
+      root.render(
+        createElement(
+          'div',
+          null,
+          createElement(PreprPersonalizationSwitch),
+          createElement('a', {
+            href: '/pricing',
+            onClick: (event: { preventDefault(): void }) => {
+              event.preventDefault();
+              navigations++;
+            },
+          }),
+        ),
       ),
     );
-    await act(() => vi.advanceTimersByTimeAsync(10_000));
-    expect(fetchMock).not.toHaveBeenCalled();
-    act(() => quiet.unmount());
-
-    const layout = createRoot(document.createElement('div'));
-    await act(() => layout.render(createElement(PreprPersonalizationSwitch)));
-    await act(() => vi.advanceTimersByTimeAsync(4_000));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    act(() => layout.unmount());
-    await act(() => vi.advanceTimersByTimeAsync(10_000));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const anchor = container.querySelector('a')!;
+    await act(async () => {
+      anchor.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, button: 0 }),
+      );
+    });
+    anchor.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+    );
+    expect(navigations).toBe(1);
+    expect(decisionRequests).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
   });
 
-  it('leaves segment decisions to the personalization switch: the A/B switch only applies the bucket', async () => {
-    document.cookie = 'prepr_decisions=hero%3AA; path=/';
+  it('leaves modifier clicks and other sites alone', async () => {
+    const container = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(
+        createElement(
+          'div',
+          null,
+          createElement(PreprPersonalizationSwitch),
+          createElement('a', { href: '/pricing', id: 'local' }),
+          createElement('a', { href: 'https://example.com/x', id: 'other' }),
+        ),
+      ),
+    );
+    const click = (id: string, init: MouseEventInit = {}) => {
+      const event = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        ...init,
+      });
+      container.querySelector(`#${id}`)!.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(click('local', { metaKey: true })).toBe(false);
+    expect(click('other')).toBe(false);
+    expect(decisionRequests).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it('leaves segment decisions to the decision switch: the A/B switch only applies the bucket', async () => {
+    history.replaceState(null, '', '/x');
+    document.cookie = `prepr_decisions=${encodeURIComponent('/x@hero:DEVELOPERS')}; path=/`;
     const root = createRoot(document.createElement('div'));
     await act(() => root.render(createElement(PreprAbSwitch)));
-    expect(rules()).toBe('');
+    expect(document.cookie).toContain('prepr_decisions');
     act(() => root.unmount());
   });
 });

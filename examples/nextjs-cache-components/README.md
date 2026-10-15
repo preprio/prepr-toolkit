@@ -16,14 +16,16 @@ The page uses its ordinary query ([`get-page-by-slug.graphql`](./src/queries/get
   item's `_context`, so the result holds every variant of every
   personalization and A/B group and is the same for every visitor. A group
   that shows nothing to "all other users" still gets its place.
-- **The decision, per visitor.** `prepr().decide(...)` sends the same query
-  cut down to `_context` only (a few hundred bytes). Prepr decides from
-  everything the middleware forwards: customer profile, UTM parameters,
-  visitor IP, HubSpot id.
-- **`<PreprStack>`** renders what never varies, and every A/B test, in the
-  static shell; each segment group gets its own `<Suspense>` boundary with
-  the default variant as fallback, and a visitor in several segments gets the
-  right variant per group.
+- **The decision, per page view.** [`src/proxy.ts`](./src/proxy.ts)
+  (`createPreprProxy`) sends the same query cut down to `_context` only (a
+  few hundred bytes) at every page load; `PreprPersonalizationSwitch` in the
+  layout asks for the target page's decision when a link is pressed. Prepr
+  decides from everything the middleware forwards: customer profile, UTM
+  parameters, visitor IP, HubSpot id.
+- **`<PreprStack>`** renders everything in the prerendered page: every
+  variant of each segment group sits hidden until the view's decision shows
+  the visitor's one, before first paint. Nothing streams, and the default
+  variant never shows first.
 - **A/B tests never stream or swap.** Both variants are in the cached page;
   [`src/proxy.ts`](./src/proxy.ts) stores the visitor's bucket in a cookie
   with `resolvePreprBucket` (asked from Prepr once), and a tiny inline script

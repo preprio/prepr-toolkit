@@ -1,7 +1,6 @@
 // A namespace import: `cacheTag` only exists from Next 16, and a named import
 // would fail to resolve on the older versions the peer range allows.
 import * as nextCache from 'next/cache';
-import { headers as nextHeaders } from 'next/headers';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import {
@@ -21,11 +20,8 @@ import {
 import type { PreprDecisions } from '../core/variants';
 import { documentOf } from '../core/variants/ast';
 import {
-  parseDecisions,
-  PREPR_DECIDED_HEADER,
   preprClientInternals,
   resolveDecisionsWith,
-  type PreprSeenGroups,
   type ResolveDecisionsOptions,
 } from './decisions';
 import { getPreprHeaders } from './server';
@@ -88,8 +84,8 @@ export interface PreprNextClient {
    * from everything the middleware forwards: customer profile, UTM
    * parameters, visitor IP, HubSpot id.
    *
-   * Start it without awaiting and hand the promise to `PreprStack`: only the
-   * parts that vary per visitor wait for it.
+   * For rendering variants yourself with `resolveVariants`. `PreprStack`
+   * does not need it: `createPreprProxy` decides every page view.
    */
   decide<TVariables>(
     document: PreprDocument<unknown, TVariables>,
@@ -105,19 +101,18 @@ export interface PreprNextClient {
     variables?: TVariables,
   ): Promise<boolean>;
   /**
-   * In middleware (`proxy.ts`): asks Prepr which segment variant this visitor
-   * gets for each personalization group at the top of the page, and stores
-   * the answer in the `prepr_decisions` cookie on `response`. `PreprStack`
-   * then shows those variants before first paint instead of streaming them
-   * in. `createPreprProxy` calls this for you.
+   * In middleware (`proxy.ts`): asks Prepr, in one request, which segment
+   * variant this visitor gets for every personalization group on the page,
+   * nested lists included, and stores the answer for this page view in the
+   * `prepr_decisions` cookie on `response`. `PreprStack` shows those
+   * variants before first paint. `createPreprProxy` calls this for you on
+   * every page view; client-side navigations ask through
+   * `PreprPersonalizationSwitch` instead.
    *
    * Call it after `createPreprMiddleware`, whose visitor headers (customer id,
-   * UTM parameters, IP, HubSpot id) it forwards. A stored decision that
-   * covers the page is kept for `freshFor` (default 10 s); a first visit, UTM
-   * parameters and a segment forced in preview always ask again. Pages
-   * without segment groups at the top are skipped after a cached check.
-   * Never throws and gives up after `timeoutMs` (default 1000): the default
-   * variant shows instead.
+   * UTM parameters, IP, HubSpot id) it forwards. Pages without segment groups
+   * are skipped after a cached check. Never throws and gives up after
+   * `timeoutMs` (default 1000): the default variants show instead.
    */
   resolveDecisions<TVariables>(
     request: NextRequest,
@@ -160,10 +155,6 @@ export function createPreprClient(
     } as NextFetchInit,
     ...coreOptions,
   });
-
-  // Per page: the groups decisions have named, so a later request can tell
-  // whether the stored cookie already covers the page.
-  const seenGroups: PreprSeenGroups = new Map();
 
   const nextClient: PreprNextClient = {
     async query<TResult, TVariables>(
@@ -232,21 +223,13 @@ export function createPreprClient(
       variables?: TVariables,
       queryOptions: PreprDecideOptions = {},
     ): Promise<PreprDecisions> {
-      const [preprHeaders, decided] = await Promise.all([
-        getPreprHeaders(),
-        nextHeaders().then((h) => h.get(PREPR_DECIDED_HEADER)),
-      ]);
-      const headers = mergePreprHeaders(preprHeaders, queryOptions.headers);
-      if (decided === null) {
-        return client.decide(document, variables, { ...queryOptions, headers });
-      }
-      // The proxy decided the top-level lists for this request already.
-      const nested = await client.decide(document, variables, {
+      return client.decide(document, variables, {
         ...queryOptions,
-        headers,
-        nestedOnly: true,
+        headers: mergePreprHeaders(
+          await getPreprHeaders(),
+          queryOptions.headers,
+        ),
       });
-      return new Map([...parseDecisions(decided), ...nested]);
     },
 
     hasAbTests: (document, variables) => client.hasAbTests(document, variables),
@@ -254,7 +237,6 @@ export function createPreprClient(
     resolveDecisions: (request, response, document, variables, options) =>
       resolveDecisionsWith(
         client,
-        seenGroups,
         request,
         response,
         document,
@@ -262,11 +244,7 @@ export function createPreprClient(
         options,
       ),
   };
-  preprClientInternals.set(nextClient, {
-    client,
-    seenGroups,
-    url: coreOptions.url,
-  });
+  preprClientInternals.set(nextClient, { client, url: coreOptions.url });
   return nextClient;
 }
 

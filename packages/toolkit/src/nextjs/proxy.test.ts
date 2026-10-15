@@ -108,8 +108,7 @@ describe('createPreprProxy', () => {
     const response = await handle(request('/'));
 
     expect(response.headers.get('x-middleware-next')).toBe('1');
-    expect(response.cookies.get('prepr_decisions')?.value).toBe('g:VIP');
-    expect(response.cookies.get('prepr_refresh')?.value).toMatch(/^\/~\d+$/);
+    expect(response.cookies.get('prepr_decisions')?.value).toBe('/@g:VIP');
     expect(response.cookies.get('__prepr_uid')?.value).toBeTruthy();
   });
 
@@ -142,95 +141,69 @@ describe('createPreprProxy', () => {
     expect(decisionCalls()).toHaveLength(0);
   });
 
-  it("answers a refresh request with fresh decisions for the visitor's own pages, without rendering", async () => {
-    const { handle, request, page, decisionCalls } = await setup();
+  it('decides again at every page view', async () => {
+    const { handle, request, decisionCalls } = await setup();
+    const first = await handle(request('/'));
+    const cookie = `prepr_decisions=${first.cookies.get('prepr_decisions')!.value}`;
+    await handle(request('/', { cookie }));
+    expect(decisionCalls()).toHaveLength(2);
+  });
+
+  it('never decides a prefetch or client-side navigation, whose answer the router would reuse', async () => {
+    const { handle, request, decisionCalls } = await setup();
+    for (const headers of <Record<string, string>[]>[
+      { rsc: '1' },
+      { rsc: '1', 'next-router-prefetch': '1' },
+    ]) {
+      const response = await handle(request('/pricing', headers));
+      expect(response.cookies.get('prepr_decisions')).toBeUndefined();
+    }
+    expect(decisionCalls()).toHaveLength(0);
+  });
+
+  it("answers a click's decision request with the target page's decisions, without rendering", async () => {
+    const { handle, request, decisionCalls } = await setup();
 
     const response = await handle(
-      request('/blog', {
-        'prepr-refresh': '/|//evil.com|/pricing|/missing|/not-in-cookie',
-        cookie: 'prepr_refresh=/~1|/pricing~1|/missing~1',
+      request('/pricing', {
+        'Prepr-Decide': '1',
         'sec-fetch-site': 'same-origin',
       }),
     );
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBeNull();
-    expect(response.cookies.get('prepr_decisions')?.value).toBe(
-      'g:VIP~gpricing:VIP',
-    );
-    expect(response.cookies.get('prepr_refresh')?.value).toMatch(
-      /^\/~\d{5,}\|\/pricing~\d{5,}\|\/missing~1$/,
-    );
-    expect(page.mock.calls.map(([url]) => url.pathname)).toEqual([
-      '/',
-      '/pricing',
-      '/missing',
-    ]);
-    // Both pages in one Prepr request, not one per page.
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.text()).toBe('gpricing:VIP');
+    // Used for that click only: nothing is stored for a later view.
+    expect(response.cookies.get('prepr_decisions')).toBeUndefined();
+    expect(response.cookies.get('__prepr_uid')?.value).toBeTruthy();
     expect(decisionCalls()).toHaveLength(1);
   });
 
-  it('decides nothing for a refresh from another site, a non-GET request, or one onlyIf rejects', async () => {
-    const cookie = 'prepr_refresh=/~1';
-    const cross = await setup();
+  it('answers the defaults to a decision request from another site, a non-GET request, or one onlyIf rejects', async () => {
     const { NextRequest } = await import('next/server');
-    for (const req of [
-      cross.request('/', {
-        'prepr-refresh': '/',
-        cookie,
-        'sec-fetch-site': 'cross-site',
-      }),
-      new NextRequest('https://site.test/', {
-        method: 'POST',
-        headers: { 'prepr-refresh': '/', cookie },
-      }),
-    ]) {
-      const response = await cross.handle(req);
-      expect(response.status).toBe(204);
+    const asked = [
+      (await setup()).handle(
+        new NextRequest('https://site.test/pricing', {
+          headers: { 'Prepr-Decide': '1', 'sec-fetch-site': 'cross-site' },
+        }),
+      ),
+      (await setup()).handle(
+        new NextRequest('https://site.test/pricing', {
+          method: 'POST',
+          headers: { 'Prepr-Decide': '1' },
+        }),
+      ),
+      (await setup({ onlyIf: () => false })).handle(
+        new NextRequest('https://site.test/pricing', {
+          headers: { 'Prepr-Decide': '1' },
+        }),
+      ),
+    ];
+    for (const response of await Promise.all(asked)) {
+      expect(await response.text()).toBe('*');
     }
-    expect(cross.decisionCalls()).toHaveLength(0);
-
-    const bots = await setup({ onlyIf: () => false });
-    await bots.handle(bots.request('/', { 'prepr-refresh': '/', cookie }));
-    const page = await bots.handle(bots.request('/'));
-    expect(page.cookies.get('prepr_decisions')).toBeUndefined();
-    expect(bots.decisionCalls()).toHaveLength(0);
-  });
-
-  it('hands its decisions to the render, also when it reuses a fresh one', async () => {
-    const { handle, request, decisionCalls } = await setup();
-    const forwarded = (response: Response) =>
-      response.headers
-        .get('x-middleware-override-headers')
-        ?.split(',')
-        .includes('x-prepr-decided')
-        ? response.headers.get('x-middleware-request-x-prepr-decided')
-        : null;
-
-    const first = await handle(request('/'));
-    expect(forwarded(first)).toBe('g:VIP');
-
-    const uid = first.cookies.get('__prepr_uid')?.value;
-    const cookie = `__prepr_uid=${uid}; prepr_decisions=g:VIP; prepr_refresh=/~${Date.now()}`;
-    const again = await handle(request('/', { cookie }));
-    expect(forwarded(again)).toBe('g:VIP');
-    expect(decisionCalls()).toHaveLength(1);
-  });
-
-  it('never lets a visitor-sent decided header reach the render', async () => {
-    const { handle, request } = await setup({ onlyIf: () => false });
-
-    const response = await handle(
-      request('/', { 'x-prepr-decided': 'g:FORGED' }),
-    );
-
-    expect(
-      response.headers.get('x-middleware-override-headers')?.split(','),
-    ).not.toContain('x-prepr-decided');
-    expect(
-      response.headers.get('x-middleware-request-x-prepr-decided'),
-    ).toBeNull();
   });
 
   it('sends a preview visitor without draft mode through the draft route first', async () => {

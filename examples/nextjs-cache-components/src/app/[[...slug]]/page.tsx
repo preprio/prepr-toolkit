@@ -44,18 +44,11 @@ export default async function Page({
       <meta property="prepr:id" content={page._id} />
       {/* Serializes the whole page for the editor; preview only. */}
       {isPreview && <EditorBridge page={page} />}
-      {/* Static: everything that never varies, and A/B tests (both variants;
-          the visitor's bucket is shown before first paint). Streamed per
-          group: this visitor's segment variants. */}
+      {/* All prerendered: every variant of each A/B test and segment
+          group. This page view's decision (from proxy.ts, or requested on a
+          link press) shows the visitor's variant before first paint. */}
       <PreprStack
         items={page.content}
-        // `from` limits the per-visitor query to the groups this page has,
-        // and skips it when there are none.
-        decisions={prepr().decide(
-          GetPageBySlugDocument,
-          { slug },
-          { from: data },
-        )}
         render={(elements) => <Sections elements={elements} />}
       />
     </div>

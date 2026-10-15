@@ -235,11 +235,11 @@ Custom headers go in two places. Client-level `headers` (`createPreprClient({ ur
 
 #### Personalization with Cache Components
 
-With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), a personalized page is still served from the cache: what never varies and every A/B test are in the static shell, and only the parts that differ per segment stream in. You keep your own query and your own components.
+With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), a personalized page is still served from the cache, whole: every variant of every A/B test and personalization group is in the prerendered page, and each page view's decision shows the visitor's variant before first paint. Nothing streams, and no default variant shows first to be swapped out. You keep your own query and your own components.
 
 **Do you need this?** Only if your pages are cached. A page that renders per request already gets this visitor's variants from `query(..., { personalize: true })`; render the result as is and skip this section.
 
-A normal page needs three changes:
+A normal page needs two changes, plus the [proxy](#the-proxy):
 
 ```tsx
 import { PreprStack } from '@preprio/toolkit/nextjs/graphql';
@@ -263,14 +263,10 @@ export default async function Page({
   const slug = (await params).slug?.join('/') || '/';
   const data = await getPage(slug);
 
-  // 2. Ask which variants this visitor gets. Do not await it.
-  const decisions = prepr.decide(PageDocument, { slug }, { from: data });
-
-  // 3. Render the list through PreprStack instead of directly.
+  // 2. Render the list through PreprStack instead of directly.
   return (
     <PreprStack
       items={data.Page.content}
-      decisions={decisions}
       render={(items, { index }) => <Sections items={items} offset={index} />}
     />
   );
@@ -290,7 +286,6 @@ Because `render` runs per block, a position counted inside `Sections` (`items.ma
 // After
 <PreprStack
   items={data.Page.content}
-  decisions={decisions}
   render={(items, { index }) => <Sections items={items} offset={index} />}
 />
 
@@ -310,11 +305,11 @@ A group takes one position, whichever variant shows. A group that shows nothing 
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | One page-builder list (`content`, `sections`, `stack`)                      | One `PreprStack` around it.                                                                       |
 | Personalized lists inside sections (cards, buttons, models in a section)    | Nothing. They are narrowed down with the section they sit in.                                     |
-| Several lists (hero, body, sidebar)                                         | One `PreprStack` per list, all with the same `decisions`.                                         |
+| Several lists (hero, body, sidebar)                                         | One `PreprStack` per list.                                                                        |
 | A personalized list outside any list you already wrap (e.g. `Page.buttons`) | Its own `PreprStack`.                                                                             |
 | Data used outside rendering (`generateMetadata`, JSON-LD)                   | `resolveVariants(data)` gives the default variants and A.                                         |
 | Impression tracking for Prepr's metrics                                     | `trackVariants` on `PreprStack`; see [Impressions and conversions](#impressions-and-conversions). |
-| No personalization on a page                                                | Nothing to change. `PreprStack` renders it statically and `decide()` sends no request.            |
+| No personalization on a page                                                | Nothing to change. `PreprStack` renders it as is and the proxy sends no request.                  |
 
 ##### Impressions and conversions
 
@@ -323,7 +318,7 @@ Prepr's tracking pixel counts impressions of an element carrying `data-prepr-var
 Opt in with `trackVariants`, and `PreprStack` puts the key on the section each personalized and A/B variant renders:
 
 ```tsx
-<PreprStack items={data.Page.content} decisions={decisions} trackVariants render={…} />
+<PreprStack items={data.Page.content} trackVariants render={…} />
 ```
 
 For variants nested inside a section (cards, buttons, models), and outside Next.js, spread `preprVariantProps(item)` on the element that shows the item:
@@ -337,19 +332,11 @@ Conversions stay your choice: put `data-prepr-variant-event` (or `data-prepr-var
 - Keys are added after the page hydrates; the pixel picks them up then. Each item of a variant tags the element it renders, in order. A variant that renders a different number of elements than it has items (a section with several root elements, or one rendering nothing) tags only its first element.
 - With `trackVariants`, each variant sits in a `display: contents` wrapper. It takes no box, but CSS child combinators (`>`) and `:first-child` from the stack's parent no longer reach the sections.
 - An element that already has `data-prepr-variant-key` keeps it, so existing manual tagging keeps working.
-- Tagging yourself (with your own `_context { variant_key }` or `preprVariantProps`)? Skip the tag when `render` gets `placeholder: true`: that render is the default variant standing in until the visitor's variant of a segment group streams in, and the pixel counts anything with a key that appears on screen, however briefly.
-
-  ```tsx
-  render={(items, { index, placeholder }) => (
-    <Sections items={items} offset={index} tagVariants={!placeholder} />
-  )}
-  ```
-
-- A hidden A/B variant never scrolls into view, so it records no impression.
+- Tagging yourself (with your own `_context { variant_key }` or `preprVariantProps`) works on every variant as is: a hidden variant never scrolls into view, so it records no impression.
 
 ##### The proxy
 
-One call in `proxy.ts` gives `PreprStack` what it needs from the request: the visitor's Prepr headers and customer id, the A/B bucket, and the segment variants of the groups at the top of the page. Tell it which query each URL renders; most sites route every page through one query:
+One call in `proxy.ts` gives `PreprStack` what it needs from the request: the visitor's Prepr headers and customer id, the A/B bucket, and, at every page view, the variant of every personalization group on the page, in one Prepr request. Tell it which query each URL renders; most sites route every page through one query:
 
 ```ts
 // proxy.ts
@@ -371,35 +358,28 @@ export function proxy(request: NextRequest) {
 ```
 
 ```tsx
-// app/layout.tsx, once
+// app/layout.tsx, once: decides every client-side navigation
 import { PreprPersonalizationSwitch } from '@preprio/toolkit/nextjs';
 
 <PreprPersonalizationSwitch />;
 ```
 
-API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped, and so are pages without A/B tests or segment groups at the top (after a cached check). Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers: they carry no cookies, so every crawler request is a first visit that waits for Prepr. In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `resolvePreprBucket`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
+API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped, and so are pages without A/B tests or segment groups (after a cached check). Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers, which then get the default variants. In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `resolvePreprBucket`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
 
 ##### A/B tests
 
 `PreprStack` renders both variants of an A/B test in the static shell and shows the visitor's one before first paint; A is the default, also for crawlers. Prepr assigns the bucket once per visitor; the proxy stores it in a cookie, and only on pages that have an A/B test. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
 
-##### Personalized content above the fold
+##### How each visitor gets their variant
 
-A segment group streams in: the default variant shows first, then this visitor's variant replaces it. Below the fold nobody sees that. On the first screen they do, so the first block of a `PreprStack` is decided in the proxy instead: every variant of its segment groups is in the cached page, and the variant the proxy decided shows before first paint. Set `aboveTheFold` to the number of blocks on your first screen (per page; take the larger screen when it differs per device), or `0` to stream everything:
+Every page view is decided, and nothing is reused from an earlier one: not from a prefetch, a cookie or the router cache.
 
-```tsx
-<PreprStack items={data.Page.content} decisions={decisions} aboveTheFold={3} render={…} />
-```
-
-Decisions stay fresh within a visit, so a visitor who joins a segment (by reading pages, clicking, submitting a form) sees its variant on their next page view, without anything on screen changing:
-
-- `PreprPersonalizationSwitch` asks the proxy for new decisions in the background: about 4 seconds after each page view (Prepr needs a few seconds to process the visitor's activity), when the visitor points at a link to a personalized page, and when the tab comes back into view. A refresh is one small request that the proxy answers with cookies and no page, and the proxy decides every page it covers in one Prepr request. Each timed refresh is one Prepr request per page view: `refreshAfter={[3000, 10000]}` adds a second one that catches segments Prepr processes more slowly, and `refreshAfter={[]}` refreshes only on link intent and when the tab comes back.
-- The proxy keeps a decision that covers the page for `freshFor` (default 10 seconds), so most page views, client-side or full, wait for nothing. An older decision, a first visit, UTM parameters and a segment forced in preview make it ask Prepr; the page then waits for the answer, at most `timeoutMs` (default 1000), after which the default variant shows.
-- A decision that arrives while a page is being read applies from the next page view: content never changes under the reader. A visitor who joins a segment and clicks within a few seconds sees it one page view later.
-- Next.js prefetches links as they scroll into view and on hover; a prefetch of a page without a fresh decision gets one, so even the first visit to a personalized page shows its variant at once.
-- The page carries the HTML of every variant of those groups. `render` gets `defaultVariant`: give `priority` images only to the default variant and `loading="lazy"` to the others, or the browser downloads every variant's hero image.
-- An item with a segment group nested inside it keeps streaming; only groups at the top level of the list are decided in the proxy.
-- Decisions are uncached Prepr requests, so their time depends on how far your functions run from Prepr: deploy them in the region closest to your visitors and to Prepr.
+- **Page loads.** The proxy asks Prepr which variant this visitor gets for every group on the page, nested lists included, in one request, and puts the answer on the response. An inline script after each personalized section shows the visitor's variant while the HTML is parsed, so the first paint is already right.
+- **Client-side navigations.** When the visitor presses a link, `PreprPersonalizationSwitch` asks the proxy for the target page's decision, and the click waits for the answer. The new page then paints with the visitor's variants. Pressing, not clicking, starts the request, so most of the wait happens while the button is still going down. Prefetches still bring the page itself; only the decision is fetched per click.
+- **Never the default first.** Until a view's decision is in, its personalized sections stay hidden. The default variant only shows when it is the decision: for visitors in none of the segments, for requests `onlyIf` skips, and when Prepr does not answer within `timeoutMs` (default 1000). Back and forward navigation, and navigations started from code, ask for a decision when the page opens; the personalized sections appear when it arrives.
+- **"Right" means what Prepr knows when the visitor clicks.** Prepr assigns segments from the visitor's tracked activity. If it has not yet processed the pixel event of the previous page view, the decision cannot include it, and the visitor sees that segment from a later page view.
+- **Costs.** The page carries the HTML of every variant, and an item with groups nested inside it once per combination of their variants. `render` gets `defaultVariant`: give `priority` images only to the default variant and `loading="lazy"` to the others, or the browser downloads every variant's hero image. Every page view and every link press on a site with personalization is one uncached Prepr request (a press on touch devices too, also when it turns into a scroll), so run your functions in the region closest to your visitors and to Prepr.
+- Without JavaScript, visitors see the default variants.
 
 ##### Preview
 
@@ -487,8 +467,8 @@ Next.js accepts at most 128 tags per `cacheTag()` call. A page with more items i
 <summary>How it works</summary>
 
 - **`variants: true`** adds `personalize: false` to every personalizable field in your query, at any depth, and selects each item's `_context`. The client learns which fields are personalizable from one schema introspection request per client, kept in the Data Cache.
-- **`decide()`** sends your query cut down to the lists that hold segment groups on this page (`from: data`), selecting only `_context`, with the visitor's headers and never cached. Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id. A page without segment groups makes no request. Behind `createPreprProxy`, the proxy has already decided the page's top-level lists for this request and passes those decisions on, so `decide()` asks only about lists nested inside items, and a page without nested groups makes no request either.
-- **`PreprStack`** renders items that never vary in the static shell. Each segment group, and each item with a segment group nested inside it, gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant still gets its place. A failed decision falls back to the defaults.
+- **Decisions** send your query cut down to the lists that hold segment groups, selecting only `_context`, with the visitor's headers and never cached. Prepr decides from everything the middleware forwards: customer profile, UTM parameters, visitor IP, HubSpot id. A page without segment groups makes no request. `prepr.decide()` does the same inside a render, for rendering variants yourself with `resolveVariants`; `PreprStack` does not need it.
+- **`PreprStack`** renders every variant of each segment group, and each item with groups nested inside it once per combination of their variants, in `display: contents` wrappers that stay hidden until the view's decision marks one to show. A group with no default variant still gets its place.
 - **A/B variants** are both in the HTML, each in a `display: contents` wrapper; an inline script (and a layout effect after in-app navigation) shows the bucket from the cookie. A hidden variant never becomes visible, so the tracking pixel records no impression for it.
 - **`hasAbTests`** sends your query without its leaf fields and no visitor headers, so Prepr's CDN caches it, and reads the answer from the `Vary` header. Answers are reused for a minute.
 - **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call. `tagItems` adds a tag per item; see [Refreshing on publish](#refreshing-on-publish).
@@ -1034,12 +1014,7 @@ The toolbar. Takes the props returned by `getToolbarProps`, and renders nothing 
 
 #### `PreprPersonalizationSwitch`
 
-From `@preprio/toolkit/nextjs`. Shows the segment variants the proxy decided for the groups above the fold before each page paints, and refreshes those decisions in the background (see [Personalized content above the fold](#personalized-content-above-the-fold)). Mount it once in the root layout. The decisions come from `createPreprProxy` or `prepr.resolveDecisions` in `proxy.ts`; the background refreshes only from `createPreprProxy` (with a hand-written `resolveDecisions` proxy, the first refresh gets a page back and refreshing stops for the browser session). Renders nothing.
-
-| Prop       | Default | Description                                     |
-| ---------- | ------- | ----------------------------------------------- |
-| `refresh`  | `true`  | Refresh decisions in the background.            |
-| `freshFor` | `10000` | Same as `createPreprProxy`'s `freshFor`, in ms. |
+From `@preprio/toolkit/nextjs`. Decides every client-side navigation: when the visitor presses a same-site link, it asks `createPreprProxy` for the target page's decision and holds the click until the answer is in (see [How each visitor gets their variant](#how-each-visitor-gets-their-variant)). Mount it once in the root layout, so links on pages without a `PreprStack` are covered too. Clicks with a modifier key, links to other sites and links that open a new tab or download are left alone. The decision requests are answered by `createPreprProxy` only. Takes no props and renders nothing.
 
 #### `PreprPreview`
 

@@ -41,73 +41,69 @@ export function applyPreprAbBucket(): void {
 }
 
 /**
- * Shows the segment variant the proxy decided for each group rendered with
- * `aboveTheFold` (from the `prepr_decisions` cookie) and hides the others,
- * the same way as the A/B switch. Groups the cookie does not mention keep
- * their default variant.
+ * Shows, of the personalization variant wrappers `PreprStack` rendered, the
+ * ones this page view's decision picks, and keeps the rest hidden. Each
+ * wrapper lists the `group:variant` pairs it renders; it shows when every
+ * pair is chosen. A group the decision does not name shows nothing, and so
+ * does every wrapper while no decision for this view is in: the default
+ * variant never stands in for a decision that is still on its way.
  *
- * Applies once per page view (`view`, by default the current path and
- * query): the cookie also changes while a page is being read, through
- * background refreshes and prefetches, and those decisions are for the next
- * view. Showing them right away would swap content under the reader.
+ * `decision` is the decision for the current URL (from a click's decision
+ * request). Without it, the one already applied to this URL is used, or the
+ * one the proxy left in the `prepr_decisions` cookie for this URL, which is
+ * read once and deleted so no later view reuses it. Returns false when there
+ * is none.
  *
  * Self-contained for the same reason as the A/B switch: its source is inlined
- * as a `<script>`. Only ids of letters, digits, `_` and `-` are used, so a
- * tampered cookie cannot inject CSS.
+ * as a `<script>`. Ids are only compared, never put into selectors.
  */
-export function applyPreprDecisions(view?: string): void {
-  const viewState = window as unknown as { __preprDecisionsView?: string };
-  const current =
-    view === undefined ? location.pathname + location.search : view;
-  if (viewState.__preprDecisionsView === current) return;
-  viewState.__preprDecisionsView = current;
-  const match = document.cookie.match(/(?:^|; )prepr_decisions=([^;]*)/);
-  let raw: string;
-  try {
-    raw = match ? decodeURIComponent(match[1]!) : '';
-  } catch {
-    raw = '';
-  }
+export function applyPreprDecisions(decision?: string): boolean {
   const state = window as unknown as {
-    __preprDecisions?: string;
-    __preprDecisionSheet?: CSSStyleSheet | HTMLStyleElement;
+    __preprDecision?: { key: string; value: string };
   };
-  if (state.__preprDecisions === raw) return;
-  state.__preprDecisions = raw;
-  const id = /^[\w-]+$/;
-  let css = '';
-  raw.split('~').forEach((pair) => {
-    const at = pair.indexOf(':');
-    const group = pair.slice(0, at);
-    if (at < 1 || !id.test(group)) return;
-    const selector = '[data-prepr-group="' + group + '"]';
-    css += selector + '{display:none!important}';
-    pair
-      .slice(at + 1)
-      .split('|')
-      .forEach((variant) => {
-        if (id.test(variant)) {
-          css +=
-            selector +
-            '[data-prepr-variant="' +
-            variant +
-            '"]{display:contents!important}';
-        }
-      });
-  });
-  try {
-    if (!state.__preprDecisionSheet) {
-      const sheet = new CSSStyleSheet();
-      document.adoptedStyleSheets = document.adoptedStyleSheets.concat(sheet);
-      state.__preprDecisionSheet = sheet;
+  const key = location.pathname + location.search;
+  if (decision !== undefined) state.__preprDecision = { key, value: decision };
+  let current = state.__preprDecision;
+  if (!current || current.key !== key) {
+    const match = document.cookie.match(/(?:^|; )prepr_decisions=([^;]*)/);
+    let raw: string;
+    try {
+      raw = match ? decodeURIComponent(match[1]!) : '';
+    } catch {
+      raw = '';
     }
-    (state.__preprDecisionSheet as CSSStyleSheet).replaceSync(css);
-  } catch {
-    // Browsers without constructable stylesheets.
-    if (!state.__preprDecisionSheet) {
-      state.__preprDecisionSheet = document.createElement('style');
-      document.head.appendChild(state.__preprDecisionSheet);
-    }
-    (state.__preprDecisionSheet as HTMLStyleElement).textContent = css;
+    const at = raw.lastIndexOf('@');
+    if (at < 0 || raw.slice(0, at) !== key) return false;
+    document.cookie = 'prepr_decisions=; max-age=0; path=/';
+    current = state.__preprDecision = { key, value: raw.slice(at + 1) };
   }
+  // `*`: Prepr could not be asked, so every group shows its default variant
+  // (Prepr's id for visitors outside every segment).
+  const defaults = current.value === '*';
+  const chosen: Record<string, string[]> = {};
+  current.value.split('~').forEach((pair) => {
+    const colon = pair.indexOf(':');
+    if (colon > 0)
+      chosen[pair.slice(0, colon)] = pair.slice(colon + 1).split('|');
+  });
+  document.querySelectorAll('[data-prepr-v]').forEach((element) => {
+    // A nested group's wrappers each hold a whole item: only its first
+    // variant shows, or the item would repeat.
+    const nested = element.hasAttribute('data-prepr-nested');
+    const show = (element.getAttribute('data-prepr-v') || '')
+      .split(' ')
+      .every((token) => {
+        const colon = token.indexOf(':');
+        const variant = token.slice(colon + 1);
+        if (defaults) return variant === 'ALL_OTHER_USERS';
+        const variants = chosen[token.slice(0, colon)];
+        return (
+          !!variants &&
+          (nested ? variants[0] === variant : variants.indexOf(variant) >= 0)
+        );
+      });
+    if (show) element.setAttribute('data-prepr-show', '');
+    else element.removeAttribute('data-prepr-show');
+  });
+  return true;
 }

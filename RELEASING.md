@@ -202,9 +202,28 @@ upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
 ### 0.6.0 — changes during the alpha
 
-`0.6.0` adds personalization to `PreprStack` (`decide`, `aboveTheFold`,
-`resolveDecisions`); nothing a stable or release-candidate version shipped
-changes. Sites that tried an alpha, upgrading to `0.6.0-alpha.3`:
+`0.6.0` adds personalization to `PreprStack` and `createPreprProxy`; nothing a
+stable or release-candidate version shipped changes. Sites that tried an alpha,
+upgrading to the next alpha after `0.6.0-alpha.6`:
+
+- Personalization groups no longer stream. Every variant of every group,
+  nested ones included, is in the prerendered page, and each page view's
+  decision shows the visitor's variant before first paint. Remove
+  `decisions` and `aboveTheFold` from `PreprStack`; `render` no longer gets
+  `placeholder` (nothing stands in any more, so tag every variant).
+- `createPreprProxy` decides every page load and answers the decision
+  requests `PreprPersonalizationSwitch` sends on link presses. Keep
+  `<PreprPersonalizationSwitch />` in the root layout; it takes no props now
+  (`refresh`, `freshFor` and `refreshAfter` are gone, with the background
+  refresh and the `prepr_refresh` cookie). `freshFor` is gone from
+  `createPreprProxy` and `resolveDecisions` too. A proxy that calls
+  `prepr.resolveDecisions` itself cannot answer those requests: use
+  `createPreprProxy`, or navigations show their personalized sections only
+  once the decision request falls back to the defaults.
+- The `prepr_decisions` cookie now holds one page view's decision, keyed by
+  its URL, and is deleted once read.
+
+Upgrading to `0.6.0-alpha.3`:
 
 - `aboveTheFold` defaults to `1`: the first block's segment groups are
   decided in the proxy and shown before first paint. Without a proxy decision

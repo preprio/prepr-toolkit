@@ -6,18 +6,12 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
-  Suspense,
   type ReactElement,
   type ReactNode,
 } from 'react';
 
 import { createPreprPreview } from '../core/create-preview';
 import { isReactHydrated } from '../react/hydration';
-import {
-  createPreprRefreshScheduler,
-  type PreprRefreshScheduler,
-} from '../core/refresh-scheduler';
 import { applyPreprAbBucket, applyPreprDecisions } from './ab-switch';
 import type { PreprToolbarComponentProps } from '../core/types';
 
@@ -90,108 +84,186 @@ export function PreprAbSwitch(): null {
   return null;
 }
 
-export interface PreprPersonalizationSwitchProps {
-  /**
-   * Keep segment decisions fresh in the background. Default `true`. Leave it
-   * on for the instance in your root layout; `PreprStack` renders its own
-   * with `false`.
-   */
-  refresh?: boolean;
-  /** Same as `createPreprProxy`'s `freshFor`. Default 10 000 ms. */
-  freshFor?: number;
-  /**
-   * When to refresh after each page view, in ms. Default `[4000]`. Each
-   * delay is one Prepr request per page view; `[3000, 10000]` also catches
-   * segments Prepr takes longer to process, and `[]` refreshes only on link
-   * intent and when the tab comes back into view.
-   */
-  refreshAfter?: readonly number[];
+// Same as `PREPR_DECIDE_HEADER`, which lives in server-only code.
+const DECIDE_HEADER = 'Prepr-Decide';
+// The proxy gives up on Prepr after its own `timeoutMs`; this only covers a
+// proxy that never answers.
+const DECIDE_TIMEOUT_MS = 5000;
+
+interface PendingDecision {
+  key: string;
+  /** The answer, once it is in. */
+  result?: string;
+  value: Promise<string>;
 }
 
 /**
- * Shows the segment variants decided in the proxy for the groups above the
- * fold, before the page paints, and keeps those decisions fresh while the
- * visitor browses: a short while after each page view, when the visitor
- * points at a link to a personalized page, and when the tab comes back.
- * Because the next page's decision is already in place when it opens, a
- * visitor who joins a segment mid-visit sees it on their next page view,
- * without anything on screen changing.
+ * Asks the proxy which variants this visitor gets on the page at `key` (path
+ * and query). Never rejects: any failure answers `*`, the default variants,
+ * so a held navigation always continues.
+ */
+function requestDecision(key: string): PendingDecision {
+  const pending: PendingDecision = { key, value: null! };
+  pending.value = fetch(key, {
+    headers: { [DECIDE_HEADER]: '1' },
+    cache: 'no-store',
+    credentials: 'same-origin',
+    signal: AbortSignal.timeout(DECIDE_TIMEOUT_MS),
+  })
+    .then((response) => (response.ok ? response.text() : '*'))
+    .catch(() => '*')
+    .then((value) => {
+      pending.result = value;
+      return value;
+    });
+  return pending;
+}
+
+// The decision request of the link being pressed: used only by the click
+// that follows it, never kept for a later view.
+let pressed: PendingDecision | null = null;
+// The anchor whose click is replayed once its decision is in.
+let replaying: Element | null = null;
+
+/** The same-site page a pointer or click event on a link goes to. */
+function linkTarget(
+  event: MouseEvent,
+): { anchor: Element; key: string } | null {
+  const anchor = (event.target as Element | null)?.closest?.('a[href]');
+  if (!(anchor instanceof HTMLAnchorElement)) return null;
+  if (
+    (anchor.target && anchor.target !== '_self') ||
+    anchor.hasAttribute('download')
+  ) {
+    return null;
+  }
+  const url = new URL(anchor.href, location.href);
+  const key = url.pathname + url.search;
+  if (
+    url.origin !== location.origin ||
+    key === location.pathname + location.search
+  ) {
+    return null;
+  }
+  return { anchor, key };
+}
+
+function onPointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return;
+  const target = linkTarget(event);
+  if (
+    !target ||
+    (pressed?.key === target.key && pressed.result === undefined)
+  ) {
+    return;
+  }
+  // Sent on press rather than on click: the visitor is still releasing the
+  // button while Prepr answers.
+  pressed = requestDecision(target.key);
+}
+
+function onClick(event: MouseEvent): void {
+  const target = linkTarget(event);
+  if (!target) return;
+  if (replaying === target.anchor) {
+    replaying = null;
+    return;
+  }
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+  const pending =
+    pressed && pressed.key === target.key
+      ? pressed
+      : requestDecision(target.key);
+  pressed = null;
+  const record = (value: string) => {
+    (
+      window as unknown as { __preprDecision?: { key: string; value: string } }
+    ).__preprDecision = { key: target.key, value };
+  };
+  if (pending.result !== undefined) {
+    // The answer is in: let the link navigate as it would.
+    record(pending.result);
+    return;
+  }
+  // Hold the navigation until the answer is in, then replay the click so
+  // the link (a Next.js `Link` or a plain anchor) navigates as it would.
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void pending.value.then((value) => {
+    record(value);
+    replaying = target.anchor;
+    (target.anchor as HTMLElement).click();
+  });
+}
+
+let listeners = 0;
+
+/** Holds clicks on same-site links until the target page's decision is in. */
+function useDecisionRequests(): void {
+  useEffect(() => {
+    if (listeners++ === 0) {
+      window.addEventListener('pointerdown', onPointerDown, true);
+      window.addEventListener('click', onClick, true);
+    }
+    return () => {
+      if (--listeners === 0) {
+        window.removeEventListener('pointerdown', onPointerDown, true);
+        window.removeEventListener('click', onClick, true);
+      }
+    };
+  }, []);
+}
+
+/**
+ * Decides every client-side navigation to another page: when the visitor
+ * presses a same-site link, it asks `createPreprProxy` which variants they
+ * get on that page, and holds the click until the answer is in. The new page
+ * then paints with those variants, never with the default variant first.
+ * Pressing starts the request, so the wait mostly overlaps the click itself.
  *
- * Mount it once in the root layout. The background refreshes are answered by
- * `createPreprProxy`; with a proxy that calls `resolveDecisions` itself, the
- * first refresh gets a page back and refreshing stops for the browser
- * session. The decisions themselves come from `createPreprProxy` or
- * `resolveDecisions` in `proxy.ts`.
+ * Mount it once in the root layout, so links on pages without a
+ * `PreprStack` are covered too. Clicks with a modifier key, links to other
+ * sites and links that open a new tab or download are left alone.
  *
  * @example
  * <PreprPersonalizationSwitch />
  */
-// Numbers page views so that returning to a URL is a view of its own.
-let viewCount = 0;
-
-export function PreprPersonalizationSwitch({
-  refresh = true,
-  freshFor,
-  refreshAfter,
-}: PreprPersonalizationSwitchProps): ReactElement | null {
-  const [scheduler, setScheduler] = useState<PreprRefreshScheduler | null>(
-    null,
-  );
-
-  // A mount is a new page view, even on a URL seen before: the decision
-  // stored since then applies. The preview toolbar switches variant by
-  // navigating to the same page with another query, which re-renders this
-  // without remounting it, so a new URL is a new view too. Other re-renders
-  // leave the page alone: a decision that arrives while a page is read is for
-  // the next view.
-  const viewUrl = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    const url = location.pathname + location.search;
-    if (viewUrl.current === url) return;
-    viewUrl.current = url;
-    applyPreprDecisions(`${url}#${++viewCount}`);
-  });
-
-  // A string key: an inline `refreshAfter={[…]}` is a new array every render.
-  const delays = refreshAfter?.join(',');
-  useEffect(() => {
-    if (!refresh) return;
-    const started = createPreprRefreshScheduler({
-      freshFor,
-      refreshAfter: delays === undefined ? undefined : parseDelays(delays),
-    });
-    setScheduler(started);
-    return () => {
-      started.stop();
-      setScheduler(null);
-    };
-  }, [refresh, freshFor, delays]);
-
-  // The pathname is request data on routes whose params are only known at
-  // request time, and reading it outside a Suspense boundary stops Next.js
-  // from prerendering them. Only the view counter reads it, in a boundary of
-  // its own that renders nothing.
-  return scheduler
-    ? createElement(
-        Suspense,
-        { fallback: null },
-        createElement(ViewCounter, { scheduler }),
-      )
-    : null;
+export function PreprPersonalizationSwitch(): null {
+  useDecisionRequests();
+  return null;
 }
 
-const parseDelays = (delays: string): number[] =>
-  delays === '' ? [] : delays.split(',').map(Number);
-
-function ViewCounter({
-  scheduler,
-}: {
-  scheduler: PreprRefreshScheduler;
-}): null {
-  const pathname = usePathname();
-  useEffect(() => {
-    scheduler.view();
-  }, [pathname, scheduler]);
+/**
+ * Applies this page view's decision to the variant wrappers of the
+ * `PreprStack` it is rendered by, before the page paints. A view without a
+ * decision (back and forward, a navigation started from code) asks for one;
+ * its personalized sections stay hidden until it arrives. Rendered by
+ * `PreprStack`; you do not need it yourself.
+ */
+export function PreprDecisionApplier(): null {
+  useDecisionRequests();
+  useLayoutEffect(() => {
+    if (applyPreprDecisions()) return;
+    const key = location.pathname + location.search;
+    let live = true;
+    void requestDecision(key).value.then((value) => {
+      if (live && location.pathname + location.search === key) {
+        applyPreprDecisions(value);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  });
   return null;
 }
 

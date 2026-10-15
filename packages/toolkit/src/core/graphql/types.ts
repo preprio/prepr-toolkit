@@ -107,16 +107,6 @@ export interface PreprDecideOptions extends Omit<
    * none, e.g. on pages with only A/B tests or no personalization.
    */
   from?: unknown;
-  /**
-   * @internal Ask only about the first personalizable list on each path,
-   * without `from`: what middleware needs for groups at the top of a stack.
-   */
-  topLevelOnly?: boolean;
-  /**
-   * @internal Ask only about the lists nested in the items of the first
-   * personalizable list on each path: the proxy decided the rest.
-   */
-  nestedOnly?: boolean;
 }
 
 export interface PreprQueryResult<TResult> {
