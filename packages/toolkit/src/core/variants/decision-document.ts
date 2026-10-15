@@ -15,6 +15,7 @@ import {
   selectionSet,
   withoutPersonalizeArg,
 } from './ast';
+import { PREPR_CONTEXT_ALIAS } from './constants';
 import type { PreprGroupPaths } from './resolve';
 import type { PreprSchemaInfo } from './schema';
 
@@ -51,7 +52,12 @@ function decisionSelectionSet(
         path,
         ctx,
       );
-      if (pruned) {
+      if (!pruned) continue;
+      // On the type it is already in, a fragment only repeats the condition:
+      // its selections go in as they are, which keeps the query short.
+      if (fragment.typeCondition.name.value === typeName) {
+        selections.push(...pruned.selections);
+      } else {
         selections.push(
           inlineFragment(fragment.typeCondition.name.value, [
             ...pruned.selections,
@@ -61,13 +67,19 @@ function decisionSelectionSet(
       continue;
     }
     if (selection.kind === 'InlineFragment') {
+      const condition = selection.typeCondition?.name.value ?? typeName;
       const pruned = decisionSelectionSet(
         selection.selectionSet,
-        selection.typeCondition?.name.value ?? typeName,
+        condition,
         path,
         ctx,
       );
-      if (pruned) selections.push({ ...selection, selectionSet: pruned });
+      if (!pruned) continue;
+      if (condition === typeName && !selection.directives?.length) {
+        selections.push(...pruned.selections);
+      } else {
+        selections.push({ ...selection, selectionSet: pruned });
+      }
       continue;
     }
     if (!selection.selectionSet) continue;
@@ -165,18 +177,72 @@ export function toDecisionDocument(
   const used = new Set<string>();
   collectVariables(pruned, used);
   collectVariables(operation.directives, used);
+  const shared = sharedContextFragment(schema);
 
   return {
     kind: 'Document',
     definitions: [
+      ...(shared ? [shared.definition] : []),
       {
         ...operation,
         name: operation.name && name(`${operation.name.value}Decision`),
         variableDefinitions: (operation.variableDefinitions ?? []).filter(
           (definition) => used.has(definition.variable.name.value),
         ),
-        selectionSet: pruned,
+        selectionSet: shared ? shared.apply(pruned) : pruned,
       },
     ],
   } as unknown as DocumentNode;
+}
+
+/**
+ * One named fragment for the `_context` fields every item selects, when all
+ * item types share one context type: a page query can select `_context` on
+ * hundreds of types, and the decision query is sent in full on every page
+ * view.
+ */
+function sharedContextFragment(schema: PreprSchemaInfo): {
+  definition: FragmentDefinitionNode;
+  apply: (set: SelectionSetNode) => SelectionSetNode;
+} | null {
+  const contextTypes = new Set(
+    Object.values(schema.types).flatMap((type) =>
+      type.hasContext ? [type.fields._context!.type] : [],
+    ),
+  );
+  if (contextTypes.size !== 1) return null;
+  const [contextType] = contextTypes;
+  const fragmentName = 'PreprDecisionContext';
+  const definition = {
+    kind: 'FragmentDefinition',
+    name: name(fragmentName),
+    typeCondition: { kind: 'NamedType', name: name(contextType!) },
+    selectionSet: selectionSet(
+      ['kind', 'group_id', 'variant_id'].map(
+        (field) => ({ kind: 'Field', name: name(field) }) as SelectionNode,
+      ),
+    ),
+  } as unknown as FragmentDefinitionNode;
+  const spread = {
+    kind: 'FragmentSpread',
+    name: name(fragmentName),
+  } as unknown as SelectionNode;
+  const apply = (set: SelectionSetNode): SelectionSetNode =>
+    selectionSet(
+      set.selections.map((selection) => {
+        if (
+          selection.kind === 'Field' &&
+          selection.alias?.value === PREPR_CONTEXT_ALIAS
+        ) {
+          return { ...selection, selectionSet: selectionSet([spread]) };
+        }
+        return 'selectionSet' in selection && selection.selectionSet
+          ? ({
+              ...selection,
+              selectionSet: apply(selection.selectionSet),
+            } as SelectionNode)
+          : selection;
+      }),
+    );
+  return { definition, apply };
 }

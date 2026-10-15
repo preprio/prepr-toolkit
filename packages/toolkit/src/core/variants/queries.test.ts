@@ -25,7 +25,7 @@ describe('toVariantsQuery', () => {
 describe('toDecisionQuery', () => {
   it('asks about every personalizable list without `from`', () => {
     const query = toDecisionQuery(PAGE_QUERY, schema)!;
-    expect(query).toContain('_preprContext:_context{kind group_id variant_id}');
+    expect(query).toContain('_preprContext:_context{...PreprDecisionContext}');
     expect(query).not.toContain('heading');
   });
 

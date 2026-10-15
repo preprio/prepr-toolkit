@@ -19,14 +19,26 @@ describe('toDecisionDocument', () => {
     expect(printed).toContain(`... on Post { ${CTX}: _context`);
   });
 
-  it('leaves the variant key out: only rendering needs it', () => {
-    expect(printed).toContain(`${CTX}: _context { kind group_id variant_id }`);
+  it('selects the context fields once, in a shared fragment, without the variant key only rendering needs', () => {
+    expect(printed).toContain(
+      'fragment PreprDecisionContext on Context { kind group_id variant_id }',
+    );
+    expect(printed).toContain(`${CTX}: _context { ...PreprDecisionContext }`);
   });
 
-  it('inlines fragments and drops unused variables', () => {
-    expect(printed).not.toContain('fragment ');
+  it('inlines the query fragments, without repeating a type condition it is already in, and drops unused variables', () => {
+    expect(printed.match(/fragment /g)).toHaveLength(1);
+    expect(printed).not.toMatch(/\.\.\. on (\w+) \{ \.\.\. on \1 \{/);
     expect(printed).toContain('query GetPageDecision($slug: String)');
     expect(printed).not.toContain('$unused');
+  });
+
+  it('does not wrap a fragment in the type condition it already sits in', () => {
+    const query = `query P($slug: String) { Page(slug: $slug) { content { ... on Hero { ...HeroButtons } } } }
+      fragment HeroButtons on Hero { buttons { text } }`;
+    const out = compact(toDecisionDocument(query, schema));
+    expect(out).toContain('... on Hero { buttons {');
+    expect(out).not.toContain('... on Hero { ... on Hero');
   });
 
   it('is null when nothing in the query is personalizable', () => {
