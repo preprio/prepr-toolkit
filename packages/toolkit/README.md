@@ -388,11 +388,33 @@ Every page view is decided. Nothing is reused from a prefetch, the router cache 
 
 - **Page loads.** The proxy asks Prepr which variant this visitor gets for every group on the page, nested lists included, in one request, and puts the answer on the response. An inline script after each personalized section shows the visitor's variant while the HTML is parsed, so the first paint is already right.
 - **Client-side navigations.** When the visitor presses a link, `PreprPersonalizationSwitch` asks the proxy for the target page's decision, and the click waits for the answer. The new page then paints with the visitor's variants. Pressing, not clicking, starts the request, so most of the wait happens while the button is still going down. Prefetches still bring the page itself; only the decision is fetched per click.
-- **Never the default first.** Until a view's decision is in, its personalized sections stay hidden. The default variant only shows when it is the decision: for visitors in none of the segments, for requests `onlyIf` skips, and when Prepr does not answer within `timeoutMs` (default 1000). Navigations started from code ask for a decision when the page opens; the personalized sections appear when it arrives.
+- **Never the default first.** Until a view's decision is in, its personalized sections stay hidden. The default variant only shows when it is the decision: for visitors in none of the segments, for requests `onlyIf` skips, and when Prepr does not answer within `timeoutMs` (default 3000). Navigations started from code ask for a decision when the page opens; the personalized sections appear when it arrives.
 - **Reloads and Back/Forward.** Back and Forward show a page as this tab last showed it, at once, without asking Prepr. A reload within 10 seconds of the decision, with no other page view in between, reuses it too; the proxy asks again after that, after any other page view, for a new visitor, and when UTM parameters or a segment forced in preview arrive. Prepr needs a few seconds to process a visitor's activity anyway, so asking again sooner would mostly get the same answer.
 - **"Right" means what Prepr knows when the visitor clicks.** Prepr assigns segments from the visitor's tracked activity. If it has not yet processed the pixel event of the previous page view, the decision cannot include it, and the visitor sees that segment from a later page view.
 - **Costs.** The page carries the HTML of every variant, and an item with groups nested inside it once per combination of their variants. `render` gets `defaultVariant`: give `priority` images only to the default variant and `loading="lazy"` to the others, or the browser downloads every variant's hero image. Every page view and every link press on a site with personalization is one uncached Prepr request (a press on touch devices too, also when it turns into a scroll), so run your functions in the region closest to your visitors and to Prepr.
 - Without JavaScript, visitors see the default variants.
+
+##### Deploying
+
+Every page load waits for one decision from Prepr before the proxy sends the page. Prepr answers in tens of milliseconds; what makes a decision slow is the connection to `graphql.prepr.io`: a new connection adds about 100 ms, and the first one after minutes without traffic, or on a fresh server instance, can take most of a second. That part is your deployment's to tune:
+
+- **Region.** Run your functions, the proxy included, in the region closest to your visitors and to Prepr.
+- **Keep connections open.** Node.js closes idle connections after a few seconds. On the Node.js runtime, give the client a `fetch` that keeps them longer; this affects only the client's own requests:
+
+  ```ts
+  import { Agent } from 'undici';
+
+  const keepAlive = new Agent({ keepAliveTimeout: 60_000 });
+  export const prepr = createPreprClient({
+    url: process.env.PREPR_GRAPHQL_URL!,
+    fetch: (input, init) =>
+      fetch(input, { ...init, dispatcher: keepAlive } as RequestInit),
+  });
+  ```
+
+- **Instances.** On Vercel, Fluid Compute reuses a function instance, and its open connections, across requests, so under steady traffic the connection stays warm. Each fresh instance pays the setup on its first request; keep instances warm with your platform's settings if your traffic is low.
+- **No schema at runtime.** Pass the codegen plugin's decision query as `decision` (see [The proxy](#the-proxy)), so a fresh instance does not download Prepr's schema before its first decision.
+- **Timeout.** When Prepr does not answer within `timeoutMs` (default 3000), the page gets the default variants, with nothing swapped in later. Lower it to cap how long a page load can wait.
 
 ##### Preview
 

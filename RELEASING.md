@@ -226,6 +226,9 @@ upgrading to the next alpha after `0.6.0-alpha.6`:
   one stored bucket per visitor could not follow. The proxy no longer runs a
   separate check before deciding: every CMS page view sends one decision
   query.
+- `timeoutMs` on `createPreprProxy` and `resolveDecisions` defaults to 3000
+  instead of 1000: a page load now waits for its decision, and a slow first
+  connection to Prepr otherwise fell back to the defaults.
 - The `prepr_decisions` cookie now holds one page view's decision, with its
   URL and time. The browser deletes it once the visitor views another page;
   until then a reload of that view within 10 seconds reuses it.

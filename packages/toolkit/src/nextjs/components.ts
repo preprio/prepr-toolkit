@@ -70,7 +70,7 @@ export function PreprToolbar({
 const DECIDE_HEADER = 'Prepr-Decide';
 // The proxy gives up on Prepr after its own `timeoutMs`; this only covers a
 // proxy that never answers.
-const DECIDE_TIMEOUT_MS = 5000;
+const DECIDE_TIMEOUT_MS = 6000;
 
 interface PendingDecision {
   key: string;

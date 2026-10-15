@@ -41,7 +41,7 @@ export interface PreprProxyOptions {
   preview?: boolean;
   /** Features disabled app-wide, as for `createPreprMiddleware`. */
   features?: PreprFeatures;
-  /** Give up on Prepr after this many ms; the default variants show. Default 1000. */
+  /** Give up on Prepr after this many ms; the default variants show. Default 3000. */
   timeoutMs?: number;
   /**
    * Skip the decisions (page views and client-side navigations) when this

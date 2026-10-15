@@ -79,7 +79,7 @@ export const preprClientInternals = new WeakMap<
 >();
 
 export interface ResolveDecisionsOptions<TVariables = unknown> {
-  /** Give up after this many ms; the default variants show. Default 1000. */
+  /** Give up after this many ms; the default variants show. Default 3000. */
   timeoutMs?: number;
   /**
    * The decision query for `document`, built ahead of time: the
@@ -107,7 +107,7 @@ export async function decideView<TVariables>(
     variables?: TVariables;
     decision?: PreprDocument<unknown, TVariables>;
   },
-  timeoutMs = 1000,
+  timeoutMs = 3000,
 ): Promise<string> {
   const init = { signal: AbortSignal.timeout(timeoutMs) };
   try {

@@ -112,7 +112,7 @@ export interface PreprNextClient {
    * Call it after `createPreprMiddleware`, whose visitor headers (customer id,
    * UTM parameters, IP, HubSpot id) it forwards. Pages without segment groups
    * are skipped after a cached check. Never throws and gives up after
-   * `timeoutMs` (default 1000): the default variants show instead.
+   * `timeoutMs` (default 3000): the default variants show instead.
    */
   resolveDecisions<TVariables>(
     request: NextRequest,
