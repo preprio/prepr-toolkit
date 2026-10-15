@@ -2,10 +2,22 @@ import { revalidateTag } from 'next/cache';
 
 import {
   PREPR_ANY_ITEM_TAG,
+  PREPR_SCHEMA_TAG,
   preprItemTag,
   preprModelTag,
 } from '../core/graphql/cache-tags';
 
+// Events that change what visitors see. `content_item.changed` and
+// `.created` fire on draft edits, and visitor and segment events change no
+// page, so those revalidate nothing. Asset edits show without a publish.
+const CONTENT_EVENTS = new Set([
+  'content_item.published',
+  'content_item.unpublished',
+  'content_item.deleted',
+  'content_item.invalidated',
+  'asset.changed',
+  'asset.deleted',
+]);
 // Events after which list pages may show a different set of items.
 const MODEL_EVENTS = new Set([
   'content_item.published',
@@ -15,9 +27,15 @@ const MODEL_EVENTS = new Set([
 // Prepr signs a fresh timestamp into every delivery, retries included, so an
 // older one is a replayed request.
 const MAX_AGE_MS = 5 * 60 * 1000;
-const SIGNATURE = /^[0-9a-f]{64}$/i;
+// Hex or base64 HMAC-SHA256, optionally prefixed `sha256=`.
+const HEX_SIGNATURE = /^[0-9a-f]{64}$/i;
+const BASE64_SIGNATURE = /^[A-Za-z0-9+/]{43}=$/;
+const SIGNATURE_PREFIX = /^sha256=/i;
 // Keeps every tag within Next.js's 256-character limit.
 const MAX_ID_LENGTH = 200;
+
+/** How a revalidated page refreshes, as Next.js's `revalidateTag` takes it. */
+export type PreprRevalidateProfile = string | { expire?: number };
 
 export interface PreprWebhookOptions {
   /**
@@ -26,22 +44,36 @@ export interface PreprWebhookOptions {
    * header). Keep it in an environment variable.
    */
   secret: string | undefined;
+  /**
+   * Passed to `revalidateTag`. The default `{ expire: 0 }` shows a publish
+   * on the very next request; `'max'` serves the old page once more while
+   * the new one renders in the background.
+   */
+  profile?: PreprRevalidateProfile;
 }
 
 const text = (body: string, status: number) =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain' } });
 
-function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+/** The signature's bytes, or null when the header holds no HMAC-SHA256. */
+function signatureBytes(header: string): Uint8Array<ArrayBuffer> | null {
+  const value = header.trim().replace(SIGNATURE_PREFIX, '');
+  if (HEX_SIGNATURE.test(value)) {
+    const bytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+      bytes[i] = parseInt(value.slice(i * 2, i * 2 + 2), 16);
+    }
+    return bytes;
   }
-  return bytes;
+  if (BASE64_SIGNATURE.test(value)) {
+    return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+  }
+  return null;
 }
 
 async function verify(
   secret: string,
-  signature: string,
+  signature: Uint8Array<ArrayBuffer>,
   body: ArrayBuffer,
 ): Promise<boolean> {
   const key = await crypto.subtle.importKey(
@@ -52,7 +84,7 @@ async function verify(
     ['verify'],
   );
   // subtle.verify compares in constant time.
-  return crypto.subtle.verify('HMAC', key, hexToBytes(signature), body);
+  return crypto.subtle.verify('HMAC', key, signature, body);
 }
 
 function parse(body: ArrayBuffer): Record<string, unknown> | null {
@@ -66,7 +98,7 @@ function parse(body: ArrayBuffer): Record<string, unknown> | null {
   }
 }
 
-/** Unix seconds (what Prepr sends) or an ISO date; NaN when neither. */
+/** Unix seconds or an ISO date (what Prepr sends); NaN when neither. */
 function eventTime(value: unknown): number {
   if (typeof value === 'number') return value * 1000;
   if (typeof value === 'string') return Date.parse(value);
@@ -82,17 +114,34 @@ function field(value: unknown, key: string): unknown {
 const usable = (value: unknown): value is string =>
   typeof value === 'string' && value !== '' && value.length <= MAX_ID_LENGTH;
 
+/** The tags one verified event revalidates; empty for events that change no page. */
+function tagsFor(event: Record<string, unknown>): string[] {
+  const name = event.event;
+  if (name === 'schema.changed') return [PREPR_SCHEMA_TAG];
+  if (typeof name !== 'string' || !CONTENT_EVENTS.has(name)) return [];
+
+  const tags = [PREPR_ANY_ITEM_TAG];
+  const id = field(event.payload, 'id');
+  if (usable(id)) tags.push(preprItemTag(id));
+  const model = field(field(event.payload, 'model'), 'body_singular');
+  if (MODEL_EVENTS.has(name) && usable(model)) tags.push(preprModelTag(model));
+  return tags;
+}
+
 /**
  * Route handler for a Prepr webhook that refreshes only the cached pages
- * showing the changed item: those tagged with `preprCacheTags` (or
- * `query(..., { tagItems: true })`). On publish, unpublish and delete it also
- * revalidates the item's `preprModelTag`, so list pages pick up new and
- * removed items. Every event revalidates `PREPR_ANY_ITEM_TAG`.
+ * showing the changed item: those tagged by `query(..., { tagItems: true })`
+ * or `preprCacheTags`. On publish, unpublish and delete it also revalidates
+ * the item's `preprModelTag`, so list pages and lookups that found nothing
+ * pick up new and removed items. `schema.changed` refreshes the schema the
+ * client rewrites queries with.
+ *
+ * Other events (draft edits, new assets, visitors, segments) are
+ * acknowledged and revalidate nothing, so the webhook can subscribe to
+ * everything.
  *
  * Requests without a valid `Prepr-Signature` or older than five minutes get
- * 401; without `secret` every request gets 500. Uses
- * `revalidateTag(tag, 'max')`: the next visit gets the cached page while a
- * fresh one renders.
+ * 401; without `secret` every request gets 500.
  *
  * @example
  * // app/api/prepr/webhook/route.ts
@@ -103,22 +152,22 @@ const usable = (value: unknown): value is string =>
 export function createPreprWebhookRoute(
   options: PreprWebhookOptions,
 ): (request: Request) => Promise<Response> {
+  const { profile = { expire: 0 } } = options;
   return async (request) => {
     const { secret } = options;
     // An empty key would let anyone compute a valid signature.
     if (!secret) return text('Webhook secret not configured', 500);
 
-    const signature = request.headers.get('prepr-signature') ?? '';
+    const signature = signatureBytes(
+      request.headers.get('prepr-signature') ?? '',
+    );
     let body: ArrayBuffer;
     try {
       body = await request.arrayBuffer();
     } catch {
       return text('Unreadable body', 400);
     }
-    if (
-      !SIGNATURE.test(signature) ||
-      !(await verify(secret, signature, body))
-    ) {
+    if (!signature || !(await verify(secret, signature, body))) {
       return text('Invalid signature', 401);
     }
 
@@ -129,15 +178,8 @@ export function createPreprWebhookRoute(
       return text('Expired', 401);
     }
 
-    const tags = [PREPR_ANY_ITEM_TAG];
-    const id = field(event.payload, 'id');
-    if (usable(id)) tags.push(preprItemTag(id));
-    const model = field(field(event.payload, 'model'), 'body_singular');
-    if (typeof event.event === 'string' && MODEL_EVENTS.has(event.event)) {
-      if (usable(model)) tags.push(preprModelTag(model));
-    }
-
-    for (const tag of tags) revalidateTag(tag, 'max');
+    const tags = tagsFor(event);
+    for (const tag of tags) revalidateTag(tag, profile);
     return Response.json({ revalidated: tags });
   };
 }

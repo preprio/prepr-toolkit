@@ -26,6 +26,34 @@ function fetchStub() {
   );
 }
 
+// Answers the schema introspection with a Query { Page: Page } schema and
+// every other request with `data`.
+function contentAndSchema(data: unknown) {
+  const schema = {
+    __schema: {
+      queryType: { name: 'Query' },
+      types: [
+        {
+          name: 'Query',
+          fields: [{ name: 'Page', args: [], type: { name: 'Page' } }],
+        },
+        {
+          name: 'Page',
+          fields: [{ name: '_id', args: [], type: { name: 'String' } }],
+        },
+      ],
+    },
+  };
+  return vi.fn<typeof globalThis.fetch>(
+    async (_, init) =>
+      new Response(
+        JSON.stringify({
+          data: String(init?.body).includes('__schema') ? schema : data,
+        }),
+      ),
+  );
+}
+
 const sentInit = (fetch: ReturnType<typeof fetchStub>) =>
   fetch.mock.calls[0]?.[1] as NextInit;
 
@@ -83,14 +111,9 @@ describe('nextjs createPreprClient', () => {
 
   it('with tagItems, tags the cache entry with every item and skips the Data Cache', async () => {
     const { createPreprClient } = await load();
-    const fetch = vi.fn<typeof globalThis.fetch>(
-      async () =>
-        new Response(
-          JSON.stringify({
-            data: { Page: { _id: 'page', content: [{ _id: 'hero' }] } },
-          }),
-        ),
-    );
+    const fetch = contentAndSchema({
+      Page: { _id: 'page', content: [{ _id: 'hero' }] },
+    });
 
     await createPreprClient({ url: URL_, fetch, revalidate: false }).query(
       QUERY,
@@ -109,6 +132,36 @@ describe('nextjs createPreprClient', () => {
       ['prepr', 'extra'],
       ['prepr:page', 'prepr:hero'],
     ]);
+  });
+
+  it('with tagItems, tags a lookup that found nothing with its model', async () => {
+    const { createPreprClient } = await load();
+    const fetch = contentAndSchema({ Page: null });
+
+    await createPreprClient({ url: URL_, fetch }).query(QUERY, undefined, {
+      tagItems: true,
+    });
+
+    // Publishing the page later must refresh the cached "not found".
+    expect(cacheTagMock.mock.calls).toEqual([
+      ['prepr', 'prepr:model:page'],
+      [],
+    ]);
+  });
+
+  it('with tagItems, falls back to prepr:any when the schema cannot load', async () => {
+    const { createPreprClient } = await load();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_, init) =>
+      String(init?.body).includes('__schema')
+        ? new Response('down', { status: 503 })
+        : new Response(JSON.stringify({ data: { Page: null } })),
+    );
+
+    await createPreprClient({ url: URL_, fetch }).query(QUERY, undefined, {
+      tagItems: true,
+    });
+
+    expect(cacheTagMock.mock.calls[0]).toEqual(['prepr', 'prepr:any']);
   });
 
   it('forwards only Prepr headers with personalize and never caches', async () => {

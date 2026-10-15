@@ -5,8 +5,12 @@ import type { NextRequest, NextResponse } from 'next/server';
 
 import {
   createPreprClient as createCoreClient,
+  clientSchemas,
   mergePreprHeaders,
+  PREPR_ANY_ITEM_TAG,
+  PREPR_SCHEMA_TAG,
   preprCacheTags,
+  preprModelTagsFor,
   type PreprClientOptions,
   type PreprDecideOptions,
   type PreprDocument,
@@ -14,6 +18,7 @@ import {
   type PreprQueryResult,
 } from '../core/graphql';
 import type { PreprDecisions } from '../core/variants';
+import { documentOf } from '../core/variants/ast';
 import {
   preprClientInternals,
   resolveDecisionsWith,
@@ -43,8 +48,9 @@ export interface PreprNextQueryOptions extends PreprQueryOptions {
    * Inside `'use cache'` (Cache Components, Next 16+): tags the cache entry
    * with `preprCacheTags(data)` and the client's `cacheTags`, so
    * `createPreprWebhookRoute` revalidates exactly the pages showing a changed
-   * item. Pair it with `variants: true`, whose result holds every variant's
-   * items.
+   * item. List queries and lookups that found nothing also get their
+   * model's `preprModelTag`, so publishing a new item refreshes them. Pair it
+   * with `variants: true`, whose result holds every variant's items.
    *
    * The fetch then skips the Data Cache: a Data Cache entry carries only the
    * client's `cacheTags`, so revalidating an item tag would re-run the
@@ -145,9 +151,9 @@ export function createPreprClient(
   const { cacheTags = ['prepr'], revalidate, ...coreOptions } = options;
   const client = createCoreClient({
     // The schema introspection goes through the Data Cache: shared across
-    // server instances, refreshed hourly and by revalidateTag on publish.
+    // server instances, refreshed hourly and by a `schema.changed` webhook.
     schemaInit: {
-      next: { tags: cacheTags, revalidate: 3600 },
+      next: { tags: [...cacheTags, PREPR_SCHEMA_TAG], revalidate: 3600 },
     } as NextFetchInit,
     ...coreOptions,
   });
@@ -198,9 +204,21 @@ export function createPreprClient(
 
       const result = await client.query(document, variables, options);
       if (tagItems) {
+        let modelTags: string[];
+        try {
+          modelTags = preprModelTagsFor(
+            documentOf(document),
+            result.data,
+            await clientSchemas.get(client)!(),
+          );
+        } catch {
+          // Without the schema, a list or empty lookup cannot be told apart;
+          // refreshing on every content event beats never refreshing.
+          modelTags = [PREPR_ANY_ITEM_TAG];
+        }
         // Two calls: Next.js caps each call at 128 tags, which
         // preprCacheTags can fill on its own.
-        nextCache.cacheTag(...cacheTags, ...(next?.tags ?? []));
+        nextCache.cacheTag(...cacheTags, ...(next?.tags ?? []), ...modelTags);
         nextCache.cacheTag(...preprCacheTags(result.data));
       }
       return result;

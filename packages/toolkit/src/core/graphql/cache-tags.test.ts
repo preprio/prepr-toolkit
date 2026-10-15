@@ -1,9 +1,12 @@
+import { parse } from 'graphql';
 import { describe, expect, it } from 'vitest';
 
+import type { PreprSchemaInfo } from '../variants';
 import {
   PREPR_ANY_ITEM_TAG,
   preprCacheTags,
   preprModelTag,
+  preprModelTagsFor,
 } from './cache-tags';
 
 describe('preprCacheTags', () => {
@@ -71,7 +74,82 @@ describe('preprCacheTags', () => {
     expect(preprCacheTags(deep)).toEqual(['prepr:leaf']);
   });
 
-  it('builds model tags from the singular model name', () => {
-    expect(preprModelTag('Post')).toBe('prepr:model:Post');
+  it('gives the Prepr model name and its GraphQL type the same tag', () => {
+    expect(preprModelTag('Post')).toBe('prepr:model:post');
+    expect(preprModelTag('Blog post')).toBe(preprModelTag('BlogPost'));
+  });
+});
+
+const type = (
+  fields: Record<string, string>,
+  possibleTypes: string[] = [],
+) => ({
+  fields: Object.fromEntries(
+    Object.entries(fields).map(([name, t]) => [
+      name,
+      { type: t, personalizable: false },
+    ]),
+  ),
+  possibleTypes,
+  hasContext: false,
+});
+
+const schema: PreprSchemaInfo = {
+  queryType: 'Query',
+  types: {
+    Query: type({
+      Page: 'Page',
+      BlogPosts: 'BlogPosts',
+      ContentItems: 'ContentItems',
+      Navigation: 'Navigation',
+    }),
+    Page: type({ _id: 'String', title: 'String' }),
+    BlogPost: type({ _id: 'String' }),
+    BlogPosts: type({ items: 'BlogPost', total: 'Int' }),
+    ContentItems: type({ items: 'ContentItem', total: 'Int' }),
+    ContentItem: type({}, ['Page', 'BlogPost']),
+    Navigation: type({ _id: 'String' }),
+  },
+};
+
+describe('preprModelTagsFor', () => {
+  const tags = (query: string, data: unknown) =>
+    preprModelTagsFor(parse(query), data, schema);
+
+  it('tags a single-item lookup that found nothing, so publishing it refreshes the page', () => {
+    expect(tags('{ Page(slug: "new") { _id } }', { Page: null })).toEqual([
+      'prepr:model:page',
+    ]);
+  });
+
+  it('leaves a lookup that found its item to the item tag', () => {
+    expect(tags('{ Page { _id } }', { Page: { _id: 'p' } })).toEqual([]);
+  });
+
+  it('tags list queries with the model of their items, so new items appear', () => {
+    expect(
+      tags('{ BlogPosts { items { _id } } }', { BlogPosts: { items: [] } }),
+    ).toEqual(['prepr:model:blogpost']);
+  });
+
+  it('tags every model a union list can hold', () => {
+    expect(tags('{ ContentItems { items { _id } } }', {})).toEqual([
+      'prepr:model:page',
+      'prepr:model:blogpost',
+    ]);
+  });
+
+  it('reads aliased fields and handles several queries in one operation', () => {
+    expect(
+      tags('{ home: Page { _id } nav: Navigation { _id } }', {
+        home: null,
+        nav: { _id: 'n' },
+      }),
+    ).toEqual(['prepr:model:page']);
+  });
+
+  it('ignores mutations, unknown fields and missing data', () => {
+    expect(tags('mutation { Page { _id } }', null)).toEqual([]);
+    expect(tags('{ Unknown { _id } }', null)).toEqual([]);
   });
 });

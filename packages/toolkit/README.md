@@ -436,14 +436,20 @@ Outside preview both do nothing (the route answers 404). Keep the route out of y
 
    With your own client, call `cacheTag(...preprCacheTags(data))` inside `'use cache'` instead.
 
-2. **Tag list pages with their model.** A page listing posts must also refresh when a new post is published, which no existing tag covers:
+2. **New items are covered too.** A new item is in no cached result yet, so `tagItems` also tags two kinds of query with their model's `prepr:model:<model>` tag, which a publish of any item of that model revalidates:
+   - list queries (`Posts { items { … } }`), so a new post joins the list;
+   - lookups that found nothing (`Page(slug: "new")` returning `null`), so publishing that page replaces the cached "not found".
+
+   Other pages that depend on which items exist (a sitemap, a count) can add the tag themselves:
 
    ```ts
    import { cacheTag } from 'next/cache';
    import { preprModelTag } from '@preprio/toolkit/nextjs/graphql';
 
-   cacheTag(preprModelTag('Post')); // the model's singular name in Prepr
+   cacheTag(preprModelTag('Post')); // the model's name in Prepr or its GraphQL type
    ```
+
+   The model name is compared without case, spaces or punctuation, so `'Blog post'` (what webhooks send) and `BlogPost` (the GraphQL type) give the same tag. A model whose API ID was renamed away from its name does not match.
 
 3. **Add the webhook route.**
 
@@ -458,15 +464,20 @@ Outside preview both do nothing (the route answers 404). Keep the route out of y
 
    Keep the route out of your proxy `matcher`.
 
-4. **Create the webhook in Prepr.** Under **Settings → Webhooks**, add `https://<your-site>/api/prepr/webhook` with the events `content_item.published`, `content_item.unpublished`, `content_item.changed` and `content_item.deleted`, plus `asset.changed` if pages show asset titles or descriptions. Save, then copy the webhook's **ID** into `PREPR_WEBHOOK_SECRET`: Prepr signs every request with it.
+4. **Create the webhook in Prepr.** Under **Settings → Webhooks**, add `https://<your-site>/api/prepr/webhook` with the events `content_item.published`, `content_item.unpublished`, `content_item.deleted` and `content_item.invalidated`, plus `asset.changed`, `asset.deleted` and `schema.changed`. Other events are acknowledged and ignored, so subscribing to more does no harm. Save, then copy the webhook's **ID** into `PREPR_WEBHOOK_SECRET`: Prepr signs every request with it.
 
-The route checks the `Prepr-Signature` header (an HMAC-SHA256 of the body, keyed with the webhook ID) and answers 401 to a missing or wrong signature, or to a request older than five minutes. A valid event revalidates, with `revalidateTag(tag, 'max')`:
+The route checks the `Prepr-Signature` header (an HMAC-SHA256 of the body, keyed with the webhook ID, as hex or base64) and answers 401 to a missing or wrong signature, or to a request older than five minutes. A valid event revalidates:
 
-| Tag                   | When                                                 | Reaches                                        |
-| --------------------- | ---------------------------------------------------- | ---------------------------------------------- |
-| `prepr:<id>`          | every event with an item or asset id                 | pages showing that item                        |
-| `prepr:model:<Model>` | `content_item.published`, `.unpublished`, `.deleted` | pages tagged with `preprModelTag`              |
-| `prepr:any`           | every event                                          | pages with more items than Next.js's tag limit |
+| Tag                   | When                                                                                              | Reaches                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `prepr:<id>`          | `content_item.published`, `.unpublished`, `.deleted`, `.invalidated`; `asset.changed`, `.deleted` | pages showing that item or asset                              |
+| `prepr:model:<model>` | `content_item.published`, `.unpublished`, `.deleted`                                              | list queries, lookups that found nothing, pages tagged by you |
+| `prepr:any`           | the same events as `prepr:<id>`                                                                   | pages with more items than Next.js's tag limit                |
+| `prepr:schema`        | `schema.changed`                                                                                  | the schema the client rewrites queries with                   |
+
+Draft edits (`content_item.changed`, `.created`), visitor and segment events revalidate nothing: they change no published page.
+
+Revalidation uses `revalidateTag(tag, { expire: 0 })`, so the next request after a publish gets the new page. Pass `profile: 'max'` to serve the old page once more while the new one renders in the background.
 
 Next.js accepts at most 128 tags per `cacheTag()` call. A page with more items is tagged `prepr:any` instead (`PREPR_ANY_ITEM_TAG`), so it refreshes on every event, as with `revalidateTag('prepr')`. The response lists the revalidated tags, which Prepr shows on the webhook's detail page.
 

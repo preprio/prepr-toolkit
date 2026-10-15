@@ -22,6 +22,12 @@ import type {
   PreprQueryResult,
 } from './types';
 
+/** @internal The schema loader of each client from {@link createPreprClient}. */
+export const clientSchemas = new WeakMap<
+  PreprClient,
+  () => Promise<PreprSchemaInfo>
+>();
+
 function isParseableUrl(url: string): boolean {
   try {
     new URL(url);
@@ -88,7 +94,7 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
     Map<string, DocumentNode | null>
   >();
 
-  return {
+  const client: PreprClient = {
     async query<TResult, TVariables>(
       document: PreprDocument<TResult, TVariables>,
       variables?: TVariables,
@@ -150,4 +156,6 @@ export function createPreprClient(options: PreprClientOptions): PreprClient {
         (vary) => vary === null || SEGMENTS_VARY.test(vary),
       ),
   };
+  clientSchemas.set(client, loadSchema);
+  return client;
 }
