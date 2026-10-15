@@ -19,6 +19,12 @@ import { createPreprMiddleware } from './middleware';
 export interface PreprProxyPage<TVariables = unknown> {
   document: PreprDocument<unknown, TVariables>;
   variables?: TVariables;
+  /**
+   * The decision query for `document`, built ahead of time (the codegen
+   * plugin's `<Name>DecisionQuery`). Sent as is, so the proxy never loads
+   * Prepr's schema to derive it; see `resolveDecisions`.
+   */
+  decision?: PreprDocument<unknown, TVariables>;
 }
 
 export interface PreprProxyOptions {
@@ -143,8 +149,7 @@ export function createPreprProxy(
       decision = await decideView(
         client,
         mergePreprHeaders(forwardedHeaders(request, response)),
-        target.document,
-        target.variables,
+        target,
         options.timeoutMs,
       );
     }
@@ -188,7 +193,11 @@ export function createPreprProxy(
         response,
         target.document,
         target.variables,
-        { timeoutMs: options.timeoutMs, onlyIf: () => allowed(request) },
+        {
+          timeoutMs: options.timeoutMs,
+          onlyIf: () => allowed(request),
+          decision: target.decision,
+        },
       );
     }
     return response;

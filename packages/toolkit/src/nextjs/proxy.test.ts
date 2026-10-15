@@ -157,6 +157,49 @@ describe('createPreprProxy', () => {
     expect(decisionCalls()).toHaveLength(2);
   });
 
+  it('sends a pre-built decision query as is, without loading the schema', async () => {
+    vi.doMock('next/headers', () => ({ headers: async () => new Headers() }));
+    const { createPreprClient, createPreprProxy } = await import('./graphql');
+    const { NextRequest } = await import('next/server');
+    const DECISION =
+      'query GetPageDecision($slug: String) { Page(slug: $slug) { content { ... on Hero { _preprContext: _context { kind group_id variant_id } } } } }';
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        data: {
+          Page: {
+            content: [
+              {
+                _preprContext: {
+                  kind: 'PERSONALIZATION',
+                  group_id: 'g',
+                  variant_id: 'VIP',
+                },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const handle = createPreprProxy({
+      client: createPreprClient({ url: URL_, fetch }),
+      page: (url) => ({
+        document: PAGE,
+        decision: DECISION,
+        variables: { slug: url.pathname },
+      }),
+    });
+
+    const response = await handle(new NextRequest('https://site.test/'));
+
+    expect(response.cookies.get('prepr_decisions')?.value).toMatch(
+      /^\d+\|\/@g:VIP$/,
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0]![1]!.body)).toContain(
+      'query GetPageDecision',
+    );
+  });
+
   it('never decides a prefetch or client-side navigation, whose answer the router would reuse', async () => {
     const { handle, request, decisionCalls } = await setup();
     for (const headers of <Record<string, string>[]>[

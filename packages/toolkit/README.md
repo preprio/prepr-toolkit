@@ -364,6 +364,18 @@ import { PreprPersonalizationSwitch } from '@preprio/toolkit/nextjs';
 <PreprPersonalizationSwitch />;
 ```
 
+Deriving the decision query from `PageDocument` needs Prepr's schema, which a fresh server instance downloads before its first decision. Build the decision query ahead of time instead and pass it as `decision`: the codegen plugin (see [Using your own GraphQL client](#using-your-own-graphql-client)) writes it next to your query, and the proxy sends it as is.
+
+```ts
+import { PageDecisionQuery } from './gql/prepr-queries';
+
+page: (url) => ({
+  document: PageDocument,
+  decision: PageDecisionQuery, // no schema download at runtime
+  variables: { slug: url.pathname },
+}),
+```
+
 API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped. Every other URL `page` maps to a query gets one decision query per page view; a page without groups gets an empty answer. Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers, which then get the default variants. In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
 
 ##### A/B tests

@@ -119,7 +119,7 @@ export interface PreprNextClient {
     response: NextResponse,
     document: PreprDocument<unknown, TVariables>,
     variables?: TVariables,
-    options?: ResolveDecisionsOptions,
+    options?: ResolveDecisionsOptions<TVariables>,
   ): Promise<void>;
 }
 

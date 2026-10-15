@@ -7,7 +7,7 @@ import {
   type PreprDocument,
 } from '../core/graphql';
 import { getPreprHeadersFromHeaders } from '../core/server';
-import type { PreprDecisions } from '../core/variants';
+import { decisionsFrom, type PreprDecisions } from '../core/variants';
 
 /**
  * The cookie `resolveDecisions` writes on a page response: that page view's
@@ -78,9 +78,17 @@ export const preprClientInternals = new WeakMap<
   { client: PreprClient }
 >();
 
-export interface ResolveDecisionsOptions {
+export interface ResolveDecisionsOptions<TVariables = unknown> {
   /** Give up after this many ms; the default variants show. Default 1000. */
   timeoutMs?: number;
+  /**
+   * The decision query for `document`, built ahead of time: the
+   * `<Name>DecisionQuery` the codegen plugin writes, or `toDecisionQuery` at
+   * build time. Sent as is with `variables`, so the request never loads
+   * Prepr's schema to derive it: a fresh server instance's first decision
+   * waits only for Prepr's answer.
+   */
+  decision?: PreprDocument<unknown, TVariables>;
   /** Skip the Prepr request when this resolves to false: the default variants show. */
   onlyIf?: () => boolean | Promise<boolean>;
 }
@@ -94,15 +102,21 @@ export interface ResolveDecisionsOptions {
 export async function decideView<TVariables>(
   client: PreprClient,
   headers: Headers,
-  document: PreprDocument<unknown, TVariables>,
-  variables: TVariables | undefined,
+  page: {
+    document: PreprDocument<unknown, TVariables>;
+    variables?: TVariables;
+    decision?: PreprDocument<unknown, TVariables>;
+  },
   timeoutMs = 1000,
 ): Promise<string> {
+  const init = { signal: AbortSignal.timeout(timeoutMs) };
   try {
-    const decided = await client.decide(document, variables, {
-      headers,
-      init: { signal: AbortSignal.timeout(timeoutMs) },
-    });
+    const decided = page.decision
+      ? decisionsFrom(
+          (await client.query(page.decision, page.variables, { headers, init }))
+            .data,
+        )
+      : await client.decide(page.document, page.variables, { headers, init });
     return serializeDecisions(decided);
   } catch (error) {
     if (isFrameworkSignal(error)) throw error;
@@ -160,7 +174,7 @@ export async function resolveDecisionsWith<TVariables>(
   response: NextResponse,
   document: PreprDocument<unknown, TVariables>,
   variables?: TVariables,
-  options?: ResolveDecisionsOptions,
+  options?: ResolveDecisionsOptions<TVariables>,
 ): Promise<void> {
   const headers = mergePreprHeaders(forwardedHeaders(request, response));
   // The browser still has it: nothing to write.
@@ -171,8 +185,7 @@ export async function resolveDecisionsWith<TVariables>(
       decision = await decideView(
         client,
         headers,
-        document,
-        variables,
+        { document, variables, decision: options?.decision },
         options?.timeoutMs,
       );
     }
