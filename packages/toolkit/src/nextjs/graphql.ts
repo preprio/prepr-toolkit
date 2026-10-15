@@ -1,8 +1,12 @@
+// A namespace import: `cacheTag` only exists from Next 16, and a named import
+// would fail to resolve on the older versions the peer range allows.
+import * as nextCache from 'next/cache';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import {
   createPreprClient as createCoreClient,
   mergePreprHeaders,
+  preprCacheTags,
   type PreprClientOptions,
   type PreprDecideOptions,
   type PreprDocument,
@@ -35,6 +39,20 @@ export interface PreprNextQueryOptions extends PreprQueryOptions {
    * skip the Data Cache. The route renders per request.
    */
   personalize?: boolean;
+  /**
+   * Inside `'use cache'` (Cache Components, Next 16+): tags the cache entry
+   * with `preprCacheTags(data)` and the client's `cacheTags`, so
+   * `createPreprWebhookRoute` revalidates exactly the pages showing a changed
+   * item. Pair it with `variants: true`, whose result holds every variant's
+   * items.
+   *
+   * The fetch then skips the Data Cache: a Data Cache entry carries only the
+   * client's `cacheTags`, so revalidating an item tag would re-run the
+   * `'use cache'` function against the stale response.
+   *
+   * @throws Error — from Next.js when called outside a `'use cache'` function.
+   */
+  tagItems?: boolean;
 }
 
 export interface PreprNextClient {
@@ -144,31 +162,48 @@ export function createPreprClient(
       variables?: TVariables,
       queryOptions: PreprNextQueryOptions = {},
     ): Promise<PreprQueryResult<TResult>> {
-      const { personalize = false, ...rest } = queryOptions;
+      const { personalize = false, tagItems = false, ...rest } = queryOptions;
+      const { next, ...init } = (rest.init ?? {}) as NextFetchInit;
+      if (tagItems && typeof nextCache.cacheTag !== 'function') {
+        throw new Error('tagItems requires Next.js 16 or later.');
+      }
 
-      // Tags are attached unconditionally; the core client drops them again
-      // whenever the request ends up `no-store` (personalized, per-request
-      // headers, or preview).
-      const init = rest.init as NextFetchInit | undefined;
-      const tagged: PreprQueryOptions = {
+      const options: PreprQueryOptions = {
         ...rest,
-        init: {
-          ...init,
-          next: {
-            tags: cacheTags,
-            ...(revalidate === undefined ? {} : { revalidate }),
-            ...init?.next,
-          },
-        } as NextFetchInit,
+        // With tagItems, `next` is dropped too: tags or revalidate alongside
+        // `no-store` are a conflict Next.js resolves by ignoring the store.
+        // Otherwise tags are attached unconditionally; the core client drops
+        // them again whenever the request ends up `no-store` (personalized,
+        // per-request headers, or preview).
+        init: tagItems
+          ? { ...init, cache: 'no-store' }
+          : ({
+              ...init,
+              next: {
+                ...(revalidate === undefined ? {} : { revalidate }),
+                ...next,
+                // Merged, so a per-query tag never drops the client's own,
+                // which the publish webhook relies on.
+                tags: [...cacheTags, ...(next?.tags ?? [])],
+              },
+            } as NextFetchInit),
       };
-
-      if (!personalize) return client.query(document, variables, tagged);
-
       // getPreprHeaders reads headers(), which makes the route dynamic.
-      return client.query(document, variables, {
-        ...tagged,
-        headers: mergePreprHeaders(await getPreprHeaders(), rest.headers),
-      });
+      if (personalize) {
+        options.headers = mergePreprHeaders(
+          await getPreprHeaders(),
+          rest.headers,
+        );
+      }
+
+      const result = await client.query(document, variables, options);
+      if (tagItems) {
+        // Two calls: Next.js caps each call at 128 tags, which
+        // preprCacheTags can fill on its own.
+        nextCache.cacheTag(...cacheTags, ...(next?.tags ?? []));
+        nextCache.cacheTag(...preprCacheTags(result.data));
+      }
+      return result;
     },
 
     async decide<TVariables>(
@@ -238,4 +273,9 @@ export type {
   PreprQueryResult,
   PreprStegaMode,
 } from '../core/graphql';
-export { loadPreprSchema } from '../core/graphql';
+export {
+  loadPreprSchema,
+  PREPR_ANY_ITEM_TAG,
+  preprCacheTags,
+  preprModelTag,
+} from '../core/graphql';

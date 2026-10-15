@@ -1,3 +1,8 @@
+export {
+  PREPR_ANY_ITEM_TAG,
+  preprCacheTags,
+  preprModelTag,
+} from './cache-tags';
 export { createPreprClient } from './client';
 export {
   createEventClient,

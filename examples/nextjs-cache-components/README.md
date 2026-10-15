@@ -35,10 +35,16 @@ The page uses its ordinary query ([`get-page-by-slug.graphql`](./src/queries/get
   preview visitor through [`/api/prepr/draft`](./src/app/api/prepr/draft/route.ts)
   once; draft mode makes Next skip `'use cache'` entries and the Data Cache,
   so an edit shows on the next load without a publish webhook.
+- **Publishing refreshes only what changed.** `tagItems` in `getPage` tags
+  each cached page with the `_id` of every item it shows, and
+  [`/api/prepr/webhook`](./src/app/api/prepr/webhook/route.ts) revalidates
+  the changed item's tag. Create a webhook in Prepr (Settings > Webhooks)
+  pointing at that route with the `content_item.*` events, and set its ID as
+  `PREPR_WEBHOOK_SECRET`.
 
 ## Run
 
-    cp .env.example .env    # set PREPR_GRAPHQL_URL
+    cp .env.example .env    # set PREPR_GRAPHQL_URL (and PREPR_WEBHOOK_SECRET)
     pnpm install
     pnpm --filter example-nextjs-cache-components dev
 

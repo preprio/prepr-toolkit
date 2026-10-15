@@ -3,6 +3,9 @@
 // projects that only use the toolbar never need `graphql` installed.
 export {
   createPreprClient,
+  PREPR_ANY_ITEM_TAG,
+  preprCacheTags,
+  preprModelTag,
   type PreprClient,
   type PreprClientOptions,
   type PreprDecideOptions,

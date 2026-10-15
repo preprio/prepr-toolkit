@@ -8,15 +8,16 @@ import { GetPageBySlugDocument } from '@/gql/graphql';
 /**
  * Every variant of every personalization and A/B group (`variants: true`):
  * the same for every visitor, so it is cached. The client rewrites the query
- * itself, and its 'prepr' fetch tag carries over to this entry, so
- * revalidateTag('prepr') refreshes it.
+ * itself. `tagItems` tags this entry with every item it holds, so the publish
+ * webhook (/api/prepr/webhook) refreshes only pages showing a changed item;
+ * revalidateTag('prepr') still refreshes everything.
  */
 async function getPage(slug: string) {
   'use cache';
   const { data } = await prepr().query(
     GetPageBySlugDocument,
     { slug },
-    { variants: true },
+    { variants: true, tagItems: true },
   );
   return data;
 }

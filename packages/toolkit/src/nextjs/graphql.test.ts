@@ -12,8 +12,11 @@ const headersMock = vi.fn(
   async () => new Headers({ 'Prepr-Segments': 'vip', Cookie: 'secret' }),
 );
 
+const cacheTagMock = vi.fn();
+
 async function load() {
   vi.doMock('next/headers', () => ({ headers: headersMock }));
+  vi.doMock('next/cache', () => ({ cacheTag: cacheTagMock }));
   return import('./graphql');
 }
 
@@ -29,6 +32,7 @@ const sentInit = (fetch: ReturnType<typeof fetchStub>) =>
 beforeEach(() => {
   vi.resetModules();
   headersMock.mockClear();
+  cacheTagMock.mockClear();
 });
 
 describe('nextjs createPreprClient', () => {
@@ -57,15 +61,54 @@ describe('nextjs createPreprClient', () => {
     expect(sentInit(fetch).next).toEqual({ tags: ['cms'], revalidate: false });
   });
 
-  it('lets a per-query init.next override the defaults', async () => {
+  it('merges per-query init.next tags with the client tags instead of replacing them', async () => {
     const { createPreprClient } = await load();
     const fetch = fetchStub();
 
-    await createPreprClient({ url: URL_, fetch }).query(QUERY, undefined, {
-      init: { next: { tags: ['page'] } } as RequestInit & { next?: unknown },
-    });
+    await createPreprClient({ url: URL_, fetch, revalidate: 60 }).query(
+      QUERY,
+      undefined,
+      {
+        init: { next: { tags: ['page'], revalidate: 10 } } as RequestInit & {
+          next?: unknown;
+        },
+      },
+    );
 
-    expect(sentInit(fetch).next).toEqual({ tags: ['page'] });
+    expect(sentInit(fetch).next).toEqual({
+      tags: ['prepr', 'page'],
+      revalidate: 10,
+    });
+  });
+
+  it('with tagItems, tags the cache entry with every item and skips the Data Cache', async () => {
+    const { createPreprClient } = await load();
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: { Page: { _id: 'page', content: [{ _id: 'hero' }] } },
+          }),
+        ),
+    );
+
+    await createPreprClient({ url: URL_, fetch, revalidate: false }).query(
+      QUERY,
+      undefined,
+      {
+        tagItems: true,
+        init: { next: { tags: ['extra'] } } as RequestInit & { next?: unknown },
+      },
+    );
+
+    // A Data Cache entry would hold only the 'prepr' tag and serve a stale
+    // response once an item tag is revalidated.
+    expect(sentInit(fetch).cache).toBe('no-store');
+    expect(sentInit(fetch).next).toBeUndefined();
+    expect(cacheTagMock.mock.calls).toEqual([
+      ['prepr', 'extra'],
+      ['prepr:page', 'prepr:hero'],
+    ]);
   });
 
   it('forwards only Prepr headers with personalize and never caches', async () => {

@@ -28,6 +28,8 @@ export {
   type PreprDraftOptions,
 } from './draft';
 
+export { createPreprWebhookRoute, type PreprWebhookOptions } from './webhook';
+
 export {
   validatePreprToken,
   extractAccessToken,

@@ -225,7 +225,9 @@ Codegen's default client-preset output works as is; `documentMode: 'string'` wor
 
 `personalized` is `true` when the queried fields contain segment variants or A/B tests, at any depth. Use it to decide whether a page can be served statically.
 
-To serve pages from the cache until you publish, set `revalidate: false` and call `revalidateTag('prepr')` from a Prepr publish webhook. With `revalidate` unset, the installed Next version's fetch caching default applies.
+To serve pages from the cache until you publish, set `revalidate: false` and call `revalidateTag('prepr')` from a Prepr publish webhook. With `revalidate` unset, the installed Next version's fetch caching default applies. With Cache Components, a webhook can refresh only the pages showing the changed item instead: see [Refreshing on publish](#refreshing-on-publish).
+
+Tags you pass per query in `init.next.tags` are added to the client's `cacheTags`, never in place of them.
 
 In preview, pass `preview: true`: queries skip the cache and stega markers stay in text for click-to-edit. They are always stripped from URL-like fields.
 
@@ -412,7 +414,63 @@ const draft = preprDraftRedirect(request, { preview });
 if (draft) return draft;
 ```
 
-Outside preview both do nothing (the route answers 404). Keep the route out of your proxy `matcher`, or pass its path as `route` when it lives elsewhere. Inside the Prepr editor, browsers that refuse the draft cookie get the cached page instead, so keep a publish webhook calling `revalidateTag('prepr')`.
+Outside preview both do nothing (the route answers 404). Keep the route out of your proxy `matcher`, or pass its path as `route` when it lives elsewhere. Inside the Prepr editor, browsers that refuse the draft cookie get the cached page instead, so keep a publish webhook (below) in place.
+
+##### Refreshing on publish
+
+`revalidateTag('prepr')` refreshes every Prepr page on every publish. To refresh only the pages that show the changed item, tag each cached page with its items and let a Prepr webhook revalidate the item's tag.
+
+1. **Tag the page with its items.** Add `tagItems: true` to the query inside `'use cache'`. The entry gets a `prepr:<_id>` tag for every item in the result, at any depth; with `variants: true` that is every variant's items, so a change to any variant reaches the page.
+
+   ```tsx
+   async function getPage(slug: string) {
+     'use cache';
+     const { data } = await prepr().query(
+       GetPageBySlugDocument,
+       { slug },
+       { variants: true, tagItems: true },
+     );
+     return data;
+   }
+   ```
+
+   With your own client, call `cacheTag(...preprCacheTags(data))` inside `'use cache'` instead.
+
+2. **Tag list pages with their model.** A page listing posts must also refresh when a new post is published, which no existing tag covers:
+
+   ```ts
+   import { cacheTag } from 'next/cache';
+   import { preprModelTag } from '@preprio/toolkit/nextjs/graphql';
+
+   cacheTag(preprModelTag('Post')); // the model's singular name in Prepr
+   ```
+
+3. **Add the webhook route.**
+
+   ```ts
+   // app/api/prepr/webhook/route.ts
+   import { createPreprWebhookRoute } from '@preprio/toolkit/nextjs';
+
+   export const POST = createPreprWebhookRoute({
+     secret: process.env.PREPR_WEBHOOK_SECRET,
+   });
+   ```
+
+   Keep the route out of your proxy `matcher`.
+
+4. **Create the webhook in Prepr.** Under **Settings → Webhooks**, add `https://<your-site>/api/prepr/webhook` with the events `content_item.published`, `content_item.unpublished`, `content_item.changed` and `content_item.deleted`, plus `asset.changed` if pages show asset titles or descriptions. Save, then copy the webhook's **ID** into `PREPR_WEBHOOK_SECRET`: Prepr signs every request with it.
+
+The route checks the `Prepr-Signature` header (an HMAC-SHA256 of the body, keyed with the webhook ID) and answers 401 to a missing or wrong signature, or to a request older than five minutes. A valid event revalidates, with `revalidateTag(tag, 'max')`:
+
+| Tag                   | When                                                 | Reaches                                        |
+| --------------------- | ---------------------------------------------------- | ---------------------------------------------- |
+| `prepr:<id>`          | every event with an item or asset id                 | pages showing that item                        |
+| `prepr:model:<Model>` | `content_item.published`, `.unpublished`, `.deleted` | pages tagged with `preprModelTag`              |
+| `prepr:any`           | every event                                          | pages with more items than Next.js's tag limit |
+
+Next.js accepts at most 128 tags per `cacheTag()` call. A page with more items is tagged `prepr:any` instead (`PREPR_ANY_ITEM_TAG`), so it refreshes on every event, as with `revalidateTag('prepr')`. The response lists the revalidated tags, which Prepr shows on the webhook's detail page.
+
+`tagItems` makes that query skip the Data Cache: a Data Cache entry carries only the client's `cacheTags`, so after an item tag is revalidated, the `'use cache'` function would re-run against the stale response. The `'use cache'` entry is the cache. The client's `cacheTags` still apply to the entry, so `revalidateTag('prepr')` keeps refreshing everything. `tagItems` needs Next.js 16 and throws outside a `'use cache'` function.
 
 <details>
 <summary>How it works</summary>
@@ -422,7 +480,7 @@ Outside preview both do nothing (the route answers 404). Keep the route out of y
 - **`PreprStack`** renders items that never vary in the static shell. Each segment group, and each item with a segment group nested inside it, gets its own `<Suspense>` boundary: the default variant is the fallback and this visitor's variant streams in. A group with no default variant still gets its place. A failed decision falls back to the defaults.
 - **A/B variants** are both in the HTML, each in a `display: contents` wrapper; an inline script (and a layout effect after in-app navigation) shows the bucket from the cookie. A hidden variant never becomes visible, so the tracking pixel records no impression for it.
 - **`hasAbTests`** sends your query without its leaf fields and no visitor headers, so Prepr's CDN caches it, and reads the answer from the `Vary` header. Answers are reused for a minute.
-- **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call.
+- **Tags carry over.** The client's `'prepr'` fetch tag applies to the `'use cache'` entry, so `revalidateTag('prepr')` refreshes it without a `cacheTag()` call. `tagItems` adds a tag per item; see [Refreshing on publish](#refreshing-on-publish).
 - **Outside `'use cache'`, set `revalidate`** on the client (`false` or seconds). Otherwise a query outside both `'use cache'` and `<Suspense>` fails the build with "uncached data was accessed outside of `<Suspense>`".
 
 </details>
@@ -922,7 +980,7 @@ Each wrapper exposes the same five helpers, differing only in how they reach the
 | `cacheTags` (Next.js)  | `['prepr']`                       | Tags on cacheable fetches.                                                                                       |
 | `revalidate` (Next.js) | unset                             | `next.revalidate` on cacheable fetches.                                                                          |
 
-`query(document, variables?, options?)` takes a query string, a `TypedDocumentString` or a `DocumentNode`, and resolves to `{ data, personalized }`. Per-query options: `headers`, `init`, `fetch`, plus `personalize` (framework versions) and `event` (Nuxt, SvelteKit, Astro). A request carrying per-query headers or `init.headers` is `no-store`; client-level `headers` are not.
+`query(document, variables?, options?)` takes a query string, a `TypedDocumentString` or a `DocumentNode`, and resolves to `{ data, personalized }`. Per-query options: `headers`, `init`, `fetch`, plus `personalize` (framework versions), `tagItems` (Next.js 16, inside `'use cache'`) and `event` (Nuxt, SvelteKit, Astro). A request carrying per-query headers or `init.headers` is `no-store`; client-level `headers` are not.
 
 Import `PreprError` from the same subpath as the client when checking `instanceof`: CommonJS entry points do not share classes. `error.code` works from anywhere.
 
@@ -936,6 +994,8 @@ For your own GraphQL client (see [Using your own GraphQL client](#using-your-own
 | `toVariantsQuery(query, schema)`                           | The variants query as a string: what `variants: true` sends.                           |
 | `toDecisionQuery(query, schema, { from?, topLevelOnly? })` | The per-visitor decision query as a string, or `null` when there is nothing to decide. |
 | `decisionsFrom(data)`                                      | Decisions from a decision query's `data`, for `resolveVariants` or `PreprStack`.       |
+| `preprCacheTags(data)`                                     | `prepr:<_id>` for every item in a result, or `['prepr:any']` past 128 items.           |
+| `preprModelTag(model)`                                     | `prepr:model:<model>`, for list pages.                                                 |
 
 `@preprio/toolkit/graphql/codegen` is a graphql-codegen plugin that writes `<Name>VariantsQuery` and `<Name>DecisionQuery` for every named query with personalizable fields.
 

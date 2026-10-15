@@ -216,6 +216,13 @@ changes. Sites that tried an alpha, upgrading to `0.6.0-alpha.3`:
 - `PreprAbSwitch` no longer applies segment decisions;
   `PreprPersonalizationSwitch` does. `PreprStack` renders both, so only code
   that mounted `PreprAbSwitch` by hand is affected.
+- Next.js `query(..., { init: { next: { tags } } })` adds those tags to the
+  client's `cacheTags` instead of replacing them, so `revalidateTag('prepr')`
+  also reaches such queries. To drop the client's tag for one query, create a
+  separate client with its own `cacheTags`.
+- New: `tagItems` on the Next.js `query()`, `preprCacheTags`, `preprModelTag`
+  and `createPreprWebhookRoute`, for a publish webhook that refreshes only the
+  pages showing the changed item.
 - New: `createPreprProxy` (one call in `proxy.ts`), `PreprPersonalizationSwitch`
   (mount once in the root layout to keep decisions fresh within a visit), and
   `defaultVariant` in `PreprStack`'s `render`.
