@@ -21,9 +21,9 @@ describe('toDecisionDocument', () => {
 
   it('selects the context fields once, in a shared fragment, without the variant key only rendering needs', () => {
     expect(printed).toContain(
-      'fragment PreprDecisionContext on Context { kind group_id variant_id }',
+      'fragment c on Context { kind group_id variant_id }',
     );
-    expect(printed).toContain(`${CTX}: _context { ...PreprDecisionContext }`);
+    expect(printed).toContain(`${CTX}: _context { ...c }`);
   });
 
   it('inlines the query fragments, without repeating a type condition it is already in, and drops unused variables', () => {

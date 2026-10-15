@@ -212,7 +212,9 @@ function sharedContextFragment(schema: PreprSchemaInfo): {
   );
   if (contextTypes.size !== 1) return null;
   const [contextType] = contextTypes;
-  const fragmentName = 'PreprDecisionContext';
+  // Short: it is spelled out once per item type. The decision query inlines
+  // every fragment of the source query, so no other fragment can clash.
+  const fragmentName = 'c';
   const definition = {
     kind: 'FragmentDefinition',
     name: name(fragmentName),
