@@ -332,7 +332,7 @@ Conversions stay your choice: put `data-prepr-variant-event` (or `data-prepr-var
 - Keys are added after the page hydrates; the pixel picks them up then. Each item of a variant tags the element it renders, in order. A variant that renders a different number of elements than it has items (a section with several root elements, or one rendering nothing) tags only its first element.
 - With `trackVariants`, each variant sits in a `display: contents` wrapper. It takes no box, but CSS child combinators (`>`) and `:first-child` from the stack's parent no longer reach the sections.
 - An element that already has `data-prepr-variant-key` keeps it, so existing manual tagging keeps working.
-- `trackVariants` tags only the variant that is shown, once it is shown. Tagging yourself (with your own `_context { variant_key }` or `preprVariantProps`) puts a key on every variant in the page, including the invisible default that holds its space while the decision is on its way, which the pixel may count as seen. Use `trackVariants` for stack sections.
+- `trackVariants` tags only the variant that is shown, once it is shown. A section holding a personalized list (a logo strip whose logos vary) gets the key of the variant it shows. Do not tag stack sections yourself (with your own `_context { variant_key }` or `preprVariantProps`): that puts a key on every variant in the page, including the invisible default that holds its space while the decision is on its way, and Prepr's pixel counts any tagged element in view, invisible or not.
 
 ##### The proxy
 

@@ -185,6 +185,44 @@ describe('PreprStack trackVariants', () => {
     act(() => root.unmount());
   });
 
+  it("tags a section holding a personalized list with the shown variant's key", async () => {
+    const strip = {
+      id: 'logos',
+      logos: [
+        {
+          id: 'logo-default',
+          ...tracked('PERSONALIZATION', 'g', 'ALL_OTHER_USERS'),
+        },
+        { id: 'logo-dev', ...tracked('PERSONALIZATION', 'g', 'DEVELOPERS') },
+      ],
+    };
+    history.replaceState(null, '', '/nested');
+    applyPreprDecisions('g:DEVELOPERS');
+    const container = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(PreprStack<{ id: string }>, {
+          items: [strip],
+          render: section,
+          trackVariants: true,
+        }),
+      );
+    });
+    await nextTask();
+
+    expect(
+      [...container.querySelectorAll('section')].map((el) => [
+        el.closest('[data-prepr-v]')?.getAttribute('data-prepr-v'),
+        el.getAttribute('data-prepr-variant-key'),
+      ]),
+    ).toEqual([
+      ['g:ALL_OTHER_USERS', null],
+      ['g:DEVELOPERS', 'key-DEVELOPERS'],
+    ]);
+    act(() => root.unmount());
+  });
+
   // Prepr's pixel starts watching an element (its own IntersectionObserver and
   // Impression, no dedupe) once per mutation record that shows it a key: an
   // added subtree containing a keyed element, or the key attribute appearing.

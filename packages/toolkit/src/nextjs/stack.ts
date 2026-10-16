@@ -53,8 +53,10 @@ export interface PreprStackProps<T> {
    * Each item's key goes on the element `render` returns for it, in order,
    * once the page has hydrated. Each variant gets a wrapper with
    * `display: contents`: it takes no box, but CSS child combinators (`>`) and
-   * `:first-child` from the stack's parent no longer reach the sections. Lists
-   * nested inside an item are not tagged; use `preprVariantProps` there.
+   * `:first-child` from the stack's parent no longer reach the sections. A
+   * section holding a personalized list gets the key of the variant it shows.
+   * Only the shown variant is tagged, once it shows: the pixel counts any
+   * tagged element in view, invisible or not.
    */
   trackVariants?: boolean;
 }
@@ -79,11 +81,29 @@ const APPLY_SCRIPT = '__preprApply()';
 
 type StackRender<T> = PreprStackProps<T>['render'];
 
+/**
+ * The variant key of each item, for the element it renders. An item without
+ * one of its own (a section holding a personalized list) gets the key of the
+ * first variant inside it, so the variant it shows still counts.
+ */
 function variantKeysOf(items: unknown[]): string[] {
   return items.flatMap((item) => {
-    const key = preprVariantProps(item)['data-prepr-variant-key'];
+    const key =
+      preprVariantProps(item)['data-prepr-variant-key'] ?? nestedKeyOf(item);
     return key ? [key] : [];
   });
+}
+
+function nestedKeyOf(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  for (const child of Object.values(value)) {
+    const items = Array.isArray(child) ? child : [child];
+    for (const item of items) {
+      const key = contextOf(item)?.variant_key ?? (item && nestedKeyOf(item));
+      if (key) return key;
+    }
+  }
+  return undefined;
 }
 
 function renderItems<T>(
