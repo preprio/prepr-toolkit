@@ -204,7 +204,7 @@ upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
 `0.6.0` adds personalization to `PreprStack` and `createPreprProxy`; nothing a
 stable or release-candidate version shipped changes. Sites that tried an alpha,
-upgrading to the next alpha after `0.6.0-alpha.6`:
+upgrading to `0.6.0-alpha.7`:
 
 - Personalization groups no longer stream. Every variant of every group,
   nested ones included, is in the prerendered page, hidden until the page
