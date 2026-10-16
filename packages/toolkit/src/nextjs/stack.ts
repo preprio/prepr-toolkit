@@ -64,11 +64,13 @@ const DEFAULT_ATTRIBUTE = 'data-prepr-default';
 const NESTED_ATTRIBUTE = 'data-prepr-nested';
 
 // Variants stay hidden until this view's decision shows one: no variant, the
-// default included, paints before it is decided. A hidden variant never
-// reaches 50% visibility, so the tracking pixel records no impression for it.
-const GROUP_BASE_CSS = `[${VARIANT_ATTRIBUTE}]{display:none}[${VARIANT_ATTRIBUTE}][data-prepr-show]{display:contents}`;
+// default included, paints before it is decided. Until then the default
+// variant keeps its space, invisible, so the page below it does not move when
+// the visitor's variant appears (only by any difference in height). The
+// marker before the sections tells the two states apart.
+const GROUP_BASE_CSS = `[${VARIANT_ATTRIBUTE}]{display:none}[${VARIANT_ATTRIBUTE}][data-prepr-show]{display:contents}[data-prepr-decision]:not([data-prepr-decided])~[${VARIANT_ATTRIBUTE}][${DEFAULT_ATTRIBUTE}]{display:contents;visibility:hidden}`;
 // Without JavaScript nothing is decided: the default variants show.
-const NOSCRIPT_HTML = `<style>[${VARIANT_ATTRIBUTE}][${DEFAULT_ATTRIBUTE}]{display:contents}</style>`;
+const NOSCRIPT_HTML = `<style>[${VARIANT_ATTRIBUTE}][${DEFAULT_ATTRIBUTE}]{display:contents!important;visibility:visible!important}</style>`;
 // Defines the decision switch and asks for this page load's decision, once
 // per stack; each personalized block calls the switch right after its HTML,
 // so a decision that is already in shows it before it paints.
@@ -245,6 +247,11 @@ export function PreprStack<T>({
           dangerouslySetInnerHTML: { __html: DECISION_SCRIPT },
         }),
         createElement(PreprDecisionApplier),
+        // Marked decided by the decision switch; never laid out.
+        createElement('template', {
+          'data-prepr-decision': '',
+          suppressHydrationWarning: true,
+        }),
       ),
     ...blocks.map((block) => {
       if (block.groups.size === 0) {

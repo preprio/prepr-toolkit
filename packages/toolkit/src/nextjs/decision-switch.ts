@@ -23,6 +23,11 @@ export function applyPreprDecisions(decision?: string): boolean {
   if (decision !== undefined) state.__preprDecision = { key, value: decision };
   const current = state.__preprDecision;
   if (!current || current.key !== key) return false;
+  // From now on wrappers no longer hold their default's space (see the stack's
+  // base style): what shows is decided.
+  document.querySelectorAll('[data-prepr-decision]').forEach((marker) => {
+    marker.setAttribute('data-prepr-decided', '');
+  });
   // `*`: Prepr could not be asked, so every group shows its default variant.
   const defaults = current.value === '*';
   const chosen: Record<string, string[]> = {};

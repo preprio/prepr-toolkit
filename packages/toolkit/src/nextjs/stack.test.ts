@@ -126,7 +126,7 @@ describe('PreprStack trackVariants', () => {
     expect(out).not.toContain('data-prepr-variant-key');
   });
 
-  it('puts each variant key on its section once mounted, inside its variant wrapper', async () => {
+  it("puts the variant key on the shown variant's section once mounted, never on a hidden one", async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -151,7 +151,8 @@ describe('PreprStack trackVariants', () => {
     ).toEqual([
       ['intro', null, null],
       ['cta-a', 'key-A', 'g-cta:A'],
-      ['cta-b', 'key-B', 'g-cta:B'],
+      // Hidden: no impression for a variant the visitor does not get.
+      ['cta-b', null, 'g-cta:B'],
     ]);
     act(() => root.unmount());
   });
@@ -226,7 +227,6 @@ describe('PreprStack trackVariants', () => {
 
     expect([...watched].map(([el, count]) => [el.textContent, count])).toEqual([
       ['cta-a', 1],
-      ['cta-b', 1],
     ]);
     act(() => root.unmount());
   });
@@ -395,9 +395,28 @@ describe('PreprStack segment groups', () => {
     ]);
   });
 
+  it("keeps the default variant's space, invisible, until the decision is in", () => {
+    history.replaceState(null, '', '/r');
+    const html = renderToString(stack(hero));
+    // The base style reserves what this selector matches.
+    const reserved =
+      '[data-prepr-decision]:not([data-prepr-decided])~[data-prepr-v][data-prepr-default]';
+    expect(html).toContain(`${reserved}{display:contents;visibility:hidden}`);
+    document.body.innerHTML = html;
+    const matched = () =>
+      [...document.querySelectorAll(reserved)].map((el) => el.textContent);
+    // Waiting: only the default holds its place, and nothing is shown.
+    expect(matched()).toEqual(['hero-default']);
+    expect(shown()).toEqual([]);
+
+    applyPreprDecisions('hero:DEVELOPERS');
+    expect(matched()).toEqual([]);
+    expect(shown()).toEqual(['hero-dev']);
+  });
+
   it('shows the defaults to visitors without JavaScript', () => {
     expect(renderToString(stack(hero))).toContain(
-      '<noscript><style>[data-prepr-v][data-prepr-default]{display:contents}</style></noscript>',
+      '<noscript><style>[data-prepr-v][data-prepr-default]{display:contents!important;visibility:visible!important}</style></noscript>',
     );
   });
 

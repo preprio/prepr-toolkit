@@ -318,12 +318,19 @@ export function PreprVariantTracking({
   const keys = variantKeys.join(' ');
   useLayoutEffect(() => {
     let tagged: (readonly [Element, string])[] = [];
-    // Tags on the next task, not in the commit: after a client-side
-    // navigation the elements are inserted in this task, and the pixel
-    // watches an element (and sends its impression) once per mutation record
-    // that shows it a key. Tagging now would put the insertion and the
-    // attribute change in one record batch and count the impression twice.
-    const timer = setTimeout(() => {
+    // Only a variant on screen is tagged: a hidden one, or the default
+    // keeping its space while the decision is on its way, must not count as
+    // an impression.
+    const wrapper = ref.current?.closest('[data-prepr-v]');
+    const shown = () => !wrapper || wrapper.hasAttribute('data-prepr-show');
+    const untag = () => {
+      for (const [element] of tagged)
+        element.removeAttribute(VARIANT_KEY_ATTRIBUTE);
+      tagged = [];
+    };
+    const tag = () => {
+      if (!shown()) return untag();
+      if (tagged.length > 0) return;
       const elements = [...(ref.current?.children ?? [])];
       const list = keys.split(' ');
       const pairs =
@@ -335,12 +342,22 @@ export function PreprVariantTracking({
         element.setAttribute(VARIANT_KEY_ATTRIBUTE, key);
         return true;
       });
+    };
+    // Tags on the next task, not in the commit: after a client-side
+    // navigation the elements are inserted in this task, and the pixel
+    // watches an element (and sends its impression) once per mutation record
+    // that shows it a key. Tagging now would put the insertion and the
+    // attribute change in one record batch and count the impression twice.
+    const timer = setTimeout(tag);
+    const observer = wrapper && new MutationObserver(tag);
+    observer?.observe(wrapper!, {
+      attributes: true,
+      attributeFilter: ['data-prepr-show'],
     });
     return () => {
       clearTimeout(timer);
-      for (const [element] of tagged) {
-        element.removeAttribute(VARIANT_KEY_ATTRIBUTE);
-      }
+      observer?.disconnect();
+      untag();
     };
   }, [keys]);
   return createElement(
