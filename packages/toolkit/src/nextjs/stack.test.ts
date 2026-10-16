@@ -382,22 +382,71 @@ describe('PreprStack segment groups', () => {
     expect(decisionRequests).not.toHaveBeenCalled();
   });
 
-  it('shows an older decision at once and swaps in a different answer from the background', async () => {
+  // An older decision shows at once; the background answer differs.
+  async function refreshOlderDecision(top: number) {
+    vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue({
+      top,
+    } as DOMRect);
     history.replaceState(null, '', '/x');
     Object.assign(window, {
       __preprApply: applyPreprDecisions,
       __preprRequest: requestPreprDecision,
     });
-    document.body.innerHTML = renderToString(stack(hero));
-    storeDecision('/x', 'hero:DEVELOPERS', 60_000);
+    document.body.innerHTML = renderToString(
+      stack([...hero, logoStrip('DEVELOPERS', 'MARKETERS')]),
+    );
+    storeDecision('/x', 'hero:DEVELOPERS~logos:DEVELOPERS', 60_000);
     decisionRequests.mockResolvedValueOnce(
-      new Response('hero:ALL_OTHER_USERS'),
+      new Response('hero:ALL_OTHER_USERS~logos:MARKETERS'),
     );
     startPreprDecision();
-    expect(shown()).toEqual(['hero-dev']);
+    expect(shown()).toEqual(['hero-dev', 'logos logo-DEVELOPERS']);
     expect(decisionRequests).toHaveBeenCalledTimes(1);
     await new Promise((resolve) => setTimeout(resolve));
-    expect(shown()).toEqual(['hero-default']);
+  }
+
+  it('swaps in a different answer from the background below the screen', async () => {
+    await refreshOlderDecision(window.innerHeight);
+    expect(shown()).toEqual(['hero-default', 'logos logo-MARKETERS']);
+    vi.restoreAllMocks();
+  });
+
+  it('swaps only the groups below the screen when the page spans both', async () => {
+    vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: Range) {
+        const below = this.startContainer.textContent?.startsWith('logos');
+        return { top: below ? window.innerHeight + 1 : 0 } as DOMRect;
+      },
+    );
+    history.replaceState(null, '', '/x');
+    Object.assign(window, {
+      __preprApply: applyPreprDecisions,
+      __preprRequest: requestPreprDecision,
+    });
+    document.body.innerHTML = renderToString(
+      stack([...hero, logoStrip('DEVELOPERS', 'MARKETERS')]),
+    );
+    storeDecision('/x', 'hero:DEVELOPERS~logos:DEVELOPERS', 60_000);
+    decisionRequests.mockResolvedValueOnce(
+      new Response('hero:ALL_OTHER_USERS~logos:MARKETERS'),
+    );
+    startPreprDecision();
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(shown()).toEqual(['hero-dev', 'logos logo-MARKETERS']);
+    vi.restoreAllMocks();
+  });
+
+  it('keeps the variant of a section in view, also through a later apply', async () => {
+    await refreshOlderDecision(0);
+    expect(shown()).toEqual(['hero-dev', 'logos logo-DEVELOPERS']);
+    vi.restoreAllMocks();
+    // A re-render applies the view's decision again: nothing in view swaps.
+    applyPreprDecisions();
+    expect(shown()).toEqual(['hero-dev', 'logos logo-DEVELOPERS']);
+    // The next view gets the new answer.
+    expect(requestPreprDecision('/x').result).toBe(
+      'hero:ALL_OTHER_USERS~logos:MARKETERS',
+    );
   });
 
   it('keeps showing the last decision when the background request fails', async () => {

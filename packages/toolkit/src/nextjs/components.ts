@@ -91,8 +91,12 @@ function requestDecision(
     personalized,
     onChange: (value) => {
       if (location.pathname + location.search !== key) return;
-      applyPreprDecisions(value);
-      shown.set(key, value);
+      applyPreprDecisions(value, { refresh: true });
+      // What shows: sections in view kept their variant.
+      const state = (
+        window as unknown as { __preprDecision?: { value: string } }
+      ).__preprDecision;
+      if (state) shown.set(key, state.value);
     },
   });
 }

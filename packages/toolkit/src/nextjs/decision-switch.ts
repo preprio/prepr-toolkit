@@ -11,16 +11,64 @@
  * Back and Forward. Without it, the one already applied to this URL is used.
  * Returns false when there is no decision for this view yet.
  *
+ * `refresh` marks a newer decision for a view that already shows one: a group
+ * the visitor can see, or has scrolled past, keeps its variant, and only
+ * groups still below the screen change. Swapping a section in view would
+ * replace content the visitor is reading and move the page under them.
+ *
  * Self-contained: its source is inlined as a `<script>` that runs while the
  * HTML is parsed, so it cannot use imports or outer variables. Ids are only
  * compared, never put into selectors.
  */
-export function applyPreprDecisions(decision?: string): boolean {
+export function applyPreprDecisions(
+  decision?: string,
+  options: { refresh?: boolean } = {},
+): boolean {
   const state = window as unknown as {
     __preprDecision?: { key: string; value: string };
   };
   const key = location.pathname + location.search;
-  if (decision !== undefined) state.__preprDecision = { key, value: decision };
+  const previous = state.__preprDecision;
+  let value = decision;
+  if (
+    value !== undefined &&
+    value !== '*' &&
+    options.refresh &&
+    previous &&
+    previous.key === key &&
+    previous.value !== '*'
+  ) {
+    const pairs = (from: string) => {
+      const out: Record<string, string> = {};
+      from.split('~').forEach((pair) => {
+        const colon = pair.indexOf(':');
+        if (colon > 0) out[pair.slice(0, colon)] = pair;
+      });
+      return out;
+    };
+    const before = pairs(previous.value);
+    const after = pairs(value);
+    // A group showing a variant that is not wholly below the screen keeps
+    // it. The wrapper takes no box (`display: contents`); its content does.
+    document
+      .querySelectorAll('[data-prepr-v][data-prepr-show]')
+      .forEach((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        if (range.getBoundingClientRect().top >= window.innerHeight) return;
+        (element.getAttribute('data-prepr-v') || '')
+          .split(' ')
+          .forEach((token) => {
+            const group = token.slice(0, token.indexOf(':'));
+            if (before[group]) after[group] = before[group];
+          });
+      });
+    // Stored merged, so a later apply (a re-render) keeps what is in view.
+    value = Object.keys(after)
+      .map((group) => after[group])
+      .join('~');
+  }
+  if (value !== undefined) state.__preprDecision = { key, value };
   const current = state.__preprDecision;
   if (!current || current.key !== key) return false;
   // From now on wrappers no longer hold their default's space (see the stack's
@@ -72,6 +120,7 @@ export function applyPreprDecisions(decision?: string): boolean {
  *   mostly get the same answer.
  * - An older one, up to 30 minutes, is used at once while a new one is asked
  *   for in the background; `onChange` gets the new one when it differs.
+ *   Applied with `refresh`, it changes only sections below the screen.
  *   Segment membership rarely changes between two views, so the visitor's
  *   last variant beats sections that stay hidden while Prepr answers.
  * - A page without personalization answers with no groups, which is used for
@@ -185,17 +234,18 @@ export function requestPreprDecision(
  */
 export function startPreprDecision(): void {
   const state = window as unknown as {
-    __preprApply: (decision?: string) => boolean;
+    __preprApply: typeof applyPreprDecisions;
     __preprRequest: typeof requestPreprDecision;
   };
   const key = location.pathname + location.search;
-  const apply = (answer: string) => {
-    if (location.pathname + location.search === key) state.__preprApply(answer);
+  const apply = (answer: string, refresh?: boolean) => {
+    if (location.pathname + location.search === key)
+      state.__preprApply(answer, { refresh });
   };
   const pending = state.__preprRequest(key, {
-    onChange: apply,
+    onChange: (answer) => apply(answer, true),
     personalized: true,
   });
   if (pending.result !== undefined) apply(pending.result);
-  else pending.value.then(apply);
+  else pending.value.then((answer) => apply(answer));
 }
