@@ -235,7 +235,7 @@ Custom headers go in two places. Client-level `headers` (`createPreprClient({ ur
 
 #### Personalization with Cache Components
 
-With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), a personalized page is still served from the cache, whole: every variant of every A/B test and personalization group is in the prerendered page, and each page view's decision shows the visitor's variant before first paint. Nothing streams, and no default variant shows first to be swapped out. You keep your own query and your own components.
+With [Cache Components](https://nextjs.org/docs/app/getting-started/cache-components) (`cacheComponents: true`), a personalized page is still served from the cache, whole: every variant of every A/B test and personalization group is in the prerendered page, and each page view's decision, fetched while the page loads, shows the visitor's variant. Nothing streams, the page never waits for Prepr, and no default variant shows first to be swapped out. You keep your own query and your own components.
 
 **Do you need this?** Only if your pages are cached. A page that renders per request already gets this visitor's variants from `query(..., { personalize: true })`; render the result as is and skip this section.
 
@@ -336,7 +336,7 @@ Conversions stay your choice: put `data-prepr-variant-event` (or `data-prepr-var
 
 ##### The proxy
 
-One call in `proxy.ts` gives `PreprStack` what it needs from the request: the visitor's Prepr headers and customer id and, at every page view, the visitor's variant of every A/B test and personalization group on the page, in one Prepr request. Tell it which query each URL renders; most sites route every page through one query:
+One call in `proxy.ts` gives `PreprStack` what it needs: the visitor's Prepr headers and customer id, and the answers to the browser's decision requests: the visitor's variant of every A/B test and personalization group on a page, in one Prepr request. Pages themselves pass straight through and never wait for Prepr. Tell it which query each URL renders; most sites route every page through one query:
 
 ```ts
 // proxy.ts
@@ -376,27 +376,27 @@ page: (url) => ({
 }),
 ```
 
-API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped. Every other URL `page` maps to a query gets one decision query per page view; a page without groups gets an empty answer. Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers, which then get the default variants. In preview it also sends the editor through the [draft route](#preview) first. The pieces it combines stay exported (`createPreprMiddleware`, `prepr.resolveDecisions`, `preprDraftRedirect`) for proxies that need them separately.
+API routes, `/_next/` and URLs whose last segment has a file extension (`/logo.png`, but also `/docs/v1.2`) are skipped. A decision request for any other URL `page` maps to a query sends one decision query; a page without groups gets an empty answer. Pass `onlyIf: (request) => boolean` to skip Prepr for some requests, such as crawlers, which then get the default variants. In preview it also sends the editor through the [draft route](#preview) first. `createPreprMiddleware` and `preprDraftRedirect` stay exported for proxies that need them separately; decision requests are answered by `createPreprProxy` only.
 
 ##### A/B tests
 
-A/B tests go through the same decision as segment groups: both variants are in the prerendered page, and the page view's decision shows the visitor's one before first paint. Prepr assigns a variant per experiment, from the visitor's customer id and that experiment's split, so the decision is the only reliable source; one stored bucket per visitor cannot follow a 20/80 and a 50/50 test at once. A is the default, also for crawlers and when Prepr cannot be asked. Pass `bucket` to `PreprStack` only when the route already knows it. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
+A/B tests go through the same decision as segment groups: both variants are in the prerendered page, hidden until the page view's decision shows the visitor's one. Prepr assigns a variant per experiment, from the visitor's customer id and that experiment's split, so the decision is the only reliable source; one stored bucket per visitor cannot follow a 20/80 and a 50/50 test at once. A is the default, also for crawlers and when Prepr cannot be asked. Pass `bucket` to `PreprStack` only when the route already knows it. Under a strict Content-Security-Policy, pass `nonce` to `PreprStack`.
 
 ##### How each visitor gets their variant
 
 Every page view is decided. Nothing is reused from a prefetch, the router cache or another page's view; the only reuse is showing a view again as the visitor just saw it (a reload, Back and Forward).
 
-- **Page loads.** The proxy asks Prepr which variant this visitor gets for every group on the page, nested lists included, in one request, and puts the answer on the response. An inline script after each personalized section shows the visitor's variant while the HTML is parsed, so the first paint is already right.
+- **Page loads.** The page is the same for every visitor and is sent at once, from the cache. An inline script at the start of each `PreprStack` asks the proxy for this view's decision as soon as it is parsed, so Prepr answers while the rest of the page, its styles and scripts (the tracking pixel included) still load. The personalized sections show the visitor's variant when the answer arrives; everything else never waits for it.
 - **Client-side navigations.** When the visitor presses a link, `PreprPersonalizationSwitch` asks the proxy for the target page's decision, and the click waits for the answer. The new page then paints with the visitor's variants. Pressing, not clicking, starts the request, so most of the wait happens while the button is still going down. Prefetches still bring the page itself; only the decision is fetched per click.
-- **Never the default first.** Until a view's decision is in, its personalized sections stay hidden. The default variant only shows when it is the decision: for visitors in none of the segments, for requests `onlyIf` skips, and when Prepr does not answer within `timeoutMs` (default 3000). Navigations started from code ask for a decision when the page opens; the personalized sections appear when it arrives.
-- **Reloads and Back/Forward.** Back and Forward show a page as this tab last showed it, at once, without asking Prepr. A reload within 10 seconds of the decision, with no other page view in between, reuses it too; the proxy asks again after that, after any other page view, for a new visitor, and when UTM parameters or a segment forced in preview arrive. Prepr needs a few seconds to process a visitor's activity anyway, so asking again sooner would mostly get the same answer.
+- **Never the default first.** Until a view's decision is in, its personalized sections stay hidden, and content below them moves down when they appear. The default variant only shows when it is the decision: for visitors in none of the segments, for requests `onlyIf` skips, and when Prepr does not answer within `timeoutMs` (default 3000). Navigations started from code ask for a decision when the page opens; the personalized sections appear when it arrives.
+- **Reloads and Back/Forward.** Back and Forward show a page as this tab last showed it, at once, without asking Prepr. A reload of the same URL within 10 seconds of the decision, with no other page view in between, reuses it too (kept in `sessionStorage`); after that, or after any other page view, the browser asks again. A URL with other UTM parameters is another view. Prepr needs a few seconds to process a visitor's activity anyway, so asking again sooner would mostly get the same answer.
 - **"Right" means what Prepr knows when the visitor clicks.** Prepr assigns segments from the visitor's tracked activity. If it has not yet processed the pixel event of the previous page view, the decision cannot include it, and the visitor sees that segment from a later page view.
-- **Costs.** The page carries the HTML of every variant, and an item with groups nested inside it once per combination of their variants. `render` gets `defaultVariant`: give `priority` images only to the default variant and `loading="lazy"` to the others, or the browser downloads every variant's hero image. Every page view and every link press on a site with personalization is one uncached Prepr request (a press on touch devices too, also when it turns into a scroll), so run your functions in the region closest to your visitors and to Prepr.
+- **Costs.** The page carries the HTML of every variant, and an item with groups nested inside it once per combination of their variants. `render` gets `defaultVariant`: give `priority` images only to the default variant and `loading="lazy"` to the others, or the browser downloads every variant's hero image. Every page view and every link press on a site with personalization is one decision request (a press on touch devices too, also when it turns into a scroll), answered from Prepr's cache when other visitors had the same answer.
 - Without JavaScript, visitors see the default variants.
 
 ##### Deploying
 
-Every page load waits for one decision from Prepr before the proxy sends the page. Most of that time is spent at Prepr, in two steps:
+Pages are sent without waiting for Prepr; only the personalized sections wait for their decision, and most of that time is spent at Prepr, in two steps:
 
 - **Who is the visitor?** For a visitor Prepr has not seen before, it first works out their segments, which takes a few hundred milliseconds on pages with segment groups. A returning visitor is resolved at once.
 - **The answer.** Prepr's CDN caches each decision per page, segment set and A/B bucket, and shares it between visitors who get the same. A cached answer takes tens of milliseconds; working one out takes most of a second, once per page and combination until Prepr's cache drops it.
@@ -419,7 +419,7 @@ Under steady traffic most answers come from that cache. Your deployment adds the
 
 - **Instances.** On Vercel, Fluid Compute reuses a function instance, and its open connections, across requests, so under steady traffic the connection stays warm. Each fresh instance pays the setup on its first request; keep instances warm with your platform's settings if your traffic is low.
 - **No schema at runtime.** Pass the codegen plugin's decision query as `decision` (see [The proxy](#the-proxy)), so a fresh instance does not download Prepr's schema before its first decision.
-- **Timeout.** When Prepr does not answer within `timeoutMs` (default 3000), the page gets the default variants, with nothing swapped in later. Lower it to cap how long a page load can wait.
+- **Timeout.** When Prepr does not answer within `timeoutMs` (default 3000), the personalized sections show the default variants, with nothing swapped in later. Lower it to cap how long they can stay hidden.
 
 ##### Preview
 

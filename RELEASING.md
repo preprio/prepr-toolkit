@@ -207,31 +207,26 @@ stable or release-candidate version shipped changes. Sites that tried an alpha,
 upgrading to the next alpha after `0.6.0-alpha.6`:
 
 - Personalization groups no longer stream. Every variant of every group,
-  nested ones included, is in the prerendered page, and each page view's
-  decision shows the visitor's variant before first paint. Remove
+  nested ones included, is in the prerendered page, hidden until the page
+  view's decision shows the visitor's variant; the default never shows
+  first. Remove
   `decisions` and `aboveTheFold` from `PreprStack`; `render` no longer gets
   `placeholder` (nothing stands in any more, so tag every variant).
-- `createPreprProxy` decides every page load and answers the decision
-  requests `PreprPersonalizationSwitch` sends on link presses. Keep
+- Pages never wait for Prepr: the inline script of `PreprStack` asks for
+  each page load's decision, and `PreprPersonalizationSwitch` for each click,
+  through decision requests that only `createPreprProxy` answers. Keep
   `<PreprPersonalizationSwitch />` in the root layout; it takes no props now
   (`refresh`, `freshFor` and `refreshAfter` are gone, with the background
-  refresh and the `prepr_refresh` cookie). `freshFor` is gone from
-  `createPreprProxy` and `resolveDecisions` too. A proxy that calls
-  `prepr.resolveDecisions` itself cannot answer those requests: use
-  `createPreprProxy`, or navigations show their personalized sections only
-  once the decision request falls back to the defaults.
+  refresh and the `prepr_refresh` cookie). `prepr.resolveDecisions`,
+  `ResolveDecisionsOptions` and `PREPR_DECISIONS_COOKIE` are removed: a proxy
+  that calls them itself switches to `createPreprProxy`.
 - A/B tests are picked by the page view's decision, like segment groups:
   `resolvePreprBucket`, `PREPR_BUCKET_COOKIE` and the `prepr_ab_bucket`
   cookie are gone. Prepr assigns a variant per experiment and split, which
   one stored bucket per visitor could not follow. The proxy no longer runs a
   separate check before deciding: every CMS page view sends one decision
   query.
-- `timeoutMs` on `createPreprProxy` and `resolveDecisions` defaults to 3000
-  instead of 1000: a page load now waits for its decision, and a slow first
-  connection to Prepr otherwise fell back to the defaults.
-- The `prepr_decisions` cookie now holds one page view's decision, with its
-  URL and time. The browser deletes it once the visitor views another page;
-  until then a reload of that view within 10 seconds reuses it.
+- `timeoutMs` on `createPreprProxy` defaults to 3000 instead of 1000.
 
 Upgrading to `0.6.0-alpha.3`:
 

@@ -9,7 +9,6 @@ import {
   decideView,
   forwardedHeaders,
   preprClientInternals,
-  resolveDecisionsWith,
 } from './decisions';
 import { preprDraftRedirect } from './draft';
 import type { PreprNextClient } from './graphql';
@@ -44,23 +43,11 @@ export interface PreprProxyOptions {
   /** Give up on Prepr after this many ms; the default variants show. Default 3000. */
   timeoutMs?: number;
   /**
-   * Skip the decisions (page views and client-side navigations) when this
-   * resolves to false, for example for
+   * Skip Prepr for decision requests when this resolves to false, for example for
    * crawlers, so they never wait for Prepr. Those requests get the default
    * variants.
    */
   onlyIf?: (request: NextRequest) => boolean | Promise<boolean>;
-}
-
-// Prefetches and client-side navigations fetch the page's RSC payload. Next.js
-// strips its own `RSC` and `Next-Router-*` headers before the proxy runs, but
-// keeps `Next-Url`, and the browser marks a fetch as `Sec-Fetch-Dest: empty`.
-function isRouterFetch(request: NextRequest): boolean {
-  return (
-    request.headers.has('rsc') ||
-    request.headers.has('next-url') ||
-    request.headers.get('sec-fetch-dest') === 'empty'
-  );
 }
 
 // API routes, Next.js internals and files never render a CMS page.
@@ -75,15 +62,14 @@ function isPagePath(pathname: string): boolean {
 /**
  * Everything Prepr needs in the proxy (`proxy.ts`), in one call: the visitor's
  * Prepr headers and customer id (`createPreprMiddleware`), the draft-mode
- * redirect in preview, and, at every page view, the visitor's variant of every
- * A/B test and personalization group on the page, asked from Prepr in one
- * request, so `PreprStack` shows them before first paint.
+ * redirect in preview, and the answers to the browser's decision requests.
  *
- * Prefetches and client-side navigations (requests with an `RSC` header) are
- * never decided: their answer would be reused later. Instead it answers the
- * decision requests `PreprPersonalizationSwitch` sends when a visitor clicks
- * a link, with the target page's decisions as text and no page. Add your own
- * cookies or headers to the response it returns.
+ * Pages themselves never wait for Prepr: they are the same for every visitor
+ * and pass straight through. The browser sends a decision request for each
+ * page view, from the page load and when a visitor presses a link; the proxy
+ * answers it with the visitor's variant of every A/B test and personalization
+ * group on that page, asked from Prepr in one request, as text and no page.
+ * Add your own cookies or headers to the response it returns.
  *
  * @example
  * const handlePrepr = createPreprProxy({
@@ -184,22 +170,6 @@ export function createPreprProxy(
     });
     if (decisionRequest) return answerDecision(request, response, target);
 
-    // Prefetches and client-side navigations: the browser asks its own
-    // decision when the visitor clicks.
-    if (target && !isRouterFetch(request)) {
-      await resolveDecisionsWith(
-        client,
-        request,
-        response,
-        target.document,
-        target.variables,
-        {
-          timeoutMs: options.timeoutMs,
-          onlyIf: () => allowed(request),
-          decision: target.decision,
-        },
-      );
-    }
     return response;
   };
 }

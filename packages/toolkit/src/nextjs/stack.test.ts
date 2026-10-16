@@ -16,7 +16,8 @@ vi.mock('next/navigation', () => ({
 }));
 
 const { PreprStack } = await import('./stack');
-const { applyPreprDecisions } = await import('./decision-switch');
+const { applyPreprDecisions, startPreprDecision } =
+  await import('./decision-switch');
 const { PreprPersonalizationSwitch } = await import('./components');
 
 // Decision requests a client render sends: none unless a test answers them.
@@ -49,6 +50,8 @@ function html(props: { bucket?: string } = {}) {
 
 afterEach(() => {
   delete (window as { __preprDecision?: unknown }).__preprDecision;
+  delete (window as { __preprPending?: unknown }).__preprPending;
+  sessionStorage.clear();
   decisionRequests.mockClear();
   history.replaceState(null, '', '/');
   document.cookie = 'prepr_decisions=; max-age=0; path=/';
@@ -259,13 +262,11 @@ describe('PreprStack segment groups', () => {
     );
   // Loads a page the way the browser does: the proxy's cookie, then the HTML
   // with its inline decision calls.
-  function load(path: string, cookie: string | null, stackItems: Item[]) {
+  // A page with this view's decision applied (or none yet).
+  function load(path: string, decision: string | null, stackItems: Item[]) {
     history.replaceState(null, '', path);
-    if (cookie !== null) {
-      document.cookie = `prepr_decisions=${encodeURIComponent(`${Date.now()}|${cookie}`)}; path=/`;
-    }
     document.body.innerHTML = renderToString(stack(stackItems));
-    applyPreprDecisions();
+    applyPreprDecisions(decision ?? undefined);
   }
 
   it('renders every variant in the page, hidden until decided: nothing streams', () => {
@@ -300,15 +301,52 @@ describe('PreprStack segment groups', () => {
     expect(html).toContain('data-prepr-v="logos:DEVELOPERS quotes:MARKETERS"');
   });
 
-  it("shows the proxy's decision for this URL before paint, and keeps it only until another page is viewed", () => {
-    load('/solutions/astro-cms', '/solutions/astro-cms@hero:DEVELOPERS', hero);
+  it('asks for the decision while the page loads, and shows the variant when it answers', async () => {
+    let answer!: (body: string) => void;
+    decisionRequests.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => (answer = (b) => resolve(new Response(b)))),
+    );
+    history.replaceState(null, '', '/solutions/astro-cms');
+    document.body.innerHTML = renderToString(stack(hero));
+    (window as unknown as { __preprApply: unknown }).__preprApply =
+      applyPreprDecisions;
+    startPreprDecision();
+    const [url, init] = decisionRequests.mock.calls[0]!;
+    expect(url).toBe('/solutions/astro-cms');
+    expect(new Headers(init?.headers).get('Prepr-Decide')).toBe('1');
+    // Held, not the default, until the answer is in.
+    expect(shown()).toEqual([]);
+    answer('hero:DEVELOPERS');
+    await new Promise((resolve) => setTimeout(resolve));
     expect(shown()).toEqual(['hero-dev']);
-    // A reload of this view may reuse it...
-    expect(document.cookie).toContain('DEVELOPERS');
-    // ...until a decision for another page applies.
-    history.replaceState(null, '', '/pricing');
-    applyPreprDecisions('hero:ALL_OTHER_USERS');
-    expect(document.cookie).not.toContain('DEVELOPERS');
+  });
+
+  it('reuses the decision for a reload of the same view within 10 seconds, and asks again after that', async () => {
+    history.replaceState(null, '', '/x');
+    (window as unknown as { __preprApply: unknown }).__preprApply =
+      applyPreprDecisions;
+    document.body.innerHTML = renderToString(stack(hero));
+    sessionStorage.setItem(
+      'prepr_decision',
+      JSON.stringify({ key: '/x', value: 'hero:DEVELOPERS', at: Date.now() }),
+    );
+    startPreprDecision();
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(decisionRequests).not.toHaveBeenCalled();
+    expect(shown()).toEqual(['hero-dev']);
+
+    delete (window as { __preprPending?: unknown }).__preprPending;
+    sessionStorage.setItem(
+      'prepr_decision',
+      JSON.stringify({
+        key: '/x',
+        value: 'hero:DEVELOPERS',
+        at: Date.now() - 11_000,
+      }),
+    );
+    startPreprDecision();
+    expect(decisionRequests).toHaveBeenCalledTimes(1);
   });
 
   it('shows a page on Back as this tab last showed it, without asking again', async () => {
@@ -332,24 +370,24 @@ describe('PreprStack segment groups', () => {
   });
 
   it('never shows a variant, not even the default, without a decision for this view', () => {
-    load('/pricing', '/solutions/astro-cms@hero:DEVELOPERS', hero);
+    applyPreprDecisions('hero:DEVELOPERS'); // another page's view
+    load('/pricing', null, hero);
     expect(shown()).toEqual([]);
   });
 
   it('shows the defaults when Prepr could not be asked, and nothing for a group the decision leaves out', () => {
-    load('/a', '/a@*', [...hero, logoStrip('DEVELOPERS')]);
+    load('/a', '*', [...hero, logoStrip('DEVELOPERS')]);
     expect(shown()).toEqual(['hero-default', 'logos']);
     delete (window as { __preprDecision?: unknown }).__preprDecision;
-    load('/b', '/b@logos:DEVELOPERS', [...hero, logoStrip('DEVELOPERS')]);
+    load('/b', 'logos:DEVELOPERS', [...hero, logoStrip('DEVELOPERS')]);
     expect(shown()).toEqual(['logos logo-DEVELOPERS']);
   });
 
   it('shows every decided variant of a group, but an item with a nested group only once', () => {
-    load(
-      '/c',
-      '/c@hero:DEVELOPERS|ALL_OTHER_USERS~logos:MARKETERS|DEVELOPERS',
-      [...hero, logoStrip('DEVELOPERS', 'MARKETERS')],
-    );
+    load('/c', 'hero:DEVELOPERS|ALL_OTHER_USERS~logos:MARKETERS|DEVELOPERS', [
+      ...hero,
+      logoStrip('DEVELOPERS', 'MARKETERS'),
+    ]);
     expect(shown()).toEqual([
       'hero-default',
       'hero-dev',

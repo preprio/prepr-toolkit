@@ -13,7 +13,7 @@ import {
   type PreprDecisions,
 } from '../core/variants';
 import { contextOf } from '../core/variants/resolve';
-import { applyPreprDecisions } from './decision-switch';
+import { applyPreprDecisions, startPreprDecision } from './decision-switch';
 import { PreprDecisionApplier, PreprVariantTracking } from './components';
 
 export interface PreprStackProps<T> {
@@ -69,9 +69,10 @@ const NESTED_ATTRIBUTE = 'data-prepr-nested';
 const GROUP_BASE_CSS = `[${VARIANT_ATTRIBUTE}]{display:none}[${VARIANT_ATTRIBUTE}][data-prepr-show]{display:contents}`;
 // Without JavaScript nothing is decided: the default variants show.
 const NOSCRIPT_HTML = `<style>[${VARIANT_ATTRIBUTE}][${DEFAULT_ATTRIBUTE}]{display:contents}</style>`;
-// Defines the decision switch once per stack; each personalized block calls
-// it right after its HTML, so the parser never paints it undecided.
-const DECISION_SCRIPT = `window.__preprApply=${applyPreprDecisions.toString()};`;
+// Defines the decision switch and asks for this page load's decision, once
+// per stack; each personalized block calls the switch right after its HTML,
+// so a decision that is already in shows it before it paints.
+const DECISION_SCRIPT = `window.__preprApply=${applyPreprDecisions.toString()};(${startPreprDecision.toString()})();`;
 const APPLY_SCRIPT = '__preprApply()';
 
 type StackRender<T> = PreprStackProps<T>['render'];
@@ -194,12 +195,13 @@ function renderVariants<T>(
  *
  * - Items that never vary render as they are.
  * - Every A/B test and segment personalization group, at the top of the
- *   stack or nested inside an item, renders every variant, hidden. This page
- *   view's decision
- *   (made by `createPreprProxy` for a page load, or requested by
- *   `PreprPersonalizationSwitch` for a client-side navigation) shows the
- *   visitor's variant before first paint. Nothing streams, and the default
- *   variant never shows first to be replaced.
+ *   stack or nested inside an item, renders every variant, hidden. The page
+ *   is the same for every visitor and never waits for Prepr: an inline script
+ *   asks `createPreprProxy` for this page view's decision while the page
+ *   loads, and shows the visitor's variant when it answers. A click's
+ *   decision (requested by `PreprPersonalizationSwitch`) is in before the
+ *   next page paints. Nothing streams, and the default variant never shows
+ *   first to be replaced.
  *
  * The page carries the HTML of every variant: an item with nested groups
  * repeats once per combination of their variants.

@@ -1,7 +1,6 @@
 // A namespace import: `cacheTag` only exists from Next 16, and a named import
 // would fail to resolve on the older versions the peer range allows.
 import * as nextCache from 'next/cache';
-import type { NextRequest, NextResponse } from 'next/server';
 
 import {
   createPreprClient as createCoreClient,
@@ -19,11 +18,7 @@ import {
 } from '../core/graphql';
 import type { PreprDecisions } from '../core/variants';
 import { documentOf } from '../core/variants/ast';
-import {
-  preprClientInternals,
-  resolveDecisionsWith,
-  type ResolveDecisionsOptions,
-} from './decisions';
+import { preprClientInternals } from './decisions';
 import { getPreprHeaders } from './server';
 
 export interface PreprNextClientOptions extends PreprClientOptions {
@@ -100,27 +95,6 @@ export interface PreprNextClient {
     document: PreprDocument<unknown, TVariables>,
     variables?: TVariables,
   ): Promise<boolean>;
-  /**
-   * In middleware (`proxy.ts`): asks Prepr, in one request, which segment
-   * variant this visitor gets for every personalization group on the page,
-   * nested lists included, and stores the answer for this page view in the
-   * `prepr_decisions` cookie on `response`. `PreprStack` shows those
-   * variants before first paint. `createPreprProxy` calls this for you on
-   * every page view; client-side navigations ask through
-   * `PreprPersonalizationSwitch` instead.
-   *
-   * Call it after `createPreprMiddleware`, whose visitor headers (customer id,
-   * UTM parameters, IP, HubSpot id) it forwards. Pages without segment groups
-   * are skipped after a cached check. Never throws and gives up after
-   * `timeoutMs` (default 3000): the default variants show instead.
-   */
-  resolveDecisions<TVariables>(
-    request: NextRequest,
-    response: NextResponse,
-    document: PreprDocument<unknown, TVariables>,
-    variables?: TVariables,
-    options?: ResolveDecisionsOptions<TVariables>,
-  ): Promise<void>;
 }
 
 type NextFetchInit = RequestInit & {
@@ -233,25 +207,11 @@ export function createPreprClient(
     },
 
     hasAbTests: (document, variables) => client.hasAbTests(document, variables),
-
-    resolveDecisions: (request, response, document, variables, options) =>
-      resolveDecisionsWith(
-        client,
-        request,
-        response,
-        document,
-        variables,
-        options,
-      ),
   };
   preprClientInternals.set(nextClient, { client });
   return nextClient;
 }
 
-export {
-  PREPR_DECISIONS_COOKIE,
-  type ResolveDecisionsOptions,
-} from './decisions';
 export {
   createPreprProxy,
   type PreprProxyOptions,

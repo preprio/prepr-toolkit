@@ -17,7 +17,7 @@ beforeEach(() => {
   headersMock.mockClear();
 });
 
-describe('resolveDecisions', () => {
+describe('decision requests', () => {
   const ref = (name: string) => ({ name: null, ofType: { name } });
   const introspection = {
     data: {
@@ -78,157 +78,81 @@ describe('resolveDecisions', () => {
 
   async function setup({
     answer = decision as unknown,
-    vary = 'Prepr-Segments',
-  } = {}) {
-    const { createPreprClient } = await load();
-    const { NextRequest, NextResponse } = await import('next/server');
+    onlyIf,
+  }: { answer?: unknown; onlyIf?: () => boolean } = {}) {
+    const { createPreprClient, createPreprProxy } = await load();
+    const { NextRequest } = await import('next/server');
     const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
       const body = String(init?.body);
       if (body.includes('__schema'))
         return new Response(JSON.stringify(introspection));
-      if (body.includes('AbCheck')) {
-        return new Response(JSON.stringify({ data: { Page: null } }), {
-          headers: { vary },
-        });
-      }
       return new Response(JSON.stringify(answer));
     });
-    const prepr = createPreprClient({ url: URL_, fetch });
-    const request = (cookie = '') =>
-      new NextRequest('https://site.test/', {
-        headers: cookie ? { cookie } : {},
-      });
-    // What createPreprMiddleware leaves on the response for the page render.
-    const response = () => {
-      const r = NextResponse.next();
-      r.headers.set(
-        'x-middleware-override-headers',
-        'prepr-customer-id,user-agent',
-      );
-      r.headers.set('x-middleware-request-prepr-customer-id', 'visitor-1');
-      return r;
-    };
-    const decisionCalls = () =>
-      fetch.mock.calls.filter((call) =>
-        String(call[1]?.body).includes('Decision'),
-      );
+    const handle = createPreprProxy({
+      client: createPreprClient({ url: URL_, fetch }),
+      page: (url) => ({ document: PAGE, variables: { slug: url.pathname } }),
+      onlyIf,
+    });
+    // The browser's decision request for a page, from the visitor's tab.
+    const ask = (path = '/', cookie = '__prepr_uid=visitor-1') =>
+      handle(
+        new NextRequest(`https://site.test${path}`, {
+          headers: { 'Prepr-Decide': '1', cookie },
+        }),
+      ).then((response) => response.text());
     // Every request to Prepr except the one-time schema introspection.
     const preprCalls = () =>
-      fetch.mock.calls
-        .map((call) => String(call[1]?.body))
-        .filter((body) => !body.includes('__schema'));
-    return { prepr, request, response, decisionCalls, preprCalls };
+      fetch.mock.calls.filter(
+        (call) => !String(call[1]?.body).includes('__schema'),
+      );
+    return { ask, preprCalls };
   }
 
-  it("stores this page view's decision, keyed by its URL, asked with the forwarded visitor headers", async () => {
-    const { prepr, request, response, decisionCalls } = await setup();
-    const res = response();
-
-    await prepr.resolveDecisions(request(), res, PAGE, { slug: '/' });
-
-    expect(res.cookies.get('prepr_decisions')?.value).toMatch(
-      /^\d+\|\/@hero:DEVELOPERS$/,
-    );
-    expect(res.cookies.get('prepr_decisions')?.httpOnly).toBe(false);
+  it("answers the visitor's variant of every group, asked with their Prepr headers", async () => {
+    const { ask, preprCalls } = await setup();
+    expect(await ask()).toBe('hero:DEVELOPERS');
     expect(
-      new Headers(decisionCalls()[0]![1]!.headers).get('prepr-customer-id'),
+      new Headers(preprCalls()[0]![1]!.headers).get('prepr-customer-id'),
     ).toBe('visitor-1');
   });
 
-  it('asks about every group on the page, nested lists included, in one request', async () => {
-    const { prepr, request, response, decisionCalls } = await setup();
-    await prepr.resolveDecisions(request(), response(), PAGE, { slug: '/' });
-    expect(decisionCalls()).toHaveLength(1);
-    expect(String(decisionCalls()[0]![1]!.body)).toContain('logos');
+  it('asks about every group on the page, nested lists and A/B tests included, in one query with no check first', async () => {
+    const { ask, preprCalls } = await setup();
+    await ask();
+    expect(preprCalls()).toHaveLength(1);
+    const body = String(preprCalls()[0]![1]!.body);
+    expect(body).toContain('query GetPageDecision');
+    expect(body).toContain('logos');
   });
 
-  it('asks Prepr at every page view, whatever an earlier view stored', async () => {
-    const { prepr, request, response, decisionCalls } = await setup();
-    await prepr.resolveDecisions(
-      request('prepr_decisions=%2F%40hero%3AX'),
-      response(),
-      PAGE,
-      { slug: '/' },
-    );
-    await prepr.resolveDecisions(request(), response(), PAGE, { slug: '/' });
-    expect(decisionCalls()).toHaveLength(2);
+  it('asks Prepr again for every page view', async () => {
+    const { ask, preprCalls } = await setup();
+    await ask();
+    await ask();
+    expect(preprCalls()).toHaveLength(2);
   });
 
-  it('reuses the decision for a reload of the same view within 10 seconds, and asks again after that, for another URL or with UTM parameters', async () => {
-    const { prepr, request, response, decisionCalls } = await setup();
+  it('answers the defaults without asking Prepr when onlyIf says no', async () => {
+    const { ask, preprCalls } = await setup({ onlyIf: () => false });
+    expect(await ask()).toBe('*');
+    expect(preprCalls()).toHaveLength(0);
+  });
+
+  it('answers the defaults when Prepr fails, and never throws', async () => {
+    const { createPreprClient, createPreprProxy } = await load();
     const { NextRequest } = await import('next/server');
-    const first = response();
-    await prepr.resolveDecisions(request(), first, PAGE, { slug: '/' });
-    const stored = first.cookies.get('prepr_decisions')!.value;
-    const cookie = `prepr_decisions=${encodeURIComponent(stored)}`;
-
-    const reload = response();
-    await prepr.resolveDecisions(request(cookie), reload, PAGE, { slug: '/' });
-    expect(decisionCalls()).toHaveLength(1);
-    expect(reload.cookies.get('prepr_decisions')).toBeUndefined();
-
-    const old = `prepr_decisions=${encodeURIComponent(stored.replace(/^\d+/, String(Date.now() - 11_000)))}`;
-    await prepr.resolveDecisions(request(old), response(), PAGE, { slug: '/' });
-    await prepr.resolveDecisions(
-      new NextRequest('https://site.test/pricing', { headers: { cookie } }),
-      response(),
-      PAGE,
-      { slug: '/pricing' },
-    );
-    await prepr.resolveDecisions(
-      new NextRequest('https://site.test/?utm_source=ad', {
-        headers: { cookie },
+    const handle = createPreprProxy({
+      client: createPreprClient({
+        url: URL_,
+        fetch: async () => new Response('down', { status: 503 }),
       }),
-      response(),
-      PAGE,
-      { slug: '/' },
-    );
-    expect(decisionCalls()).toHaveLength(4);
-  });
-
-  it('onlyIf saying no stores the defaults without asking Prepr', async () => {
-    const skipped = await setup();
-    const skippedRes = skipped.response();
-    await skipped.prepr.resolveDecisions(
-      skipped.request(),
-      skippedRes,
-      PAGE,
-      { slug: '/' },
-      { onlyIf: () => false },
-    );
-    expect(skipped.decisionCalls()).toHaveLength(0);
-    expect(skippedRes.cookies.get('prepr_decisions')?.value).toMatch(
-      /^\d+\|\/@\*$/,
-    );
-  });
-
-  it('sends one query per page view, A/B tests included, with no separate check first', async () => {
-    const { prepr, request, response, preprCalls } = await setup();
-    await prepr.resolveDecisions(request(), response(), PAGE, { slug: '/' });
-    expect(preprCalls().map((body) => /query (\w+)/.exec(body)?.[1])).toEqual([
-      'GetPageDecision',
-    ]);
-  });
-
-  it('never throws: when Prepr fails, the page view gets the defaults', async () => {
-    const { createPreprClient } = await load();
-    const { NextRequest, NextResponse } = await import('next/server');
-    const prepr = createPreprClient({
-      url: URL_,
-      fetch: async () => new Response('down', { status: 503 }),
+      page: () => ({ document: PAGE, variables: { slug: '/' } }),
     });
-    const res = NextResponse.next();
-
-    await expect(
-      prepr.resolveDecisions(
-        new NextRequest('https://site.test/pricing?utm_source=x'),
-        res,
-        PAGE,
-        { slug: '/pricing' },
-      ),
-    ).resolves.toBeUndefined();
-    expect(res.cookies.get('prepr_decisions')?.value).toMatch(
-      /^\d+\|\/pricing\?utm_source=x@\*$/,
+    const response = await handle(
+      new NextRequest('https://site.test/pricing', {
+        headers: { 'Prepr-Decide': '1' },
+      }),
     );
+    expect(await response.text()).toBe('*');
   });
 });

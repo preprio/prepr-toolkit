@@ -2,7 +2,6 @@ import type { NextRequest, NextResponse } from 'next/server';
 
 import {
   isFrameworkSignal,
-  mergePreprHeaders,
   type PreprClient,
   type PreprDocument,
 } from '../core/graphql';
@@ -10,38 +9,22 @@ import { getPreprHeadersFromHeaders } from '../core/server';
 import { decisionsFrom, type PreprDecisions } from '../core/variants';
 
 /**
- * The cookie `resolveDecisions` writes on a page response: that page view's
- * decisions, the URL they are for and when they were made. The browser
- * deletes it as soon as the visitor views another page, so only a reload of
- * the same view can reuse it.
- */
-export const PREPR_DECISIONS_COOKIE = 'prepr_decisions';
-
-/**
- * Request header of the decision requests `PreprPersonalizationSwitch` sends
- * for a client-side navigation. `createPreprProxy` answers them with the
- * page's decisions as text instead of rendering the page.
+ * Request header of the decision requests the browser sends, for a page load
+ * and for a click. `createPreprProxy` answers them with the page's decisions
+ * as text instead of rendering the page.
  */
 export const PREPR_DECIDE_HEADER = 'Prepr-Decide';
 
 /** A decision that shows the default variant of every group. */
 export const DEFAULT_DECISION = '*';
 
-/**
- * How long a reload of the same view, with no other page view in between,
- * reuses its decision instead of asking Prepr again. Prepr needs a few
- * seconds to process a visitor's activity, so asking again sooner would
- * mostly get the same answer.
- */
-const REUSE_MS = 10_000;
-
-// More groups than a page shows; the cap keeps the cookie small.
+// More groups than a page shows; the cap keeps the answer small.
 const DECISIONS_MAX_GROUPS = 40;
 const SAFE_ID = /^[\w-]+$/;
 
 /**
  * `group:variant|variant~group:variant`. Ids outside letters, digits, `_`
- * and `-` are dropped: the browser builds selectors from them.
+ * and `-` are dropped.
  */
 export function serializeDecisions(decisions: PreprDecisions): string {
   return [...decisions]
@@ -78,21 +61,6 @@ export const preprClientInternals = new WeakMap<
   { client: PreprClient }
 >();
 
-export interface ResolveDecisionsOptions<TVariables = unknown> {
-  /** Give up after this many ms; the default variants show. Default 3000. */
-  timeoutMs?: number;
-  /**
-   * The decision query for `document`, built ahead of time: the
-   * `<Name>DecisionQuery` the codegen plugin writes, or `toDecisionQuery` at
-   * build time. Sent as is with `variables`, so the request never loads
-   * Prepr's schema to derive it: a fresh server instance's first decision
-   * waits only for Prepr's answer.
-   */
-  decision?: PreprDocument<unknown, TVariables>;
-  /** Skip the Prepr request when this resolves to false: the default variants show. */
-  onlyIf?: () => boolean | Promise<boolean>;
-}
-
 /**
  * The decisions for one page view, serialized: the visitor's variant of
  * every A/B test and segment personalization group on the page, nested lists
@@ -122,85 +90,4 @@ export async function decideView<TVariables>(
     if (isFrameworkSignal(error)) throw error;
     return DEFAULT_DECISION;
   }
-}
-
-/**
- * The page view as the browser sees it: `basePath`, path and query. The
- * browser applies a decision only to the view it was made for.
- */
-export function viewKey(request: NextRequest): string {
-  const url = request.nextUrl;
-  return url.basePath + url.pathname + url.search;
-}
-
-/** Whether something arrived that can move the visitor into another segment. */
-function contextChanged(request: NextRequest, headers: Headers): boolean {
-  return (
-    headers.get('Prepr-Customer-Id-Created') === 'true' ||
-    headers.has('Prepr-Segments') ||
-    [...request.nextUrl.searchParams.keys()].some((key) =>
-      key.startsWith('utm_'),
-    )
-  );
-}
-
-/**
- * Whether the decision stored for this exact view is recent, with nothing
- * that can change a segment arrived since.
- */
-function reusable(request: NextRequest, headers: Headers): boolean {
-  const raw = request.cookies.get(PREPR_DECISIONS_COOKIE)?.value ?? '';
-  const bar = raw.indexOf('|');
-  const at = raw.lastIndexOf('@');
-  if (bar < 0 || at < bar) return false;
-  const age = Date.now() - Number(raw.slice(0, bar));
-  return (
-    age >= 0 &&
-    age < REUSE_MS &&
-    raw.slice(bar + 1, at) === viewKey(request) &&
-    !contextChanged(request, headers)
-  );
-}
-
-/**
- * The body of the Next client's `resolveDecisions`: decides the page view
- * and stores the answer on `response`. A reload of the same view within
- * {@link REUSE_MS}, with no other page view in between, keeps the stored
- * decision.
- */
-export async function resolveDecisionsWith<TVariables>(
-  client: PreprClient,
-  request: NextRequest,
-  response: NextResponse,
-  document: PreprDocument<unknown, TVariables>,
-  variables?: TVariables,
-  options?: ResolveDecisionsOptions<TVariables>,
-): Promise<void> {
-  const headers = mergePreprHeaders(forwardedHeaders(request, response));
-  // The browser still has it: nothing to write.
-  if (reusable(request, headers)) return;
-  let decision = DEFAULT_DECISION;
-  try {
-    if (!options?.onlyIf || (await options.onlyIf())) {
-      decision = await decideView(
-        client,
-        headers,
-        { document, variables, decision: options?.decision },
-        options?.timeoutMs,
-      );
-    }
-  } catch (error) {
-    if (isFrameworkSignal(error)) throw error;
-  }
-  response.cookies.set(
-    PREPR_DECISIONS_COOKIE,
-    `${Date.now()}|${viewKey(request)}@${decision}`,
-    {
-      path: '/',
-      sameSite: 'lax',
-      // Read by the inline script before first paint.
-      httpOnly: false,
-      secure: request.nextUrl.protocol === 'https:',
-    },
-  );
 }

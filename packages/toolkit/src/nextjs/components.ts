@@ -96,6 +96,16 @@ function requestDecision(key: string): PendingDecision {
     .catch(() => '*')
     .then((value) => {
       pending.result = value;
+      // What a reload of that view within 10 s shows (see
+      // `startPreprDecision`); the newest request replaces the last view's.
+      try {
+        sessionStorage.setItem(
+          'prepr_decision',
+          JSON.stringify({ key, value, at: Date.now() }),
+        );
+      } catch {
+        // Storage unavailable: a reload asks again.
+      }
       return value;
     });
   return pending;
@@ -236,11 +246,12 @@ export function PreprPersonalizationSwitch(): null {
 
 /**
  * Applies this page view's decision to the variant wrappers of the
- * `PreprStack` it is rendered by, before the page paints. Back and Forward
- * show the page as this tab last showed it. Any other view without a
- * decision (a navigation started from code, or Back to a page this tab never
- * showed) asks for one, and its personalized sections stay hidden until it
- * arrives. Rendered by `PreprStack`; you do not need it yourself.
+ * `PreprStack` it is rendered by. A click's decision is in before the page
+ * paints; Back and Forward show the page as this tab last showed it. On a
+ * page load, and any other view without a decision (a navigation started
+ * from code, or Back to a page this tab never showed), its personalized
+ * sections stay hidden until the decision request answers. Rendered by
+ * `PreprStack`; you do not need it yourself.
  */
 export function PreprDecisionApplier(): null {
   useDecisionRequests();
@@ -259,7 +270,15 @@ export function PreprDecisionApplier(): null {
       return;
     }
     let live = true;
-    void requestDecision(key).value.then((value) => {
+    // The page load's own request, started by the inline script, or a new one.
+    const started = (
+      window as unknown as {
+        __preprPending?: { key: string; value: Promise<string> };
+      }
+    ).__preprPending;
+    const value =
+      started?.key === key ? started.value : requestDecision(key).value;
+    void value.then((value) => {
       if (live && location.pathname + location.search === key) {
         applyPreprDecisions(value);
         remember();
