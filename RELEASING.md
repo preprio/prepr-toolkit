@@ -204,7 +204,7 @@ upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
 `0.6.0` adds personalization to `PreprStack` and `createPreprProxy`; nothing a
 stable or release-candidate version shipped changes. Sites that tried an alpha,
-upgrading to `0.6.0-alpha.7`:
+upgrading to `0.6.0-alpha.8`:
 
 - Personalization groups no longer stream. Every variant of every group,
   nested ones included, is in the prerendered page, hidden until the page
@@ -213,7 +213,7 @@ upgrading to `0.6.0-alpha.7`:
   `decisions` and `aboveTheFold` from `PreprStack`; `render` no longer gets
   `placeholder` (nothing stands in any more, so tag every variant).
 - Pages never wait for Prepr: the inline script of `PreprStack` asks for
-  each page load's decision, and `PreprPersonalizationSwitch` for each click,
+  each page load's decision, and `PreprPersonalizationSwitch` for each link hovered or pressed,
   through decision requests that only `createPreprProxy` answers. Keep
   `<PreprPersonalizationSwitch />` in the root layout; it takes no props now
   (`refresh`, `freshFor` and `refreshAfter` are gone, with the background
