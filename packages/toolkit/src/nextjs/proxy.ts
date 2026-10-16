@@ -66,7 +66,7 @@ function isPagePath(pathname: string): boolean {
  *
  * Pages themselves never wait for Prepr: they are the same for every visitor
  * and pass straight through. The browser sends a decision request for each
- * page view, from the page load and when a visitor presses a link; the proxy
+ * page view, from the page load and when a visitor points at a link; the proxy
  * answers it with the visitor's variant of every A/B test and personalization
  * group on that page, asked from Prepr in one request, as text and no page.
  * Add your own cookies or headers to the response it returns.

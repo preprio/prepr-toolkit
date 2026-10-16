@@ -7,7 +7,7 @@
  * variant never stands in for a decision that is still on its way.
  *
  * `decision` is the decision for the current URL: the answer to this page
- * load's decision request, a click's, or the one this tab showed before on
+ * load's decision request, a link's, or the one this tab showed before on
  * Back and Forward. Without it, the one already applied to this URL is used.
  * Returns false when there is no decision for this view yet.
  *
@@ -62,59 +62,140 @@ export function applyPreprDecisions(decision?: string): boolean {
 }
 
 /**
+ * Asks the proxy for the decision of the view at `key` (path and query), or
+ * answers from this tab's earlier ones. `result` is set at once when an
+ * earlier decision covers the view, so a caller can show it before the page
+ * paints.
+ *
+ * - A decision under 10 seconds old is used as is: Prepr needs a few
+ *   seconds to process a visitor's activity, so asking again sooner would
+ *   mostly get the same answer.
+ * - An older one, up to 30 minutes, is used at once while a new one is asked
+ *   for in the background; `onChange` gets the new one when it differs.
+ *   Segment membership rarely changes between two views, so the visitor's
+ *   last variant beats sections that stay hidden while Prepr answers.
+ * - A page without personalization answers with no groups, which is used for
+ *   an hour without asking again: links to it cost nothing. A view that
+ *   renders personalization itself (`personalized`) ignores that answer, so
+ *   a page that gained personalization since is asked at once.
+ * - Requests for the same view in flight at once are sent once.
+ *
+ * Never rejects: any failure answers `*`, the default variants, which is
+ * kept only for 10 seconds and never replaces a real decision.
+ *
+ * Self-contained: its source is also inlined as a `<script>` (see
+ * {@link applyPreprDecisions}).
+ */
+export function requestPreprDecision(
+  key: string,
+  options: {
+    /** Gets a newer decision that arrives in the background and differs. */
+    onChange?: (decision: string) => void;
+    /** The view at `key` renders personalization: a "no groups" answer is outdated. */
+    personalized?: boolean;
+  } = {},
+): { result?: string; value: Promise<string> } {
+  const fresh = 10000;
+  const keep = 1800000;
+  const keepStatic = 3600000;
+  const state = window as unknown as {
+    __preprAsking?: Record<string, Promise<string>>;
+  };
+  const asking = (state.__preprAsking = state.__preprAsking || {});
+  const read = (): Record<string, { value?: unknown; at?: unknown }> => {
+    try {
+      const all = JSON.parse(sessionStorage.getItem('prepr_decisions') || '{}');
+      return all && typeof all === 'object' ? all : {};
+    } catch {
+      return {};
+    }
+  };
+  const ask = (): Promise<string> => {
+    if (!asking[key]) {
+      asking[key] = fetch(key, {
+        headers: { 'Prepr-Decide': '1' },
+        cache: 'no-store',
+        credentials: 'same-origin',
+        // The proxy gives up on Prepr after its own `timeoutMs`; this only
+        // covers a proxy that never answers.
+        signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined,
+      })
+        .then((response) => (response.ok ? response.text() : '*'))
+        .catch(() => '*')
+        .then((answer) => {
+          delete asking[key];
+          try {
+            const all = read();
+            const at = Date.now();
+            Object.keys(all).forEach((stored) => {
+              const entry = all[stored];
+              if (!(
+                entry &&
+                typeof entry.at === 'number' &&
+                at - entry.at < keepStatic
+              ))
+                delete all[stored];
+            });
+            const kept = all[key];
+            if (answer !== '*' || !kept || kept.value === '*')
+              all[key] = { value: answer, at };
+            sessionStorage.setItem('prepr_decisions', JSON.stringify(all));
+          } catch {
+            // Storage unavailable: the next view asks again.
+          }
+          return answer;
+        });
+    }
+    return asking[key];
+  };
+  const last = read()[key];
+  const age = last && typeof last.at === 'number' ? Date.now() - last.at : -1;
+  const value = last && typeof last.value === 'string' ? last.value : null;
+  if (
+    value !== null &&
+    !(value === '' && options.personalized) &&
+    age >= 0 &&
+    age < (value === '*' ? fresh : value === '' ? keepStatic : keep)
+  ) {
+    if (value !== '' && age >= fresh) {
+      ask().then((answer) => {
+        if (answer !== '*' && answer !== value && options.onChange)
+          options.onChange(answer);
+      });
+    }
+    return { result: value, value: Promise.resolve(value) };
+  }
+  const pending: { result?: string; value: Promise<string> } = {
+    value: ask(),
+  };
+  pending.value.then((answer) => {
+    pending.result = answer;
+  });
+  return pending;
+}
+
+/**
  * Asks for this page load's decision as soon as the HTML is parsed this far,
- * so the request runs while the rest of the page, its styles and scripts
- * still load, and applies the answer through `window.__preprApply`. The page
- * itself never waits for Prepr.
+ * through {@link requestPreprDecision}, so the request runs while the rest of
+ * the page, its styles and scripts still load, and applies the answer through
+ * `window.__preprApply`. The page itself never waits for Prepr.
  *
- * A reload of the same view within 10 seconds, with no other page view in
- * between, shows the decision it just had instead of asking again: Prepr
- * needs a few seconds to process a visitor's activity, so asking again
- * sooner would mostly get the same answer. Any failure answers `*`, the
- * default variants.
- *
- * Self-contained like {@link applyPreprDecisions}: its source is inlined.
+ * Self-contained like {@link applyPreprDecisions}: its source is inlined,
+ * after `window.__preprRequest`.
  */
 export function startPreprDecision(): void {
   const state = window as unknown as {
     __preprApply: (decision?: string) => boolean;
-    __preprPending?: { key: string; value: Promise<string> };
+    __preprRequest: typeof requestPreprDecision;
   };
   const key = location.pathname + location.search;
-  if (state.__preprPending && state.__preprPending.key === key) return;
-  let last: { key?: string; value?: string; at?: number };
-  try {
-    last = JSON.parse(sessionStorage.getItem('prepr_decision') || '{}');
-  } catch {
-    last = {};
-  }
-  const age = Date.now() - (last.at || 0);
-  const value: Promise<string> =
-    last.key === key &&
-    typeof last.value === 'string' &&
-    age >= 0 &&
-    age < 10000
-      ? Promise.resolve(last.value)
-      : fetch(key, {
-          headers: { 'Prepr-Decide': '1' },
-          cache: 'no-store',
-          credentials: 'same-origin',
-        })
-          .then((response) => (response.ok ? response.text() : '*'))
-          .catch(() => '*')
-          .then((answer) => {
-            try {
-              sessionStorage.setItem(
-                'prepr_decision',
-                JSON.stringify({ key, value: answer, at: Date.now() }),
-              );
-            } catch {
-              // Storage unavailable: a reload asks again.
-            }
-            return answer;
-          });
-  state.__preprPending = { key, value };
-  value.then((answer) => {
+  const apply = (answer: string) => {
     if (location.pathname + location.search === key) state.__preprApply(answer);
+  };
+  const pending = state.__preprRequest(key, {
+    onChange: apply,
+    personalized: true,
   });
+  if (pending.result !== undefined) apply(pending.result);
+  else pending.value.then(apply);
 }

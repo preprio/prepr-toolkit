@@ -20,7 +20,7 @@ The page uses its ordinary query ([`get-page-by-slug.graphql`](./src/queries/get
   everyone. `PreprStack`'s inline script then asks
   [`src/proxy.ts`](./src/proxy.ts) (`createPreprProxy`) for this view's
   decision, and `PreprPersonalizationSwitch` in the layout does the same when
-  a link is pressed. The proxy sends the same query cut down to `_context`
+  a link is hovered or pressed. The proxy sends the same query cut down to `_context`
   only. Prepr decides from everything the middleware forwards: customer
   profile, UTM parameters, visitor IP, HubSpot id.
 - **`<PreprStack>`** renders everything in the prerendered page: every

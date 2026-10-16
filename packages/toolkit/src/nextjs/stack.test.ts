@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 const { PreprStack } = await import('./stack');
-const { applyPreprDecisions, startPreprDecision } =
+const { applyPreprDecisions, requestPreprDecision, startPreprDecision } =
   await import('./decision-switch');
 const { PreprPersonalizationSwitch } = await import('./components');
 
@@ -50,7 +50,7 @@ function html(props: { bucket?: string } = {}) {
 
 afterEach(() => {
   delete (window as { __preprDecision?: unknown }).__preprDecision;
-  delete (window as { __preprPending?: unknown }).__preprPending;
+  delete (window as { __preprAsking?: unknown }).__preprAsking;
   sessionStorage.clear();
   decisionRequests.mockClear();
   history.replaceState(null, '', '/');
@@ -347,8 +347,10 @@ describe('PreprStack segment groups', () => {
     );
     history.replaceState(null, '', '/solutions/astro-cms');
     document.body.innerHTML = renderToString(stack(hero));
-    (window as unknown as { __preprApply: unknown }).__preprApply =
-      applyPreprDecisions;
+    Object.assign(window, {
+      __preprApply: applyPreprDecisions,
+      __preprRequest: requestPreprDecision,
+    });
     startPreprDecision();
     const [url, init] = decisionRequests.mock.calls[0]!;
     expect(url).toBe('/solutions/astro-cms');
@@ -360,31 +362,102 @@ describe('PreprStack segment groups', () => {
     expect(shown()).toEqual(['hero-dev']);
   });
 
-  it('reuses the decision for a reload of the same view within 10 seconds, and asks again after that', async () => {
-    history.replaceState(null, '', '/x');
-    (window as unknown as { __preprApply: unknown }).__preprApply =
-      applyPreprDecisions;
-    document.body.innerHTML = renderToString(stack(hero));
+  const storeDecision = (key: string, value: string, age: number) =>
     sessionStorage.setItem(
-      'prepr_decision',
-      JSON.stringify({ key: '/x', value: 'hero:DEVELOPERS', at: Date.now() }),
+      'prepr_decisions',
+      JSON.stringify({ [key]: { value, at: Date.now() - age } }),
     );
+
+  it('shows a decision under 10 seconds old at once, without asking again', async () => {
+    history.replaceState(null, '', '/x');
+    Object.assign(window, {
+      __preprApply: applyPreprDecisions,
+      __preprRequest: requestPreprDecision,
+    });
+    document.body.innerHTML = renderToString(stack(hero));
+    storeDecision('/x', 'hero:DEVELOPERS', 0);
     startPreprDecision();
+    expect(shown()).toEqual(['hero-dev']);
     await new Promise((resolve) => setTimeout(resolve));
     expect(decisionRequests).not.toHaveBeenCalled();
-    expect(shown()).toEqual(['hero-dev']);
+  });
 
-    delete (window as { __preprPending?: unknown }).__preprPending;
-    sessionStorage.setItem(
-      'prepr_decision',
-      JSON.stringify({
-        key: '/x',
-        value: 'hero:DEVELOPERS',
-        at: Date.now() - 11_000,
-      }),
+  it('shows an older decision at once and swaps in a different answer from the background', async () => {
+    history.replaceState(null, '', '/x');
+    Object.assign(window, {
+      __preprApply: applyPreprDecisions,
+      __preprRequest: requestPreprDecision,
+    });
+    document.body.innerHTML = renderToString(stack(hero));
+    storeDecision('/x', 'hero:DEVELOPERS', 60_000);
+    decisionRequests.mockResolvedValueOnce(
+      new Response('hero:ALL_OTHER_USERS'),
     );
     startPreprDecision();
+    expect(shown()).toEqual(['hero-dev']);
     expect(decisionRequests).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(shown()).toEqual(['hero-default']);
+  });
+
+  it('keeps showing the last decision when the background request fails', async () => {
+    storeDecision('/x', 'hero:DEVELOPERS', 60_000);
+    const onChange = vi.fn();
+    expect(requestPreprDecision('/x', { onChange }).result).toBe(
+      'hero:DEVELOPERS',
+    );
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(onChange).not.toHaveBeenCalled();
+    // The failure did not replace it.
+    expect(requestPreprDecision('/x').result).toBe('hero:DEVELOPERS');
+  });
+
+  it('asks again after 30 minutes, and for a failed answer after 10 seconds', () => {
+    storeDecision('/x', 'hero:DEVELOPERS', 1_800_001);
+    expect(requestPreprDecision('/x').result).toBeUndefined();
+    delete (window as { __preprAsking?: unknown }).__preprAsking;
+    storeDecision('/y', '*', 11_000);
+    expect(requestPreprDecision('/y').result).toBeUndefined();
+    expect(decisionRequests).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks once for a page without personalization, then answers from the tab for an hour', async () => {
+    decisionRequests.mockResolvedValueOnce(new Response(''));
+    const first = requestPreprDecision('/static');
+    // A second view while the first is in flight shares its request.
+    requestPreprDecision('/static');
+    await first.value;
+    expect(requestPreprDecision('/static').result).toBe('');
+    expect(decisionRequests).toHaveBeenCalledTimes(1);
+    // No background check either, for most of an hour.
+    storeDecision('/static', '', 3_500_000);
+    expect(requestPreprDecision('/static').result).toBe('');
+    storeDecision('/static', '', 3_600_001);
+    expect(requestPreprDecision('/static').result).toBeUndefined();
+    expect(decisionRequests).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks at once when a page stored as without personalization now renders it', async () => {
+    history.replaceState(null, '', '/x');
+    Object.assign(window, {
+      __preprApply: applyPreprDecisions,
+      __preprRequest: requestPreprDecision,
+    });
+    document.body.innerHTML = renderToString(stack(hero));
+    storeDecision('/x', '', 0);
+    decisionRequests.mockResolvedValueOnce(new Response('hero:DEVELOPERS'));
+    startPreprDecision();
+    expect(decisionRequests).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(shown()).toEqual(['hero-dev']);
+  });
+
+  it('treats a malformed stored decision as none', () => {
+    sessionStorage.setItem('prepr_decisions', '{"/x":{"value":5,"at":"no"}}');
+    expect(requestPreprDecision('/x').result).toBeUndefined();
+    sessionStorage.setItem('prepr_decisions', 'not json');
+    delete (window as { __preprAsking?: unknown }).__preprAsking;
+    expect(requestPreprDecision('/x').result).toBeUndefined();
   });
 
   it('shows a page on Back as this tab last showed it, without asking again', async () => {
@@ -545,6 +618,18 @@ describe('PreprStack segment groups', () => {
     );
     const anchor = container.querySelector('a')!;
 
+    vi.useFakeTimers();
+    anchor.dispatchEvent(
+      new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }),
+    );
+    vi.advanceTimersByTime(65);
+    vi.useRealTimers();
+    // Asked on hover, for the page the link opens.
+    const [url, init] = decisionRequests.mock.calls[0]!;
+    expect(url).toBe('/solutions/astro-cms');
+    expect(new Headers(init?.headers).get('Prepr-Decide')).toBe('1');
+    await act(async () => answer('logos:DEVELOPERS'));
+
     await act(async () => {
       anchor.dispatchEvent(
         new PointerEvent('pointerdown', { bubbles: true, button: 0 }),
@@ -553,22 +638,16 @@ describe('PreprStack segment groups', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
       );
     });
-    // Asked on press, for the page the link opens.
-    const [url, init] = decisionRequests.mock.calls[0]!;
-    expect(url).toBe('/solutions/astro-cms');
-    expect(new Headers(init?.headers).get('Prepr-Decide')).toBe('1');
-    // Held: the page does not change before the decision is in.
-    expect(navigations).toBe(0);
-
-    await act(async () => answer('logos:DEVELOPERS'));
     expect(navigations).toBe(1);
+    // The press found the hover's answer: nothing more was asked.
+    expect(decisionRequests).toHaveBeenCalledTimes(1);
     expect(shown()).toEqual(['logos logo-DEVELOPERS']);
     watcher.disconnect();
     expect([...everShown]).toEqual(['logos logo-DEVELOPERS']);
     act(() => root.unmount());
   });
 
-  it('lets a click through at once when its decision arrived during the press', async () => {
+  it('never holds a click, also to a page it has no decision for yet', async () => {
     history.replaceState(null, '', '/');
     const container = document.body.appendChild(document.createElement('div'));
     const root = createRoot(container);
@@ -589,12 +668,11 @@ describe('PreprStack segment groups', () => {
         ),
       ),
     );
+    decisionRequests.mockImplementationOnce(() => new Promise(() => {}));
     const anchor = container.querySelector('a')!;
-    await act(async () => {
-      anchor.dispatchEvent(
-        new PointerEvent('pointerdown', { bubbles: true, button: 0 }),
-      );
-    });
+    anchor.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, button: 0 }),
+    );
     anchor.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
     );
@@ -603,7 +681,7 @@ describe('PreprStack segment groups', () => {
     act(() => root.unmount());
   });
 
-  it('leaves modifier clicks and other sites alone', async () => {
+  it('leaves clicks alone', async () => {
     const container = document.body.appendChild(document.createElement('div'));
     const root = createRoot(container);
     await act(async () =>

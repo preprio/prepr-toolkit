@@ -12,7 +12,7 @@ import {
 
 import { createPreprPreview } from '../core/create-preview';
 import { isReactHydrated } from '../react/hydration';
-import { applyPreprDecisions } from './decision-switch';
+import { applyPreprDecisions, requestPreprDecision } from './decision-switch';
 import type { PreprToolbarComponentProps } from '../core/types';
 
 // Nothing Next-specific about the pixel — it lives on the framework-free
@@ -66,56 +66,6 @@ export function PreprToolbar({
   return null;
 }
 
-// Same as `PREPR_DECIDE_HEADER`, which lives in server-only code.
-const DECIDE_HEADER = 'Prepr-Decide';
-// The proxy gives up on Prepr after its own `timeoutMs`; this only covers a
-// proxy that never answers.
-const DECIDE_TIMEOUT_MS = 6000;
-
-interface PendingDecision {
-  key: string;
-  /** The answer, once it is in. */
-  result?: string;
-  value: Promise<string>;
-}
-
-/**
- * Asks the proxy which variants this visitor gets on the page at `key` (path
- * and query). Never rejects: any failure answers `*`, the default variants,
- * so a held navigation always continues.
- */
-function requestDecision(key: string): PendingDecision {
-  const pending: PendingDecision = { key, value: null! };
-  pending.value = fetch(key, {
-    headers: { [DECIDE_HEADER]: '1' },
-    cache: 'no-store',
-    credentials: 'same-origin',
-    signal: AbortSignal.timeout(DECIDE_TIMEOUT_MS),
-  })
-    .then((response) => (response.ok ? response.text() : '*'))
-    .catch(() => '*')
-    .then((value) => {
-      pending.result = value;
-      // What a reload of that view within 10 s shows (see
-      // `startPreprDecision`); the newest request replaces the last view's.
-      try {
-        sessionStorage.setItem(
-          'prepr_decision',
-          JSON.stringify({ key, value, at: Date.now() }),
-        );
-      } catch {
-        // Storage unavailable: a reload asks again.
-      }
-      return value;
-    });
-  return pending;
-}
-
-// The decision request of the link being pressed: used only by the click
-// that follows it, never kept for a later view.
-let pressed: PendingDecision | null = null;
-// The anchor whose click is replayed once its decision is in.
-let replaying: Element | null = null;
 // What this tab showed on each URL: Back and Forward show a page as the
 // visitor last saw it, instead of hiding its sections until Prepr answers.
 const shown = new Map<string, string>();
@@ -125,10 +75,30 @@ const onPopState = () => {
   historyStep = true;
 };
 
-/** The same-site page a pointer or click event on a link goes to. */
-function linkTarget(
-  event: MouseEvent,
-): { anchor: Element; key: string } | null {
+/**
+ * The decision of the view at `key`, through `requestPreprDecision`. A newer
+ * decision that arrives in the background is shown when that view is still
+ * open.
+ */
+function requestDecision(
+  key: string,
+  personalized = false,
+): {
+  result?: string;
+  value: Promise<string>;
+} {
+  return requestPreprDecision(key, {
+    personalized,
+    onChange: (value) => {
+      if (location.pathname + location.search !== key) return;
+      applyPreprDecisions(value);
+      shown.set(key, value);
+    },
+  });
+}
+
+/** The same-site page a pointer event on a link goes to. */
+function linkTarget(event: PointerEvent): string | null {
   const anchor = (event.target as Element | null)?.closest?.('a[href]');
   if (!(anchor instanceof HTMLAnchorElement)) return null;
   if (
@@ -145,80 +115,48 @@ function linkTarget(
   ) {
     return null;
   }
-  return { anchor, key };
+  return key;
+}
+
+// Hover intent: a pointer that merely crosses a link on its way elsewhere
+// sends nothing.
+const HOVER_DELAY_MS = 65;
+let hovering: { key: string; timer: ReturnType<typeof setTimeout> } | null =
+  null;
+
+function onPointerOver(event: PointerEvent): void {
+  if (event.pointerType !== 'mouse') return;
+  const key = linkTarget(event);
+  if (hovering?.key === key) return;
+  if (hovering) clearTimeout(hovering.timer);
+  hovering = key
+    ? { key, timer: setTimeout(() => requestDecision(key), HOVER_DELAY_MS) }
+    : null;
 }
 
 function onPointerDown(event: PointerEvent): void {
   if (event.button !== 0) return;
-  const target = linkTarget(event);
-  if (
-    !target ||
-    (pressed?.key === target.key && pressed.result === undefined)
-  ) {
-    return;
-  }
-  // Sent on press rather than on click: the visitor is still releasing the
-  // button while Prepr answers.
-  pressed = requestDecision(target.key);
-}
-
-function onClick(event: MouseEvent): void {
-  const target = linkTarget(event);
-  if (!target) return;
-  if (replaying === target.anchor) {
-    replaying = null;
-    return;
-  }
-  if (
-    event.defaultPrevented ||
-    event.button !== 0 ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.shiftKey ||
-    event.altKey
-  ) {
-    return;
-  }
-  const pending =
-    pressed && pressed.key === target.key
-      ? pressed
-      : requestDecision(target.key);
-  pressed = null;
-  const record = (value: string) => {
-    (
-      window as unknown as { __preprDecision?: { key: string; value: string } }
-    ).__preprDecision = { key: target.key, value };
-  };
-  if (pending.result !== undefined) {
-    // The answer is in: let the link navigate as it would.
-    record(pending.result);
-    return;
-  }
-  // Hold the navigation until the answer is in, then replay the click so
-  // the link (a Next.js `Link` or a plain anchor) navigates as it would.
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  void pending.value.then((value) => {
-    record(value);
-    replaying = target.anchor;
-    (target.anchor as HTMLElement).click();
-  });
+  const key = linkTarget(event);
+  if (key) requestDecision(key);
 }
 
 let listeners = 0;
 
-/** Holds clicks on same-site links until the target page's decision is in. */
+/** Asks for the target page's decision when a same-site link is pointed at. */
 function useDecisionRequests(): void {
   useEffect(() => {
     if (listeners++ === 0) {
-      window.addEventListener('pointerdown', onPointerDown, true);
-      window.addEventListener('click', onClick, true);
+      window.addEventListener('pointerover', onPointerOver, { passive: true });
+      window.addEventListener('pointerdown', onPointerDown, {
+        capture: true,
+        passive: true,
+      });
       window.addEventListener('popstate', onPopState);
     }
     return () => {
       if (--listeners === 0) {
+        window.removeEventListener('pointerover', onPointerOver);
         window.removeEventListener('pointerdown', onPointerDown, true);
-        window.removeEventListener('click', onClick, true);
         window.removeEventListener('popstate', onPopState);
       }
     };
@@ -226,15 +164,17 @@ function useDecisionRequests(): void {
 }
 
 /**
- * Decides every client-side navigation to another page: when the visitor
- * presses a same-site link, it asks `createPreprProxy` which variants they
- * get on that page, and holds the click until the answer is in. The new page
- * then paints with those variants, never with the default variant first.
- * Pressing starts the request, so the wait mostly overlaps the click itself.
+ * Gets each client-side navigation's decision in before the click: when the
+ * visitor hovers over a same-site link (or presses it, on touch devices), it
+ * asks `createPreprProxy` which variants they get on that page. Clicks are
+ * never held: the new page paints with those variants when the answer is in,
+ * and keeps its personalized sections hidden until then otherwise. Pages
+ * without personalization answer with no groups and are not asked again for
+ * an hour.
  *
  * Mount it once in the root layout, so links on pages without a
- * `PreprStack` are covered too. Clicks with a modifier key, links to other
- * sites and links that open a new tab or download are left alone.
+ * `PreprStack` are covered too. Links to other sites and links that open a
+ * new tab or download are left alone.
  *
  * @example
  * <PreprPersonalizationSwitch />
@@ -246,12 +186,11 @@ export function PreprPersonalizationSwitch(): null {
 
 /**
  * Applies this page view's decision to the variant wrappers of the
- * `PreprStack` it is rendered by. A click's decision is in before the page
- * paints; Back and Forward show the page as this tab last showed it. On a
- * page load, and any other view without a decision (a navigation started
- * from code, or Back to a page this tab never showed), its personalized
- * sections stay hidden until the decision request answers. Rendered by
- * `PreprStack`; you do not need it yourself.
+ * `PreprStack` it is rendered by, before the page paints when the decision is
+ * already in: asked for on hover, or kept from an earlier view of the page.
+ * Back and Forward show the page as this tab last showed it. Any other view
+ * keeps its personalized sections hidden until the decision request answers.
+ * Rendered by `PreprStack`; you do not need it yourself.
  */
 export function PreprDecisionApplier(): null {
   useDecisionRequests();
@@ -265,20 +204,19 @@ export function PreprDecisionApplier(): null {
     };
     const previous = historyStep ? shown.get(key) : undefined;
     historyStep = false;
+    // Applied already: by the page load's inline script, or Back and Forward.
     if (applyPreprDecisions(previous)) {
       remember();
       return;
     }
+    const pending = requestDecision(key, true);
+    if (pending.result !== undefined) {
+      applyPreprDecisions(pending.result);
+      remember();
+      return;
+    }
     let live = true;
-    // The page load's own request, started by the inline script, or a new one.
-    const started = (
-      window as unknown as {
-        __preprPending?: { key: string; value: Promise<string> };
-      }
-    ).__preprPending;
-    const value =
-      started?.key === key ? started.value : requestDecision(key).value;
-    void value.then((value) => {
+    void pending.value.then((value) => {
       if (live && location.pathname + location.search === key) {
         applyPreprDecisions(value);
         remember();

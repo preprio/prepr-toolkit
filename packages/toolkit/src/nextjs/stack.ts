@@ -13,7 +13,11 @@ import {
   type PreprDecisions,
 } from '../core/variants';
 import { contextOf } from '../core/variants/resolve';
-import { applyPreprDecisions, startPreprDecision } from './decision-switch';
+import {
+  applyPreprDecisions,
+  requestPreprDecision,
+  startPreprDecision,
+} from './decision-switch';
 import { PreprDecisionApplier, PreprVariantTracking } from './components';
 
 export interface PreprStackProps<T> {
@@ -76,7 +80,7 @@ const NOSCRIPT_HTML = `<style>[${VARIANT_ATTRIBUTE}][${DEFAULT_ATTRIBUTE}]{displ
 // Defines the decision switch and asks for this page load's decision, once
 // per stack; each personalized block calls the switch right after its HTML,
 // so a decision that is already in shows it before it paints.
-const DECISION_SCRIPT = `window.__preprApply=${applyPreprDecisions.toString()};(${startPreprDecision.toString()})();`;
+const DECISION_SCRIPT = `window.__preprApply=${applyPreprDecisions.toString()};window.__preprRequest=${requestPreprDecision.toString()};(${startPreprDecision.toString()})();`;
 const APPLY_SCRIPT = '__preprApply()';
 
 type StackRender<T> = PreprStackProps<T>['render'];
@@ -220,10 +224,10 @@ function renderVariants<T>(
  *   stack or nested inside an item, renders every variant, hidden. The page
  *   is the same for every visitor and never waits for Prepr: an inline script
  *   asks `createPreprProxy` for this page view's decision while the page
- *   loads, and shows the visitor's variant when it answers. A click's
- *   decision (requested by `PreprPersonalizationSwitch`) is in before the
- *   next page paints. Nothing streams, and the default variant never shows
- *   first to be replaced.
+ *   loads, and shows the visitor's variant when it answers.
+ *   `PreprPersonalizationSwitch` asks for a link's decision on hover, so it
+ *   is mostly in before the next page paints. Nothing streams, and the
+ *   default variant never shows first to be replaced.
  *
  * The page carries the HTML of every variant: an item with nested groups
  * repeats once per combination of their variants.
