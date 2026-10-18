@@ -111,7 +111,8 @@ export function applyPreprDecisions(
 
 /**
  * Asks the proxy for the decision of the view at `key` (path and query), or
- * answers from this tab's earlier ones. `result` is set at once when an
+ * answers from the visitor's recent ones, kept in the `prepr_decisions` cookie
+ * that `createPreprProxy` also writes when it decides a page load. `result` is set at once when an
  * earlier decision covers the view, so a caller can show it before the page
  * paints.
  *
@@ -144,6 +145,7 @@ export function requestPreprDecision(
     personalized?: boolean;
   } = {},
 ): { result?: string; value: Promise<string> } {
+  // Kept in step with the proxy's reading and writing of this cookie.
   const fresh = 10000;
   const keep = 1800000;
   const keepStatic = 3600000;
@@ -151,13 +153,67 @@ export function requestPreprDecision(
     __preprAsking?: Record<string, Promise<string>>;
   };
   const asking = (state.__preprAsking = state.__preprAsking || {});
-  const read = (): Record<string, { value?: unknown; at?: unknown }> => {
+  const read = (): Record<string, [string, number]> => {
+    const all: Record<string, [string, number]> = {};
     try {
-      const all = JSON.parse(sessionStorage.getItem('prepr_decisions') || '{}');
-      return all && typeof all === 'object' ? all : {};
+      const match = document.cookie.match(/(?:^|; )prepr_decisions=([^;]*)/);
+      const parsed = match ? JSON.parse(decodeURIComponent(match[1]!)) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+        Object.keys(parsed).forEach((stored) => {
+          const entry = parsed[stored];
+          if (
+            stored.charAt(0) === '/' &&
+            Array.isArray(entry) &&
+            typeof entry[0] === 'string' &&
+            typeof entry[1] === 'number'
+          )
+            all[stored] = [entry[0], entry[1]];
+        });
     } catch {
-      return {};
+      // Malformed: nothing stored.
     }
+    return all;
+  };
+  const usable = (entry: [string, number] | undefined, now: number) => {
+    if (!entry) return false;
+    const age = now - entry[1];
+    return (
+      age >= 0 &&
+      age < (entry[0] === '*' ? fresh : entry[0] === '' ? keepStatic : keep)
+    );
+  };
+  const store = (answer: string) => {
+    const all = read();
+    const now = Date.now();
+    const kept = all[key];
+    const entries = Object.keys(all)
+      .filter((stored) => stored !== key && usable(all[stored], now))
+      .map((stored) => [stored, all[stored]!] as [string, [string, number]]);
+    entries.push([
+      key,
+      answer === '*' && kept && usable(kept, now) && kept[0] !== '*'
+        ? kept
+        : [answer, now],
+    ]);
+    entries.sort((a, b) => b[1][1] - a[1][1]);
+    entries.length = Math.min(entries.length, 20);
+    const encode = () => {
+      const out: Record<string, [string, number]> = {};
+      entries.forEach((entry) => {
+        out[entry[0]] = entry[1];
+      });
+      return encodeURIComponent(JSON.stringify(out));
+    };
+    let value = encode();
+    while (entries.length > 1 && value.length > 3000) {
+      entries.pop();
+      value = encode();
+    }
+    document.cookie =
+      'prepr_decisions=' +
+      value +
+      '; path=/; max-age=3600; samesite=lax' +
+      (location.protocol === 'https:' ? '; secure' : '');
   };
   const ask = (): Promise<string> => {
     if (!asking[key]) {
@@ -174,23 +230,9 @@ export function requestPreprDecision(
         .then((answer) => {
           delete asking[key];
           try {
-            const all = read();
-            const at = Date.now();
-            Object.keys(all).forEach((stored) => {
-              const entry = all[stored];
-              if (!(
-                entry &&
-                typeof entry.at === 'number' &&
-                at - entry.at < keepStatic
-              ))
-                delete all[stored];
-            });
-            const kept = all[key];
-            if (answer !== '*' || !kept || kept.value === '*')
-              all[key] = { value: answer, at };
-            sessionStorage.setItem('prepr_decisions', JSON.stringify(all));
+            store(answer);
           } catch {
-            // Storage unavailable: the next view asks again.
+            // Cookies unavailable: the next view asks again.
           }
           return answer;
         });
@@ -198,15 +240,13 @@ export function requestPreprDecision(
     return asking[key];
   };
   const last = read()[key];
-  const age = last && typeof last.at === 'number' ? Date.now() - last.at : -1;
-  const value = last && typeof last.value === 'string' ? last.value : null;
   if (
-    value !== null &&
-    !(value === '' && options.personalized) &&
-    age >= 0 &&
-    age < (value === '*' ? fresh : value === '' ? keepStatic : keep)
+    last &&
+    !(last[0] === '' && options.personalized) &&
+    usable(last, Date.now())
   ) {
-    if (value !== '' && age >= fresh) {
+    const value = last[0];
+    if (value !== '' && Date.now() - last[1] >= fresh) {
       ask().then((answer) => {
         if (answer !== '*' && answer !== value && options.onChange)
           options.onChange(answer);

@@ -6,9 +6,13 @@ import type { PreprFeatures } from '../core/types';
 import {
   DEFAULT_DECISION,
   PREPR_DECIDE_HEADER,
+  PREPR_DECISIONS_COOKIE,
   decideView,
   forwardedHeaders,
   preprClientInternals,
+  readStoredDecisions,
+  usableDecision,
+  writeStoredDecisions,
 } from './decisions';
 import { preprDraftRedirect } from './draft';
 import type { PreprNextClient } from './graphql';
@@ -40,7 +44,10 @@ export interface PreprProxyOptions {
   preview?: boolean;
   /** Features disabled app-wide, as for `createPreprMiddleware`. */
   features?: PreprFeatures;
-  /** Give up on Prepr after this many ms; the default variants show. Default 3000. */
+  /**
+   * Give up on Prepr after this many ms; the default variants show. A page
+   * load the proxy decides waits for this at most. Default 1000.
+   */
   timeoutMs?: number;
   /**
    * Skip Prepr for decision requests when this resolves to false, for example for
@@ -49,6 +56,25 @@ export interface PreprProxyOptions {
    */
   onlyIf?: (request: NextRequest) => boolean | Promise<boolean>;
 }
+
+// Prefetches and client-side navigations fetch the page's RSC payload. Next.js
+// strips its own `RSC` and `Next-Router-*` headers before the proxy runs, but
+// keeps `Next-Url`, and the browser marks a fetch as `Sec-Fetch-Dest: empty`.
+function isRouterFetch(request: NextRequest): boolean {
+  return (
+    request.headers.has('rsc') ||
+    request.headers.has('next-url') ||
+    request.headers.get('sec-fetch-dest') === 'empty'
+  );
+}
+
+// A page without personalization answers "no groups" for every visitor.
+// Remembering that per URL spares its page loads the wait for Prepr.
+// shortcut: per server instance and kept 5 minutes, so a page that gains
+// personalization is decided by the browser until then; a webhook could clear it.
+const STATIC_PAGE_MS = 300_000;
+const STATIC_PAGES_MAX = 1000;
+const staticPages = new Map<string, number>();
 
 // API routes, Next.js internals and files never render a CMS page.
 function isPagePath(pathname: string): boolean {
@@ -64,12 +90,14 @@ function isPagePath(pathname: string): boolean {
  * Prepr headers and customer id (`createPreprMiddleware`), the draft-mode
  * redirect in preview, and the answers to the browser's decision requests.
  *
- * Pages themselves never wait for Prepr: they are the same for every visitor
- * and pass straight through. The browser sends a decision request for each
- * page view, from the page load and when a visitor points at a link; the proxy
- * answers it with the visitor's variant of every A/B test and personalization
- * group on that page, asked from Prepr in one request, as text and no page.
- * Add your own cookies or headers to the response it returns.
+ * A page load the visitor has no recent decision for is decided here, in one
+ * Prepr request for every A/B test and personalization group on the page,
+ * at most `timeoutMs`; the decision goes to the browser in a cookie, so the
+ * personalized sections paint with the visitor's variant. Every other page
+ * load passes straight through: the cookie already holds its decision, or
+ * the page has no personalization. The proxy also answers the decision
+ * requests the browser sends when a visitor points at a link, as text and no
+ * page. Add your own cookies or headers to the response it returns.
  *
  * @example
  * const handlePrepr = createPreprProxy({
@@ -150,6 +178,50 @@ export function createPreprProxy(
     return answer;
   }
 
+  // Decides a page load the visitor's cookie holds nothing usable for, so it
+  // paints personalized. Pages without personalization, once known, and
+  // requests `onlyIf` skips pass straight through.
+  async function decidePageLoad(
+    request: NextRequest,
+    response: NextResponse,
+    target: PreprProxyPage,
+  ): Promise<NextResponse> {
+    const { basePath, pathname, search } = request.nextUrl;
+    const key = basePath + pathname + search;
+    const now = Date.now();
+    if ((staticPages.get(key) ?? 0) > now) return response;
+    const stored = readStoredDecisions(
+      request.cookies.get(PREPR_DECISIONS_COOKIE)?.value,
+    );
+    // In preview the toolbar's segment and variant switches reload the page:
+    // each load is decided anew.
+    if (!preview && usableDecision(stored, key, now) !== undefined)
+      return response;
+    if (!(await allowed(request))) return response;
+    const decision = await decideView(
+      client,
+      mergePreprHeaders(forwardedHeaders(request, response)),
+      target,
+      options.timeoutMs,
+    );
+    if (decision === '') {
+      if (staticPages.size >= STATIC_PAGES_MAX) staticPages.clear();
+      staticPages.set(key, now + STATIC_PAGE_MS);
+      return response;
+    }
+    response.cookies.set(
+      PREPR_DECISIONS_COOKIE,
+      writeStoredDecisions(stored, key, decision, now),
+      {
+        path: '/',
+        maxAge: 3600,
+        sameSite: 'lax',
+        secure: request.nextUrl.protocol === 'https:',
+      },
+    );
+    return response;
+  }
+
   return async (request) => {
     // Only a GET or HEAD renders a page view. Form posts and server actions
     // get the visitor headers but never wait for a Prepr decision.
@@ -169,7 +241,8 @@ export function createPreprProxy(
       features: options.features,
     });
     if (decisionRequest) return answerDecision(request, response, target);
-
+    if (target && request.method === 'GET' && !isRouterFetch(request))
+      return decidePageLoad(request, response, target);
     return response;
   };
 }

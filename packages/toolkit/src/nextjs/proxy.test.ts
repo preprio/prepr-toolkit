@@ -63,15 +63,18 @@ async function setup({
     // Each page decides its own group: the slug is in the variables. A
     // batch prefixes each page's variables and root fields with p<index>_.
     const page = (slug: string) => ({
-      content: [
-        {
-          _preprContext: {
-            kind: 'PERSONALIZATION',
-            group_id: `g${slug.replace(/\W/g, '')}`,
-            variant_id: 'VIP',
-          },
-        },
-      ],
+      content:
+        slug === '/static'
+          ? []
+          : [
+              {
+                _preprContext: {
+                  kind: 'PERSONALIZATION',
+                  group_id: `g${slug.replace(/\W/g, '')}`,
+                  variant_id: 'VIP',
+                },
+              },
+            ],
     });
     const variables: Record<string, string> = JSON.parse(body).variables ?? {};
     const batched = Object.keys(variables).filter((key) => /^p\d+_/.test(key));
@@ -102,15 +105,100 @@ async function setup({
 }
 
 describe('createPreprProxy', () => {
-  it('lets a page view through at once, without asking Prepr', async () => {
+  const cookieOf = (response: Response) =>
+    JSON.parse(
+      decodeURIComponent(
+        /prepr_decisions=([^;]*)/.exec(
+          response.headers.get('set-cookie') ?? '',
+        )?.[1] ?? 'null',
+      ),
+    );
+
+  it('decides a page load the visitor has no decision for, and hands it to the page in a cookie', async () => {
     const { handle, request, decisionCalls } = await setup();
 
-    const response = await handle(request('/'));
+    const response = await handle(request('/pricing'));
 
     expect(response.headers.get('x-middleware-next')).toBe('1');
     expect(response.cookies.get('__prepr_uid')?.value).toBeTruthy();
+    expect(decisionCalls()).toHaveLength(1);
+    const stored = cookieOf(response);
+    expect(stored['/pricing'][0]).toBe('gpricing:VIP');
+    expect(response.headers.get('set-cookie')).toMatch(/Max-Age=3600/i);
+  });
+
+  it('lets a page load through at once when the cookie holds its decision', async () => {
+    const { handle, request, decisionCalls } = await setup();
+    const first = await handle(request('/pricing'));
+    const cookie = `prepr_decisions=${/prepr_decisions=([^;]*)/.exec(first.headers.get('set-cookie')!)![1]}`;
+
+    const response = await handle(request('/pricing', { cookie }));
+
+    expect(response.headers.get('x-middleware-next')).toBe('1');
     expect(response.cookies.get('prepr_decisions')).toBeUndefined();
+    expect(decisionCalls()).toHaveLength(1);
+    // Another page is decided, and both are kept.
+    const other = await handle(request('/about', { cookie }));
+    expect(Object.keys(cookieOf(other))).toEqual(['/about', '/pricing']);
+  });
+
+  it('decides again once the stored decision is 30 minutes old', async () => {
+    const { handle, request, decisionCalls } = await setup();
+    const old = encodeURIComponent(
+      JSON.stringify({ '/pricing': ['gpricing:VIP', Date.now() - 1_800_001] }),
+    );
+    await handle(request('/pricing', { cookie: `prepr_decisions=${old}` }));
+    expect(decisionCalls()).toHaveLength(1);
+  });
+
+  it('remembers a page without personalization, so its loads never wait for Prepr', async () => {
+    const { handle, request, decisionCalls } = await setup();
+    const first = await handle(request('/static'));
+    const second = await handle(request('/static'));
+    expect(decisionCalls()).toHaveLength(1);
+    expect(first.cookies.get('prepr_decisions')).toBeUndefined();
+    expect(second.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('decides every page load in preview, where the toolbar switches segments', async () => {
+    const { handle, request, decisionCalls } = await setup({ preview: true });
+    const fresh = encodeURIComponent(
+      JSON.stringify({ '/pricing': ['gpricing:VIP', Date.now()] }),
+    );
+    await handle(
+      request('/pricing', {
+        cookie: `prepr_decisions=${fresh}; __prerender_bypass=1`,
+      }),
+    );
+    expect(decisionCalls()).toHaveLength(1);
+  });
+
+  it('lets page loads that onlyIf skips through without asking Prepr', async () => {
+    const { handle, request, decisionCalls } = await setup({
+      onlyIf: () => false,
+    });
+    const response = await handle(request('/pricing'));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
     expect(decisionCalls()).toHaveLength(0);
+  });
+
+  it('treats a hostile decisions cookie as nothing stored, never failing the page', async () => {
+    const { handle, request, decisionCalls } = await setup();
+    for (const value of [
+      'not json',
+      '%E0%A4%A',
+      encodeURIComponent('[1,2]'),
+      encodeURIComponent('{"__proto__":["x",1],"/pricing":["a","b"]}'),
+      encodeURIComponent(JSON.stringify({ '/pricing': [5, Date.now()] })),
+      'x'.repeat(10_000),
+    ]) {
+      const response = await handle(
+        request('/pricing', { cookie: `prepr_decisions=${value}` }),
+      );
+      expect(response.headers.get('x-middleware-next')).toBe('1');
+      expect(Object.keys(cookieOf(response))).toEqual(['/pricing']);
+    }
+    expect(decisionCalls()).toHaveLength(6);
   });
 
   it('asks Prepr nothing for form posts and server actions, which never render a page view', async () => {

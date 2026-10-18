@@ -51,7 +51,6 @@ function html(props: { bucket?: string } = {}) {
 afterEach(() => {
   delete (window as { __preprDecision?: unknown }).__preprDecision;
   delete (window as { __preprAsking?: unknown }).__preprAsking;
-  sessionStorage.clear();
   decisionRequests.mockClear();
   history.replaceState(null, '', '/');
   document.cookie = 'prepr_decisions=; max-age=0; path=/';
@@ -362,11 +361,12 @@ describe('PreprStack segment groups', () => {
     expect(shown()).toEqual(['hero-dev']);
   });
 
-  const storeDecision = (key: string, value: string, age: number) =>
-    sessionStorage.setItem(
-      'prepr_decisions',
-      JSON.stringify({ [key]: { value, at: Date.now() - age } }),
-    );
+  // What `createPreprProxy` or an earlier request left in the cookie.
+  const storeDecision = (key: string, value: string, age: number) => {
+    document.cookie = `prepr_decisions=${encodeURIComponent(
+      JSON.stringify({ [key]: [value, Date.now() - age] }),
+    )}; path=/`;
+  };
 
   it('shows a decision under 10 seconds old at once, without asking again', async () => {
     history.replaceState(null, '', '/x');
@@ -501,10 +501,27 @@ describe('PreprStack segment groups', () => {
     expect(shown()).toEqual(['hero-dev']);
   });
 
+  it('reads what the proxy writes, and writes what the proxy reads', async () => {
+    const { readStoredDecisions, usableDecision, writeStoredDecisions } =
+      await import('./decisions');
+    const now = Date.now();
+    document.cookie = `prepr_decisions=${encodeURIComponent(
+      writeStoredDecisions({}, '/a', 'hero:DEVELOPERS', now),
+    )}; path=/`;
+    expect(requestPreprDecision('/a').result).toBe('hero:DEVELOPERS');
+
+    decisionRequests.mockResolvedValueOnce(new Response('hero:MARKETERS'));
+    await requestPreprDecision('/b').value;
+    const raw = /prepr_decisions=([^;]*)/.exec(document.cookie)![1]!;
+    const stored = readStoredDecisions(decodeURIComponent(raw));
+    expect(usableDecision(stored, '/b', Date.now())).toBe('hero:MARKETERS');
+    expect(usableDecision(stored, '/a', Date.now())).toBe('hero:DEVELOPERS');
+  });
+
   it('treats a malformed stored decision as none', () => {
-    sessionStorage.setItem('prepr_decisions', '{"/x":{"value":5,"at":"no"}}');
+    document.cookie = `prepr_decisions=${encodeURIComponent('{"/x":[5,"no"]}')}; path=/`;
     expect(requestPreprDecision('/x').result).toBeUndefined();
-    sessionStorage.setItem('prepr_decisions', 'not json');
+    document.cookie = 'prepr_decisions=%E0%A4%A; path=/';
     delete (window as { __preprAsking?: unknown }).__preprAsking;
     expect(requestPreprDecision('/x').result).toBeUndefined();
   });
@@ -696,7 +713,7 @@ describe('PreprStack segment groups', () => {
     act(() => root.unmount());
   });
 
-  it('never holds a click, also to a page it has no decision for yet', async () => {
+  it('holds a click without a decision until it is in, and lets one with a decision through at once', async () => {
     history.replaceState(null, '', '/');
     const container = document.body.appendChild(document.createElement('div'));
     const root = createRoot(container);
@@ -717,15 +734,26 @@ describe('PreprStack segment groups', () => {
         ),
       ),
     );
-    decisionRequests.mockImplementationOnce(() => new Promise(() => {}));
+    let answer!: (body: string) => void;
+    decisionRequests.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => (answer = (b) => resolve(new Response(b)))),
+    );
     const anchor = container.querySelector('a')!;
+    const click = () =>
+      anchor.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+      );
     anchor.dispatchEvent(
       new PointerEvent('pointerdown', { bubbles: true, button: 0 }),
     );
-    anchor.dispatchEvent(
-      new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
-    );
+    click();
+    expect(navigations).toBe(0);
+    await act(async () => answer('g:VIP'));
     expect(navigations).toBe(1);
+    // Now kept in the cookie: the next click goes through at once.
+    click();
+    expect(navigations).toBe(2);
     expect(decisionRequests).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });

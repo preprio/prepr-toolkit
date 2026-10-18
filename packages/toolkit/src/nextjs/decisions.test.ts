@@ -156,3 +156,36 @@ describe('decision requests', () => {
     expect(await response.text()).toBe('*');
   });
 });
+
+describe('stored decisions cookie', () => {
+  it('keeps the newest entries within the size cap and drops expired ones', async () => {
+    const { readStoredDecisions, usableDecision, writeStoredDecisions } =
+      await import('./decisions');
+    const now = Date.now();
+    const stored: Record<string, [string, number]> = {
+      '/expired': ['g:A', now - 1_800_001],
+    };
+    for (let i = 0; i < 30; i++)
+      stored[`/p${i}`] = [`g${'x'.repeat(200)}:A`, now - 1000 + i];
+    const json = writeStoredDecisions(stored, '/new', 'g:B', now);
+    expect(encodeURIComponent(json).length).toBeLessThanOrEqual(3000);
+    const kept = readStoredDecisions(json);
+    expect(usableDecision(kept, '/new', now)).toBe('g:B');
+    expect(kept['/expired']).toBeUndefined();
+    expect(kept['/p29']).toBeDefined();
+    expect(kept['/p0']).toBeUndefined();
+  });
+
+  it('never replaces a real decision with a failed answer', async () => {
+    const { readStoredDecisions, writeStoredDecisions } =
+      await import('./decisions');
+    const now = Date.now();
+    const json = writeStoredDecisions(
+      { '/a': ['g:A', now - 60_000] },
+      '/a',
+      '*',
+      now,
+    );
+    expect(readStoredDecisions(json)['/a']).toEqual(['g:A', now - 60_000]);
+  });
+});

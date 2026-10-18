@@ -101,8 +101,8 @@ function requestDecision(
   });
 }
 
-/** The same-site page a pointer event on a link goes to. */
-function linkTarget(event: PointerEvent): string | null {
+/** The same-site page a pointer or click event on a link goes to. */
+function linkTarget(event: MouseEvent): string | null {
   const anchor = (event.target as Element | null)?.closest?.('a[href]');
   if (!(anchor instanceof HTMLAnchorElement)) return null;
   if (
@@ -144,9 +144,47 @@ function onPointerDown(event: PointerEvent): void {
   if (key) requestDecision(key);
 }
 
+// The anchor whose click is replayed once its decision is in.
+let replaying: Element | null = null;
+
+function onClick(event: MouseEvent): void {
+  const key = linkTarget(event);
+  if (!key) return;
+  const anchor = (event.target as Element).closest('a[href]')!;
+  if (replaying === anchor) {
+    replaying = null;
+    return;
+  }
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+  // Mostly in already: asked on hover or press, or kept from an earlier view.
+  const pending = requestDecision(key);
+  if (pending.result !== undefined) return;
+  // Hold the navigation until the answer is in, so the new page paints with
+  // the visitor's variants; then replay the click so the link (a Next.js
+  // `Link` or a plain anchor) navigates as it would.
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void pending.value.then(() => {
+    replaying = anchor;
+    (anchor as HTMLElement).click();
+  });
+}
+
 let listeners = 0;
 
-/** Asks for the target page's decision when a same-site link is pointed at. */
+/**
+ * Asks for the target page's decision when a same-site link is pointed at,
+ * and holds a click whose decision is not in yet.
+ */
 function useDecisionRequests(): void {
   useEffect(() => {
     if (listeners++ === 0) {
@@ -155,12 +193,14 @@ function useDecisionRequests(): void {
         capture: true,
         passive: true,
       });
+      window.addEventListener('click', onClick, true);
       window.addEventListener('popstate', onPopState);
     }
     return () => {
       if (--listeners === 0) {
         window.removeEventListener('pointerover', onPointerOver);
         window.removeEventListener('pointerdown', onPointerDown, true);
+        window.removeEventListener('click', onClick, true);
         window.removeEventListener('popstate', onPopState);
       }
     };
@@ -170,15 +210,15 @@ function useDecisionRequests(): void {
 /**
  * Gets each client-side navigation's decision in before the click: when the
  * visitor hovers over a same-site link (or presses it, on touch devices), it
- * asks `createPreprProxy` which variants they get on that page. Clicks are
- * never held: the new page paints with those variants when the answer is in,
- * and keeps its personalized sections hidden until then otherwise. Pages
- * without personalization answer with no groups and are not asked again for
- * an hour.
+ * asks `createPreprProxy` which variants they get on that page, so the new
+ * page paints with them. A click whose decision is not in yet (a quick tap,
+ * a link reached by keyboard) waits for it; one the visitor's recent
+ * decisions already cover, or one to a page without personalization, goes
+ * through at once.
  *
  * Mount it once in the root layout, so links on pages without a
- * `PreprStack` are covered too. Links to other sites and links that open a
- * new tab or download are left alone.
+ * `PreprStack` are covered too. Clicks with a modifier key, links to other
+ * sites and links that open a new tab or download are left alone.
  *
  * @example
  * <PreprPersonalizationSwitch />
