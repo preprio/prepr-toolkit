@@ -204,7 +204,7 @@ upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
 
 `0.6.0` adds personalization to `PreprStack` and `createPreprProxy`; nothing a
 stable or release-candidate version shipped changes. Sites that tried an alpha,
-upgrading to `0.6.0-alpha.9`:
+upgrading to `0.6.0-alpha.10`:
 
 - Personalization groups no longer stream. Every variant of every group,
   nested ones included, is in the prerendered page, hidden until the page
@@ -212,8 +212,10 @@ upgrading to `0.6.0-alpha.9`:
   first. Remove
   `decisions` and `aboveTheFold` from `PreprStack`; `render` no longer gets
   `placeholder` (nothing stands in any more, so tag every variant).
-- Pages never wait for Prepr: the inline script of `PreprStack` asks for
-  each page load's decision, and `PreprPersonalizationSwitch` for each link hovered or pressed,
+- `createPreprProxy` decides a visitor's first load of each URL and keeps
+  decisions in the `prepr_decisions` cookie, which the inline script of
+  `PreprStack` reads before the page paints; `PreprPersonalizationSwitch`
+  asks for each link hovered or pressed,
   through decision requests that only `createPreprProxy` answers. Keep
   `<PreprPersonalizationSwitch />` in the root layout; it takes no props now
   (`refresh`, `freshFor` and `refreshAfter` are gone, with the background
@@ -226,7 +228,6 @@ upgrading to `0.6.0-alpha.9`:
   one stored bucket per visitor could not follow. The proxy no longer runs a
   separate check before deciding: every CMS page view sends one decision
   query.
-- `timeoutMs` on `createPreprProxy` defaults to 3000 instead of 1000.
 
 Upgrading to `0.6.0-alpha.3`:
 
