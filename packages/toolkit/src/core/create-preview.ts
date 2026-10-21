@@ -227,6 +227,7 @@ export function createPreprPreview(
     field,
     locale: contentLocale,
     block,
+    entryId,
   }: StegaEditPayload) => {
     // Validated even though only the standalone branch opens the URL: a
     // href the browser would refuse is a malformed payload, and must not
@@ -244,6 +245,7 @@ export function createPreprPreview(
         field,
         locale: contentLocale,
         ...(block !== undefined && { block }),
+        ...(entryId && { entryId }),
       });
     } else if (safeHref) {
       // `noopener` — without it the opened tab keeps a live `window.opener`
@@ -308,9 +310,9 @@ export function createPreprPreview(
     // The editor selecting a field scrolls the matching element into view. The
     // lookup relies on the attributes the stega scan writes, so it finds
     // nothing until encoded content has been tagged.
-    onScrollToField: ({ field, id, block }) => {
+    onScrollToField: ({ field, id, block, entryId }) => {
       if (visualEditor) {
-        void visualEditor.focusField({ field, id, block });
+        void visualEditor.focusField({ field, id, block, entryId });
         return;
       }
       if (!scrollToField({ field, id })) {

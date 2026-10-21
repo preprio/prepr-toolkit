@@ -64,6 +64,22 @@ describe('findFieldElement', () => {
     expect(findFieldElement({ field: 'title', id: 'item-2' })).toBe(second);
   });
 
+  it('prefers the entry id over the field path, so a moved entry is still found', () => {
+    tagged('content.0');
+    const moved = tagged('content.1');
+    moved.setAttribute('data-prepr-entry-id', 'element-a');
+    expect(findFieldElement({ field: 'content.0', entryId: 'element-a' })).toBe(
+      moved,
+    );
+  });
+
+  it('falls back to the field path when no element has the entry id', () => {
+    const first = tagged('content.0');
+    expect(findFieldElement({ field: 'content.0', entryId: 'gone' })).toBe(
+      first,
+    );
+  });
+
   it('treats selector syntax in the field path as plain text', () => {
     tagged('title');
     expect(findFieldElement({ field: '"],*,[x="' })).toBeNull();

@@ -225,4 +225,18 @@ describe('createVisualEditor', () => {
     ).resolves.toBe(true);
     expect(third.scrollIntoView).toHaveBeenCalled();
   });
+
+  it('sends the entry id of a clicked dynamic content entry', () => {
+    const entry = tagged('content.4', 'div');
+    entry.setAttribute('data-prepr-entry-id', 'element-7');
+    editor.start();
+
+    entry.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+
+    expect(onEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ field: 'content.4', entryId: 'element-7' }),
+    );
+  });
 });

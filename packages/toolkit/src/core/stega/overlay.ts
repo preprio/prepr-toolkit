@@ -13,6 +13,12 @@ export interface StegaEditPayload extends StegaDecodedData {
   locale?: string;
   /** Which list item inside the field value was clicked, when it was one. */
   block?: number;
+  /**
+   * The site's own id for this entry of a list-like field (a dynamic content
+   * item's `_id`), from `data-prepr-entry-id`. Lets the editor find the entry
+   * by id rather than by position.
+   */
+  entryId?: string;
 }
 
 /**

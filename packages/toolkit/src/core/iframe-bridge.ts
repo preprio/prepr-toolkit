@@ -15,6 +15,7 @@ interface EditorMessage {
   field?: unknown;
   id?: unknown;
   block?: unknown;
+  entryId?: unknown;
 }
 
 /** Which field the editor asked the preview to bring on screen. */
@@ -23,6 +24,8 @@ export interface ScrollToFieldMessage {
   id?: string;
   /** Item within a list field value: the n-th `<li>` of a rich text list. */
   block?: number;
+  /** The entry's `data-prepr-entry-id`, preferred over `field` when present. */
+  entryId?: string;
 }
 
 export interface IframeBridge {
@@ -174,8 +177,12 @@ export function createIframeBridge(
         typeof data.block === 'number' && Number.isInteger(data.block)
           ? data.block
           : undefined;
+      const entryId =
+        typeof data.entryId === 'string' && data.entryId
+          ? data.entryId
+          : undefined;
       try {
-        onScrollToField?.({ field: data.field, id: data.id, block });
+        onScrollToField?.({ field: data.field, id: data.id, block, entryId });
       } catch (error) {
         // A throwing handler must not take down the message listener and with
         // it the rest of the editor integration.

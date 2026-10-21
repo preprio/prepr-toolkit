@@ -52,6 +52,8 @@ export interface FieldLookup {
   id?: string;
   /** Narrow to the n-th list item inside the field's element. */
   block?: number;
+  /** Match `data-prepr-entry-id` first; `field` is the fallback. */
+  entryId?: string;
 }
 
 /**
@@ -61,10 +63,17 @@ export interface FieldLookup {
  */
 export function findFieldElement(lookup: FieldLookup): HTMLElement | null {
   if (!lookup.field) return null;
-  const wanted = normalizeFieldPath(lookup.field);
   const candidates = document.querySelectorAll<HTMLElement>(
     '[data-prepr-encoded]',
   );
+  if (lookup.entryId) {
+    for (const candidate of candidates) {
+      if (candidate.getAttribute('data-prepr-entry-id') === lookup.entryId) {
+        return candidate;
+      }
+    }
+  }
+  const wanted = normalizeFieldPath(lookup.field);
   for (const candidate of candidates) {
     const field = candidate.getAttribute('data-prepr-field');
     if (!field || normalizeFieldPath(field) !== wanted) continue;

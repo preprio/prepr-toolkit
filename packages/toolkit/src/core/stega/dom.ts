@@ -144,5 +144,6 @@ export function readEditPayload(element: Element): StegaEditPayload {
     id: element.getAttribute('data-prepr-id') ?? undefined,
     field: element.getAttribute('data-prepr-field') ?? undefined,
     locale: element.getAttribute('data-prepr-locale') ?? undefined,
+    entryId: element.getAttribute('data-prepr-entry-id') || undefined,
   };
 }
