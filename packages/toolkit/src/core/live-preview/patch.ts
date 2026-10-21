@@ -282,6 +282,7 @@ function buildText(
  * Returns `current` untouched when nothing changed, when the page selected no
  * ids on these entries, or when none of the editor's ids match: ids that no
  * longer line up (for example right after a save) must not empty the list.
+ * An empty `entries` does empty it: the editor removed the last entry.
  */
 function syncList(
   current: unknown,
@@ -307,6 +308,8 @@ function syncList(
       if (!templates.has(c.__typename)) templates.set(c.__typename, c);
     }
   }
+  // The editor sends an empty list only when the last entry was removed.
+  if (!entries.length) return current.length ? [] : current;
   if (current.length && !byKey.size) return current;
   if (current.length && !entries.some((e) => byKey.has(e._id))) return current;
 

@@ -14,12 +14,44 @@ const MAX_DEPTH = 3;
 const MAX_ENTRIES = 50;
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const SAFE_URL = /^https?:\/\//i;
+// Keys and field names that a site renders as a link or a media source.
+const URL_KEY = /^(?:url|href|src|link)$|(?:_url|Url)$/;
+// Browsers ignore tabs and newlines anywhere in a URL, and leading control
+// characters and spaces, when they read its scheme.
+const URL_IGNORED_ANYWHERE = /[\t\n\r]/g;
+const SCRIPT_SCHEME = /^(?:javascript|vbscript|data):/i;
+
+/**
+ * Whether a string is safe as the value of a link or media field: never a
+ * `javascript:`, `vbscript:` or `data:` URL. Relative links, `mailto:` and
+ * other schemes pass, as they do in stored content.
+ */
+export function isSafeLinkValue(value: string): boolean {
+  const stripped = value.replace(URL_IGNORED_ANYWHERE, '');
+  let start = 0;
+  while (start < stripped.length && stripped.charCodeAt(start) <= 0x20) start++;
+  return !SCRIPT_SCHEME.test(stripped.slice(start));
+}
+
+/** Whether a key or field name holds a URL a site renders as a link or source. */
+export function isUrlKey(key: string): boolean {
+  return URL_KEY.test(key);
+}
+
+function isSafeKeyValue(key: string, value: unknown): boolean {
+  if (typeof value !== 'string') return true;
+  if (key === 'url') return SAFE_URL.test(value);
+  return !isUrlKey(key) || isSafeLinkValue(value);
+}
 
 /**
  * Structured values (an asset swapped in the editor) arrive over postMessage
  * and end up in rendered props such as an image `src`: plain objects and
- * arrays only, bounded in size and depth, no prototype keys, and any `url`
- * must be http(s) so a `javascript:` or `data:` URL never reaches the page.
+ * arrays only, bounded in size and depth, no prototype keys, any `url` must
+ * be http(s), and other link keys (`href`, `src`, `link`, `…_url`) can never
+ * hold a `javascript:`, `vbscript:` or `data:` URL. HTML text is passed on
+ * as the editor sent it, like stored rich text: render it the way you
+ * render rich text from the API.
  */
 export function isLiveValue(v: unknown, depth = 0): v is LiveValue {
   if (v === null || isScalar(v)) return true;
@@ -37,11 +69,23 @@ export function isLiveValue(v: unknown, depth = 0): v is LiveValue {
   return keys.every((key) => {
     if (FORBIDDEN_KEYS.has(key)) return false;
     const value = v[key];
-    if (key === 'url' && typeof value === 'string' && !SAFE_URL.test(value)) {
-      return false;
-    }
+    if (!isSafeKeyValue(key, value)) return false;
     return !Array.isArray(value) && isLiveValue(value, depth + 1);
   });
+}
+
+/**
+ * Whether a `prepr:fieldChange` value is acceptable for the field it is sent
+ * for: a valid live value, and no script URL in a link field
+ * (`cta.url`, `button.href`).
+ */
+export function isLiveFieldChange(
+  field: string,
+  value: unknown,
+): value is LiveValue {
+  if (!isLiveValue(value)) return false;
+  const name = field.slice(field.lastIndexOf('.') + 1);
+  return typeof value !== 'string' || !isUrlKey(name) || isSafeLinkValue(value);
 }
 
 const MAX_LIST_ENTRIES = 200;
@@ -113,9 +157,7 @@ function isFieldValue(v: unknown, depth: number): boolean {
   return keys.every((key) => {
     if (FORBIDDEN_KEYS.has(key)) return false;
     const value = v[key];
-    if (key === 'url' && typeof value === 'string' && !SAFE_URL.test(value)) {
-      return false;
-    }
+    if (!isSafeKeyValue(key, value)) return false;
     return isFieldValue(value, depth + 1);
   });
 }

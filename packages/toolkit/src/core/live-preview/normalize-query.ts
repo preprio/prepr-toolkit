@@ -5,7 +5,11 @@ import {
 } from '@vercel/stega';
 
 import { createScopedLogger } from '../utils';
-import { indexSnapshot, type LivePath } from './index-snapshot';
+import {
+  indexSnapshot,
+  type LivePath,
+  type SnapshotIndex,
+} from './index-snapshot';
 import {
   keepEditLink,
   syncListAtPath,
@@ -23,7 +27,7 @@ import {
   type QuerySelection,
 } from './query-document';
 import {
-  isLiveValue,
+  isLiveFieldChange,
   isPlainRecord,
   parseEditTarget,
   parseListEntries,
@@ -95,7 +99,7 @@ export function parsePatchLog(raw: unknown): LivePatch[] {
     const { type, itemId, field } = entry;
     if (typeof itemId !== 'string' || !itemId) continue;
     if (typeof field !== 'string' || !field) continue;
-    if (type === 'field' && isLiveValue(entry.value)) {
+    if (type === 'field' && isLiveFieldChange(field, entry.value)) {
       const edit = parseEditTarget(entry.edit);
       log.push(
         edit
@@ -160,64 +164,100 @@ export function normalizeQuery<T>(
   }
 
   let root: unknown = result;
-  let index = indexSnapshot(root);
+  let index: SnapshotIndex;
+  try {
+    index = indexSnapshot(root);
+  } catch (error) {
+    debug.log('could not read the result', { error: String(error) });
+    return result;
+  }
   for (const patch of log) {
-    const ownerPaths = index.get(patch.itemId);
-    if (!ownerPaths?.length) continue;
-    const segments = patch.field.split('.');
-    if (segments.some((s) => !s || FORBIDDEN_SEGMENTS.has(s))) continue;
-
-    const targets: LivePath[] = [];
-    for (const ownerPath of ownerPaths) {
-      if (doc) {
-        const resolved = resolveTargets(root, doc, ownerPath, segments);
-        root = resolved.root;
-        targets.push(...resolved.targets);
-      } else {
-        targets.push([...ownerPath, ...segments.map(toPathSegment)]);
+    // One change that cannot be applied must not cost the others, nor the
+    // render: keep the result as it was before it.
+    try {
+      const next = applyPatch(root, index, patch, doc, result);
+      if (next !== root) {
+        root = next;
+        // Lists moved or objects were replaced: paths recorded before the
+        // change no longer point at the same objects.
+        if (patch.type === 'list' || !isScalarValue(patch.value)) {
+          index = indexSnapshot(root);
+        }
       }
-    }
-    if (!targets.length) {
-      debug.log('no field in the query matches', {
+    } catch (error) {
+      debug.log('could not apply a change', {
         itemId: patch.itemId,
         field: patch.field,
+        error: String(error),
       });
-      continue;
-    }
-
-    if (patch.type === 'field') {
-      for (const target of targets) {
-        let value = keepEditLink(readAtPath(root, target), patch.value);
-        if (
-          patch.edit &&
-          typeof value === 'string' &&
-          !vercelStegaSplit(value).encoded
-        ) {
-          value =
-            editLinksFor(result, patch.edit.item)?.encode(
-              value,
-              patch.edit.field,
-            ) ?? value;
-        }
-        root = writeAtPath(root, target, value);
-      }
-    } else {
-      const before = root;
-      for (const target of targets) {
-        const selections = doc ? selectionsAt(root, doc, target) : null;
-        const build: LiveEntryBuilder | undefined =
-          doc && selections
-            ? (entry) =>
-                buildEntry(doc, selections, entry, editLinks(result, entry))
-            : undefined;
-        root = syncListAtPath(root, target, patch.entries, build);
-      }
-      // Entries moved: paths recorded before the change no longer point at
-      // the same objects.
-      if (root !== before) index = indexSnapshot(root);
     }
   }
   return root as T;
+}
+
+function isScalarValue(value: LiveValue): boolean {
+  return value === null || typeof value !== 'object';
+}
+
+/** The result with one change applied, or `root` when it applies nowhere. */
+function applyPatch(
+  root: unknown,
+  index: SnapshotIndex,
+  patch: LivePatch,
+  doc: QueryDocument | null,
+  result: unknown,
+): unknown {
+  const ownerPaths = index.get(patch.itemId);
+  if (!ownerPaths?.length) return root;
+  const segments = patch.field.split('.');
+  if (segments.some((s) => !s || FORBIDDEN_SEGMENTS.has(s))) return root;
+
+  const targets: LivePath[] = [];
+  for (const ownerPath of ownerPaths) {
+    if (doc) {
+      const resolved = resolveTargets(root, doc, ownerPath, segments);
+      root = resolved.root;
+      targets.push(...resolved.targets);
+    } else {
+      targets.push([...ownerPath, ...segments.map(toPathSegment)]);
+    }
+  }
+  if (!targets.length) {
+    debug.log('no field in the query matches', {
+      itemId: patch.itemId,
+      field: patch.field,
+    });
+    return root;
+  }
+
+  if (patch.type === 'field') {
+    for (const target of targets) {
+      let value = keepEditLink(readAtPath(root, target), patch.value);
+      if (
+        patch.edit &&
+        typeof value === 'string' &&
+        !vercelStegaSplit(value).encoded
+      ) {
+        value =
+          editLinksFor(result, patch.edit.item)?.encode(
+            value,
+            patch.edit.field,
+          ) ?? value;
+      }
+      root = writeAtPath(root, target, value);
+    }
+  } else {
+    for (const target of targets) {
+      const selections = doc ? selectionsAt(root, doc, target) : null;
+      const build: LiveEntryBuilder | undefined =
+        doc && selections
+          ? (entry) =>
+              buildEntry(doc, selections, entry, editLinks(result, entry))
+          : undefined;
+      root = syncListAtPath(root, target, patch.entries, build);
+    }
+  }
+  return root;
 }
 
 function readAtPath(root: unknown, path: LivePath): unknown {
@@ -325,7 +365,7 @@ function resolveTargets(
     let matched = false;
     for (const field of collectFields(sel, typenameOf(node), doc).values()) {
       if (field.name !== segment && field.name !== wanted) continue;
-      if (!(field.key in record)) continue;
+      if (!Object.prototype.hasOwnProperty.call(record, field.key)) continue;
       matched = true;
       const fieldPath = [...path, field.key];
       let value = record[field.key];
@@ -374,7 +414,8 @@ const typeKey = (name: string): string =>
  * The type a new entry is built as: one the query names for this list. The
  * editor's `__typename` wins when the query knows it; otherwise its type
  * name is matched loosely (`Side by side` ↔ `SideBySide`); a field the query
- * selects for a single type takes that type. Undefined when nothing fits,
+ * selects for a single type takes that type when the editor named no type.
+ * Undefined when nothing fits,
  * so the entry waits for the save.
  */
 function resolveTypename(
@@ -392,7 +433,11 @@ function resolveTypename(
     const match = known.find((name) => typeKey(name) === typeKey(candidate));
     if (match) return match;
   }
-  return known.length === 1 ? known[0] : undefined;
+  // A field the query selects for a single type takes that type, but only
+  // when the editor named none: an entry of another type must not be built
+  // in this type's shape.
+  const named = explicit !== undefined || typeof typeName === 'string';
+  return known.length === 1 && !named ? known[0] : undefined;
 }
 
 /**
@@ -520,7 +565,11 @@ function editLinks(result: unknown, entry: LiveListEntry): EditLinks | null {
   return editLinksFor(result, edit.item);
 }
 
+// Prepr item ids. Anything else could rewrite the edit link's path.
+const ITEM_ID = /^[A-Za-z0-9_-]+$/;
+
 function editLinksFor(result: unknown, item: string): EditLinks | null {
+  if (!ITEM_ID.test(item)) return null;
   const template = findEditLink(result);
   if (!template) return null;
   return {
@@ -532,7 +581,10 @@ function editLinksFor(result: unknown, item: string): EditLinks | null {
       } catch {
         return text;
       }
-      href.pathname = href.pathname.replace(EDIT_PATH, `/content/edit/${item}`);
+      href.pathname = href.pathname.replace(
+        EDIT_PATH,
+        () => `/content/edit/${item}`,
+      );
       href.searchParams.set('field', field);
       // The editor reads the path with dots and slashes as written.
       const link = href.toString().replace(/%2E/gi, '.').replace(/%2F/gi, '/');

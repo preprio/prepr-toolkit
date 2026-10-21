@@ -5,7 +5,11 @@ import {
 } from '../utils';
 import { isAllowedEditorOrigin } from '../iframe-bridge';
 import type { LiveStore } from './live-store';
-import { isLiveValue, parseEditTarget, parseListEntries } from './validate';
+import {
+  isLiveFieldChange,
+  parseEditTarget,
+  parseListEntries,
+} from './validate';
 
 const debug = createScopedLogger('live-preview:bridge');
 
@@ -68,7 +72,8 @@ export function createLiveBridge(
       if (
         typeof data.itemId === 'string' &&
         typeof data.field === 'string' &&
-        isLiveValue(data.value)
+        data.field &&
+        isLiveFieldChange(data.field, data.value)
       ) {
         const edit = parseEditTarget(data.edit);
         if (edit) store.pushPatch(data.itemId, data.field, data.value, edit);

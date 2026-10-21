@@ -74,6 +74,40 @@ describe('collectFields', () => {
     expect(fields.has('image')).toBe(true);
   });
 
+  it('never applies a branch for another type, even one that spreads fragments', () => {
+    const branched = readQueryDocument(`
+      {
+        item {
+          __typename
+          ... on Quote { title: author cite ...QuoteBits }
+          ... on Hero { title: heading }
+        }
+      }
+      fragment QuoteBits on Quote { source }
+    `);
+    const field = collectFields(branched.operation, undefined, branched).get(
+      'item',
+    )!;
+    const hero = collectFields(field.selections, 'Hero', branched, {
+      strict: true,
+    });
+    expect(hero.get('title')!.name).toBe('heading');
+    expect(hero.has('cite')).toBe(false);
+  });
+
+  it('walks a fragment reached along several paths once', () => {
+    const diamond = readQueryDocument(`
+      { a { ...B ...C } }
+      fragment B on A { ...D }
+      fragment C on A { ...D }
+      fragment D on A { image { url } }
+    `);
+    const a = collectFields(diamond.operation, 'A', diamond).get('a')!;
+    expect(
+      collectFields(a.selections, 'A', diamond).get('image')!.selections,
+    ).toHaveLength(1);
+  });
+
   it('does not loop on a fragment that spreads itself', () => {
     const cyclic = readQueryDocument(`
       { a { ...F } }

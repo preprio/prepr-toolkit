@@ -158,6 +158,20 @@ describe('createLiveStore', () => {
       expect(onLog).toHaveBeenCalledTimes(4);
     });
 
+    it('keeps a change by list position in order with the list changes around it', () => {
+      const store = createLiveStore();
+      store.pushList('a', 'content', [{ _id: 'e1' }, { _id: 'e2' }]);
+      store.pushPatch('a', 'content.1.body', 'typed');
+      store.pushList('a', 'content', [{ _id: 'e2' }, { _id: 'e1' }]);
+      store.pushPatch('a', 'content.0.body', 'again');
+      expect(store.getLog().map((p) => p.field)).toEqual([
+        'content',
+        'content.1.body',
+        'content',
+        'content.0.body',
+      ]);
+    });
+
     it('records changes for items no registration holds', () => {
       const store = createLiveStore();
       store.pushPatch('server-only', 'title', 'x');

@@ -70,6 +70,42 @@ interface Entry {
  * index contains that item. Pure data + subscribers — postMessage wiring lives
  * in bridge-events.ts, framework reactivity in the adapters.
  */
+/**
+ * The log with `patch` recorded. A newer change to the same field replaces
+ * the older one, so the log stays short while an editor types. Changes are
+ * replayed in order, though, and a field path can hold a list position
+ * (`content.3.body`) that is only right after the list changes before it.
+ * So the older change is only dropped when nothing recorded since depends on
+ * where it sat: no list change after it, and for a list change no change
+ * below that list either.
+ */
+function withPatch(log: LivePatch[], patch: LivePatch): LivePatch[] {
+  let previous = -1;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const p = log[i];
+    if (
+      p.type === patch.type &&
+      p.itemId === patch.itemId &&
+      p.field === patch.field
+    ) {
+      previous = i;
+      break;
+    }
+  }
+  if (previous === -1) return [...log, patch];
+  const since = log.slice(previous + 1);
+  const listPrefix = `${patch.field}.`;
+  const dependsOnPosition = since.some(
+    (p) =>
+      p.type === 'list' ||
+      (patch.type === 'list' &&
+        p.itemId === patch.itemId &&
+        p.field.startsWith(listPrefix)),
+  );
+  if (dependsOnPosition) return [...log, patch];
+  return [...log.slice(0, previous), ...since, patch];
+}
+
 export function createLiveStore(): LiveStore {
   const entries = new Set<Entry>();
   const invalidateListeners = new Set<(itemId: string) => void>();
@@ -79,14 +115,7 @@ export function createLiveStore(): LiveStore {
   const logListeners = new Set<(log: LivePatch[]) => void>();
 
   function record(patch: LivePatch): void {
-    const next = log.filter(
-      (p) =>
-        p.type !== patch.type ||
-        p.itemId !== patch.itemId ||
-        p.field !== patch.field,
-    );
-    next.push(patch);
-    log = next.slice(-MAX_LOG_ENTRIES);
+    log = withPatch(log, patch).slice(-MAX_LOG_ENTRIES);
     logListeners.forEach((fn) => fn(log));
   }
 

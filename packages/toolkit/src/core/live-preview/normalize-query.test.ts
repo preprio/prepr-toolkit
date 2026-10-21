@@ -525,6 +525,32 @@ describe('parsePatchLog', () => {
     ]);
   });
 
+  it('drops script URLs in link fields and keeps text that merely looks like one', () => {
+    const log = parsePatchLog([
+      { type: 'field', itemId: 'p', field: 'cta.url', value: 'javascript:x' },
+      {
+        type: 'field',
+        itemId: 'p',
+        field: 'button.href',
+        value: ' java\tscript:x',
+      },
+      {
+        type: 'field',
+        itemId: 'p',
+        field: 'link',
+        value: { href: 'data:text/html,x' },
+      },
+      {
+        type: 'field',
+        itemId: 'p',
+        field: 'title',
+        value: 'JavaScript: the good parts',
+      },
+      { type: 'field', itemId: 'p', field: 'cta.url', value: '/pricing' },
+    ]);
+    expect(log.map((p) => p.field)).toEqual(['title', 'cta.url']);
+  });
+
   it('ignores path segments that reach the prototype', () => {
     const result = { Post: { _id: 'p', title: 'Old' } };
     const next = normalizeQuery('{ Post { _id title } }', result, {
@@ -680,6 +706,41 @@ describe('normalizeQuery new list entries', () => {
     expect(
       (next.Page.sections as Array<{ _id: string }>).map((s) => s._id),
     ).toEqual(['sbs-1', 'content-1']);
+  });
+
+  it('does not build an entry of another type in the only type the query selects', () => {
+    const query = `{ Page { _id sections { __typename ... on Hero { _id title } } } }`;
+    const result = { Page: { _id: 'p', sections: [] as unknown[] } };
+    const next = normalizeQuery(query, result, {
+      log: [
+        {
+          type: 'list',
+          itemId: 'p',
+          field: 'sections',
+          entries: [
+            { _id: 'n', __typename: 'SideBySide', fields: { title: 'x' } },
+          ],
+        },
+      ],
+    });
+    expect(next.Page.sections).toEqual([]);
+  });
+
+  it('empties a list when the editor removes its last entry', () => {
+    const next = normalizeQuery(PAGE_QUERY, pageResult(), {
+      log: [
+        {
+          type: 'list',
+          itemId: 'sha1-of-component',
+          field: 'content',
+          entries: [],
+        },
+      ],
+    });
+    const sideBySide = next.Page.sections[0] as unknown as {
+      content: { content: unknown[] };
+    };
+    expect(sideBySide.content.content).toEqual([]);
   });
 
   it('rejects hostile field values', () => {
@@ -934,6 +995,49 @@ describe('normalizeQuery edit targets on pushes', () => {
       origin: 'prepr.io',
       href: 'https://acme.prepr.io/content/edit/page-1?utm_campaign=vec&locale=en-GB&field=sections.items.new-1.items.content.items.headline',
     });
+  });
+
+  it('never links text to an edit path built from a malformed item id', async () => {
+    const { vercelStegaCombine, vercelStegaDecode } =
+      await import('@vercel/stega');
+    for (const item of ['$&', '../../admin', 'a/b']) {
+      const result = pageResult();
+      result.Page.sections[0].content!.headline = vercelStegaCombine('Stored', {
+        origin: 'prepr.io',
+        href: 'https://acme.prepr.io/content/edit/page-1?field=x',
+      });
+      const next = normalizeQuery(PAGE_QUERY, result, {
+        log: [
+          {
+            type: 'field',
+            itemId: 'content-1',
+            field: 'content_width',
+            value: 'Typed',
+            edit: { item, field: 'x' },
+          },
+        ],
+      });
+      const section = next.Page.sections[1] as unknown as Record<string, any>;
+      expect(section.content_width).toBe('Typed');
+      expect(vercelStegaDecode(section.content_width)).toBeUndefined();
+    }
+  });
+});
+
+describe('normalizeQuery robustness', () => {
+  it('returns the result unchanged instead of throwing on an unreadable result', () => {
+    const result = { Post: { _id: 'p', title: 'Old' } };
+    Object.defineProperty(result.Post, 'broken', {
+      enumerable: true,
+      get() {
+        throw new Error('getter');
+      },
+    });
+    expect(() =>
+      normalizeQuery('{ Post { _id title } }', result, {
+        log: [{ type: 'field', itemId: 'p', field: 'title', value: 'New' }],
+      }),
+    ).not.toThrow();
   });
 });
 

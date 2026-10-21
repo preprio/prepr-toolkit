@@ -398,34 +398,40 @@ export function collectFields(
 ): Map<string, ResolvedField> {
   const exact = new Map<string, ResolvedField>();
   const loose = new Map<string, ResolvedField>();
-  const seen = new Set<QueryFragment>();
+  // Selection sets already merged into a key: the same field reached through
+  // several fragments must not repeat its sub-selections.
+  const merged = new Map<ResolvedField, Set<QuerySelection[]>>();
+  // Fragments walked as matching / as not matching. A fragment spread from
+  // several places is walked once per state, which also stops a fragment
+  // that spreads itself (invalid GraphQL) from looping.
+  const walkedMatched = new Set<QueryFragment>();
+  const walkedLoose = new Set<QueryFragment>();
 
   const add = (
     target: Map<string, ResolvedField>,
     s: Extract<QuerySelection, { kind: 'field' }>,
   ) => {
-    const existing = target.get(s.key);
-    if (existing) {
-      if (s.selections)
-        existing.selections = [...existing.selections, ...s.selections];
-      return;
+    let field = target.get(s.key);
+    if (!field) {
+      field = { name: s.name, key: s.key, hasArgs: s.hasArgs, selections: [] };
+      target.set(s.key, field);
+      merged.set(field, new Set());
     }
-    target.set(s.key, {
-      name: s.name,
-      key: s.key,
-      hasArgs: s.hasArgs,
-      selections: s.selections ? [...s.selections] : [],
-    });
+    const done = merged.get(field)!;
+    if (s.selections && !done.has(s.selections)) {
+      done.add(s.selections);
+      field.selections = [...field.selections, ...s.selections];
+    }
   };
 
   // A fragment on a union or interface (`fragment DCF on _prepr_types`)
-  // usually branches by type inside; it applies, and its inner conditions
-  // decide. Without a schema, branching inside is what marks it abstract.
+  // usually branches by type inside; it applies when one of its inner
+  // conditions names this object's type, and those conditions decide. A
+  // fragment on another concrete type never applies, even when it spreads
+  // fragments of its own.
   const applies = (on: string | null, list: QuerySelection[]): boolean =>
     conditionMatches(on, typename) ||
-    list.some(
-      (s) => (s.kind === 'inline' && s.on !== null) || s.kind === 'spread',
-    );
+    (typename !== undefined && typeConditions(list, doc).includes(typename));
 
   const walk = (list: QuerySelection[], matched: boolean): void => {
     for (const s of list) {
@@ -435,15 +441,13 @@ export function collectFields(
         walk(s.selections, matched && applies(s.on, s.selections));
       } else {
         const fragment = doc.fragments.get(s.name);
-        // A fragment spread twice in one set is walked once; a fragment
-        // that spreads itself is invalid GraphQL and must not loop.
-        if (!fragment || seen.has(fragment)) continue;
-        seen.add(fragment);
-        walk(
-          fragment.selections,
-          matched && applies(fragment.on, fragment.selections),
-        );
-        seen.delete(fragment);
+        if (!fragment) continue;
+        const asMatched = matched && applies(fragment.on, fragment.selections);
+        // Walked as matching already covers every key a loose walk would add.
+        if (walkedMatched.has(fragment)) continue;
+        if (!asMatched && walkedLoose.has(fragment)) continue;
+        (asMatched ? walkedMatched : walkedLoose).add(fragment);
+        walk(fragment.selections, asMatched);
       }
     }
   };
