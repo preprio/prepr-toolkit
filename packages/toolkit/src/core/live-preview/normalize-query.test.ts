@@ -549,3 +549,23 @@ describe('parsePatchLog', () => {
     expect(parsed.at(-1)).toMatchObject({ value: '599' });
   });
 });
+
+describe('normalizeQuery edit links', () => {
+  it('keeps the hidden edit link of the text it replaces', async () => {
+    const { vercelStegaCombine, vercelStegaSplit } =
+      await import('@vercel/stega');
+    const link = {
+      origin: 'prepr.io',
+      href: 'https://x.prepr.io/content/edit/p',
+    };
+    const result = {
+      Post: { _id: 'p', title: vercelStegaCombine('Old', link) },
+    };
+    const next = normalizeQuery('{ Post { _id title } }', result, {
+      log: [{ type: 'field', itemId: 'p', field: 'title', value: 'New' }],
+    });
+    const split = vercelStegaSplit(next.Post.title);
+    expect(split.cleaned).toBe('New');
+    expect(split.encoded).toBe(vercelStegaSplit(result.Post.title).encoded);
+  });
+});

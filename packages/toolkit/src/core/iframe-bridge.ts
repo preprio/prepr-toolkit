@@ -131,7 +131,10 @@ const EDITOR_BASE_DOMAIN = 'prepr.io';
  * one label deep, so nothing legitimate is lost, and asset/CDN subdomains stay
  * unable to drive the toolbar even if content on them is ever attacker-shaped.
  */
-function isAllowedEditorOrigin(origin: string, allowed?: string[]): boolean {
+export function isAllowedEditorOrigin(
+  origin: string,
+  allowed?: string[],
+): boolean {
   // An explicit list opts out of the wildcard entirely (self-hosted editors).
   // `'*'` trusts any framing page; the opaque "null" origin of a sandboxed
   // frame is still refused, because postMessage cannot target it.

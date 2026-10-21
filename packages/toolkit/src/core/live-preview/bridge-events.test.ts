@@ -31,6 +31,46 @@ describe('createLiveBridge', () => {
   });
   afterEach(() => bridge.stop());
 
+  it('ignores a handshake from a page that is not the Prepr editor', () => {
+    post({ event: 'prepr:initVE' }, 'https://attacker.example');
+    post(
+      {
+        event: 'prepr:fieldChange',
+        itemId: 'a',
+        field: 'body',
+        value: '<img onerror=x>',
+      },
+      'https://attacker.example',
+    );
+    expect(store.pushPatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the first allowed editor after a rejected handshake', () => {
+    post({ event: 'prepr:initVE' }, 'https://attacker.example');
+    post({ event: 'prepr:initVE' });
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'a',
+      field: 'title',
+      value: 'x',
+    });
+    expect(store.pushPatch).toHaveBeenCalledWith('a', 'title', 'x');
+  });
+
+  it('accepts an origin from the configured allowlist', () => {
+    bridge.stop();
+    bridge = createLiveBridge(store, {
+      allowedEditorOrigins: () => ['http://acme.localhost:8000'],
+    });
+    bridge.start();
+    post({ event: 'prepr:initVE' }, 'http://acme.localhost:8000');
+    post(
+      { event: 'prepr:fieldChange', itemId: 'a', field: 'title', value: 'x' },
+      'http://acme.localhost:8000',
+    );
+    expect(store.pushPatch).toHaveBeenCalledWith('a', 'title', 'x');
+  });
+
   it('ignores live events before the initVE handshake', () => {
     post({ event: 'prepr:fieldChange', itemId: 'a', field: 'f', value: 'v' });
     expect(store.pushPatch).not.toHaveBeenCalled();

@@ -17,6 +17,11 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const { syncPreprLiveLog } = vi.hoisted(() => ({
+  syncPreprLiveLog: vi.fn(async (_log: unknown) => {}),
+}));
+vi.mock('./live-action', () => ({ syncPreprLiveLog }));
+
 const refresh = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh, push: vi.fn() }),
@@ -58,7 +63,7 @@ describe('useLive', () => {
 
   it('returns data untouched outside an iframe and ignores editor events', async () => {
     const { container } = await render(
-      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />
+      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
     post({ event: 'prepr:initVE' });
     post({
@@ -75,7 +80,7 @@ describe('useLive', () => {
     stubFramed();
     initLivePreview();
     const { container } = await render(
-      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />
+      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
 
     await React.act(async () => {
@@ -99,7 +104,7 @@ describe('useLive', () => {
       .mockResolvedValue({ _id: 'hero-1', heading: 'Saved' });
     initLivePreview({ fetcher });
     const { container } = await render(
-      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />
+      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
 
     await React.act(async () => {
@@ -117,7 +122,7 @@ describe('useLive', () => {
     stubFramed();
     initLivePreview();
     const { unmount } = await render(
-      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />
+      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
     await unmount();
     // No assertion beyond "does not throw": unregistered listeners must not fire.
@@ -128,6 +133,36 @@ describe('useLive', () => {
       field: 'heading',
       value: 'x',
     });
+  });
+});
+
+describe('useLive after a server re-render', () => {
+  beforeEach(() => resetLivePreviewForTests());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('keeps typed text when the server sends the stored content again', async () => {
+    stubFramed();
+    const first = await render(
+      <Heading page={{ _id: 'hero-1', heading: 'Stored' }} />,
+    );
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({
+        event: 'prepr:fieldChange',
+        itemId: 'hero-1',
+        field: 'heading',
+        value: 'Typed',
+      });
+    });
+    expect(first.container.textContent).toBe('Typed');
+    await first.unmount();
+
+    // The route re-renders on the server without the change, so the
+    // component receives the stored value as a new payload.
+    const second = await render(
+      <Heading page={{ _id: 'hero-1', heading: 'Stored' }} />,
+    );
+    expect(second.container.textContent).toBe('Typed');
   });
 });
 
@@ -160,5 +195,74 @@ describe('PreprRefresh', () => {
     post({ event: 'prepr:itemChanged', itemId: 'any' });
     await React.act(async () => {});
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('sends unsaved changes to the server once typing pauses', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    syncPreprLiveLog.mockClear();
+    await render(<PreprRefresh />);
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      for (const value of ['a', 'ab', 'abc']) {
+        post({
+          event: 'prepr:fieldChange',
+          itemId: 'p',
+          field: 'title',
+          value,
+        });
+        await vi.advanceTimersByTimeAsync(50);
+      }
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(syncPreprLiveLog).toHaveBeenCalledTimes(1);
+    expect(syncPreprLiveLog).toHaveBeenCalledWith([
+      { type: 'field', itemId: 'p', field: 'title', value: 'abc' },
+    ]);
+    vi.useRealTimers();
+  });
+
+  it('drops pending changes when the editor saves', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    syncPreprLiveLog.mockClear();
+    await render(<PreprRefresh />);
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({
+        event: 'prepr:fieldChange',
+        itemId: 'p',
+        field: 'title',
+        value: 'x',
+      });
+      post({ event: 'prepr:itemChanged', itemId: 'p' });
+      await vi.advanceTimersByTimeAsync(400);
+    });
+
+    expect(syncPreprLiveLog).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('ignores changes from a page that is not the Prepr editor', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    syncPreprLiveLog.mockClear();
+    await render(<PreprRefresh />);
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' }, 'https://attacker.example');
+      post(
+        { event: 'prepr:fieldChange', itemId: 'p', field: 'title', value: 'x' },
+        'https://attacker.example',
+      );
+      await vi.advanceTimersByTimeAsync(400);
+    });
+
+    expect(syncPreprLiveLog).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

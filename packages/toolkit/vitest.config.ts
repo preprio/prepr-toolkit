@@ -19,5 +19,7 @@ export default defineConfig({
     // cold. When `turbo` builds the examples in parallel that transform can
     // exceed vitest's 5s default, so the limit is raised for everything.
     testTimeout: 20_000,
+    // The end-to-end suites run separately: `pnpm test:e2e`.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
   },
 });

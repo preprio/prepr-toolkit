@@ -1,3 +1,5 @@
+import { vercelStegaSplit } from '@vercel/stega';
+
 import { createScopedLogger } from '../utils';
 import { indexSnapshot, type LivePath } from './index-snapshot';
 import {
@@ -153,7 +155,8 @@ export function normalizeQuery<T>(
 
     if (patch.type === 'field') {
       for (const target of targets) {
-        root = writeAtPath(root, target, patch.value);
+        const value = keepEditLink(readAtPath(root, target), patch.value);
+        root = writeAtPath(root, target, value);
       }
     } else {
       const before = root;
@@ -166,6 +169,27 @@ export function normalizeQuery<T>(
     }
   }
   return root as T;
+}
+
+function readAtPath(root: unknown, path: LivePath): unknown {
+  let node = root;
+  for (const step of path) {
+    if (node === null || typeof node !== 'object') return undefined;
+    node = (node as Record<string | number, unknown>)[step];
+  }
+  return node;
+}
+
+/**
+ * Text the editor pushes carries no hidden edit link, while the value it
+ * replaces does. Carrying the old link over keeps the element click-to-edit
+ * after a server render shows the new text.
+ */
+function keepEditLink(current: unknown, value: LiveValue): LiveValue {
+  if (typeof current !== 'string' || typeof value !== 'string') return value;
+  const { encoded } = vercelStegaSplit(current);
+  if (!encoded || vercelStegaSplit(value).encoded) return value;
+  return value + encoded;
 }
 
 function isEnvelope(value: object): value is { data: unknown } {

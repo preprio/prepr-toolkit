@@ -1,5 +1,6 @@
 import { createScopedLogger } from '../utils';
 import { indexSnapshot, type SnapshotIndex } from './index-snapshot';
+import type { LivePatch } from './normalize-query';
 import {
   patchSnapshot,
   syncListSnapshot,
@@ -35,9 +36,19 @@ export interface LiveStore {
   setFetcher(fetcher: LiveFetcher): void;
   /** Fires on every accepted `invalidate`, before refetches settle. */
   onInvalidate(fn: (itemId: string) => void): () => void;
+  /**
+   * Every unsaved change received since the last save, oldest first, one
+   * entry per item and field (a newer value replaces the older entry). This
+   * is what a server render needs to show the same changes: pass it to
+   * `normalizeQuery`. Cleared when the editor saves.
+   */
+  getLog(): LivePatch[];
+  /** Fires whenever the log changes, including when it is cleared. */
+  onLogChange(fn: (log: LivePatch[]) => void): () => void;
 }
 
 const INVALIDATE_DEBOUNCE_MS = 150;
+const MAX_LOG_ENTRIES = 500;
 
 interface Entry {
   snapshot: unknown;
@@ -58,6 +69,20 @@ export function createLiveStore(): LiveStore {
   const invalidateListeners = new Set<(itemId: string) => void>();
   const pendingInvalidates = new Map<string, ReturnType<typeof setTimeout>>();
   let defaultFetcher: LiveFetcher | null = null;
+  let log: LivePatch[] = [];
+  const logListeners = new Set<(log: LivePatch[]) => void>();
+
+  function record(patch: LivePatch): void {
+    const next = log.filter(
+      (p) =>
+        p.type !== patch.type ||
+        p.itemId !== patch.itemId ||
+        p.field !== patch.field,
+    );
+    next.push(patch);
+    log = next.slice(-MAX_LOG_ENTRIES);
+    logListeners.forEach((fn) => fn(log));
+  }
 
   function notify(entry: Entry): void {
     entry.listeners.forEach((fn) => fn());
@@ -95,6 +120,33 @@ export function createLiveStore(): LiveStore {
         listeners: new Set(),
         fetchToken: 0,
       };
+      // Data that arrives after the editor made changes (a server re-render,
+      // a component mounting late) starts from stored content: replay the
+      // unsaved changes so it shows what the editor shows. Replaying onto
+      // data that already includes them changes nothing.
+      for (const patch of log) {
+        if (patch.type === 'field') {
+          entry.snapshot = patchSnapshot(
+            entry.snapshot,
+            entry.index,
+            patch.itemId,
+            patch.field,
+            patch.value,
+          );
+        } else {
+          const next = syncListSnapshot(
+            entry.snapshot,
+            entry.index,
+            patch.itemId,
+            patch.field,
+            patch.entries,
+          );
+          if (next !== entry.snapshot) {
+            entry.snapshot = next;
+            entry.index = indexSnapshot(next);
+          }
+        }
+      }
       entries.add(entry);
       return {
         getSnapshot: () => entry.snapshot,
@@ -110,6 +162,9 @@ export function createLiveStore(): LiveStore {
     },
 
     pushPatch(itemId, field, value) {
+      // Recorded even when no registration holds the item: a server render
+      // may still show it.
+      record({ type: 'field', itemId, field, value });
       for (const entry of entries) {
         const next = patchSnapshot(
           entry.snapshot,
@@ -126,6 +181,7 @@ export function createLiveStore(): LiveStore {
     },
 
     pushList(itemId, field, list) {
+      record({ type: 'list', itemId, field, entries: list });
       for (const entry of entries) {
         const next = syncListSnapshot(
           entry.snapshot,
@@ -145,6 +201,12 @@ export function createLiveStore(): LiveStore {
     },
 
     invalidate(itemId) {
+      // A save makes the stored content current; replaying the unsaved
+      // changes on top of it would only resurrect stale values.
+      if (log.length) {
+        log = [];
+        logListeners.forEach((fn) => fn(log));
+      }
       const pending = pendingInvalidates.get(itemId);
       if (pending) clearTimeout(pending);
       pendingInvalidates.set(
@@ -160,6 +222,13 @@ export function createLiveStore(): LiveStore {
     onInvalidate(fn) {
       invalidateListeners.add(fn);
       return () => invalidateListeners.delete(fn);
+    },
+
+    getLog: () => log,
+
+    onLogChange(fn) {
+      logListeners.add(fn);
+      return () => logListeners.delete(fn);
     },
   };
 }

@@ -3,6 +3,7 @@ import {
   getTrustedParentOrigin,
   sendPreprEvent,
 } from '../utils';
+import { isAllowedEditorOrigin } from '../iframe-bridge';
 import type { LiveStore } from './live-store';
 import { isLiveValue, parseListEntries } from './validate';
 
@@ -22,19 +23,38 @@ export interface LiveBridge {
   stop(): void;
 }
 
+export interface LiveBridgeOptions {
+  /**
+   * Editor origins allowed to drive live preview, read on every handshake.
+   * Defaults to `https://<tenant>.prepr.io`; same semantics as the toolbar's
+   * `allowedEditorOrigins`.
+   */
+  allowedEditorOrigins?: () => string[] | undefined;
+}
+
 /**
  * Feeds editor live-preview events into the store. Same trusted-origin rule
- * as iframe-bridge.ts: the first `prepr:initVE` sender wins; everything else
- * is ignored. Kept separate from the toolbar bridge so live preview works
- * without the toolbar mounted.
+ * as the toolbar bridge: the first `prepr:initVE` from an allowed editor
+ * origin wins; everything else is ignored. Kept separate from the toolbar
+ * bridge so live preview works without the toolbar mounted.
  */
-export function createLiveBridge(store: LiveStore): LiveBridge {
+export function createLiveBridge(
+  store: LiveStore,
+  options: LiveBridgeOptions = {},
+): LiveBridge {
   let parentOrigin: string | null = null;
 
   const onMessage = (evt: MessageEvent): void => {
     const data = evt?.data as LiveEditorMessage | undefined;
     if (data?.event === 'prepr:initVE' && !parentOrigin) {
-      parentOrigin = evt.origin;
+      // Pushed values end up in rendered HTML (rich text bodies), and on a
+      // server render in the site's own response. Only the Prepr editor may
+      // send them: any other page framing the site must be ignored.
+      if (isAllowedEditorOrigin(evt.origin, options.allowedEditorOrigins?.())) {
+        parentOrigin = evt.origin;
+      } else {
+        debug.warn('ignored live preview handshake from origin', evt.origin);
+      }
       return;
     }
     // This bridge starts when the first live component mounts, which can be

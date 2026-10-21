@@ -25,10 +25,13 @@ const externalSiblingComponents: Plugin = {
   name: 'external-sibling-components',
   setup(build) {
     const ext = build.initialOptions.format === 'cjs' ? '.cjs' : '.js';
-    build.onResolve({ filter: /^\.\/(components|live)(\.js)?$/ }, (args) => ({
-      path: `${args.path.replace(/\.js$/, '')}${ext}`,
-      external: true,
-    }));
+    build.onResolve(
+      { filter: /^\.\/(components|live|live-action)(\.js)?$/ },
+      (args) => ({
+        path: `${args.path.replace(/\.js$/, '')}${ext}`,
+        external: true,
+      }),
+    );
   },
 };
 
@@ -43,6 +46,10 @@ export default defineConfig([
       'json-script': 'src/core/json-script.ts',
       'nextjs/components': 'src/nextjs/components.ts',
       'nextjs/live': 'src/nextjs/live.ts',
+      // A `'use server'` module: Next only turns it into a server action
+      // when the directive sits on the file the client imports, so it is
+      // its own entry and `nextjs/live` imports it as a sibling.
+      'nextjs/live-action': 'src/nextjs/live-action.ts',
     },
     // No `clean` on any config here: tsup runs this array concurrently, so a
     // clean in one races the output of the others — it silently ate
@@ -50,6 +57,7 @@ export default defineConfig([
     // this config's wipe. `dist/` is cleared by the prebuild script instead.
     clean: false,
     external: ['next', 'react', 'react-dom'],
+    esbuildPlugins: [externalSiblingComponents],
   },
   {
     ...sharedOptions,

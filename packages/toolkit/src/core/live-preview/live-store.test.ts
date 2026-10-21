@@ -135,4 +135,58 @@ describe('createLiveStore', () => {
 
     expect(listener).not.toHaveBeenCalled();
   });
+
+  describe('patch log', () => {
+    it('records pushes oldest first, one entry per item and field', () => {
+      const store = createLiveStore();
+      const onLog = vi.fn();
+      store.onLogChange(onLog);
+      store.pushPatch('a', 'title', 'one');
+      store.pushPatch('b', 'title', 'x');
+      store.pushPatch('a', 'title', 'two');
+      store.pushList('a', 'content', [{ _id: 'e1' }]);
+      expect(store.getLog()).toEqual([
+        { type: 'field', itemId: 'b', field: 'title', value: 'x' },
+        { type: 'field', itemId: 'a', field: 'title', value: 'two' },
+        {
+          type: 'list',
+          itemId: 'a',
+          field: 'content',
+          entries: [{ _id: 'e1' }],
+        },
+      ]);
+      expect(onLog).toHaveBeenCalledTimes(4);
+    });
+
+    it('records changes for items no registration holds', () => {
+      const store = createLiveStore();
+      store.pushPatch('server-only', 'title', 'x');
+      expect(store.getLog()).toHaveLength(1);
+    });
+
+    it('clears on save', () => {
+      const store = createLiveStore();
+      const onLog = vi.fn();
+      store.pushPatch('a', 'title', 'x');
+      store.onLogChange(onLog);
+      store.invalidate('a');
+      expect(store.getLog()).toEqual([]);
+      expect(onLog).toHaveBeenCalledWith([]);
+    });
+
+    it('replays unsaved changes onto data registered later', () => {
+      const store = createLiveStore();
+      store.pushPatch('hero-1', 'heading', 'Typed');
+      const reg = store.register(pageData());
+      const snapshot = reg.getSnapshot() as ReturnType<typeof pageData>;
+      expect(snapshot.Page.content[0].heading).toBe('Typed');
+    });
+
+    it('leaves data that already includes the changes as it is', () => {
+      const store = createLiveStore();
+      store.pushPatch('hero-1', 'heading', 'Hi');
+      const data = pageData();
+      expect(store.register(data).getSnapshot()).toBe(data);
+    });
+  });
 });

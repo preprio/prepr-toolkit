@@ -330,33 +330,50 @@ iframe — `examples/editor-emulator` emulates this for local development.
 Unsaved structural changes (adding/reordering components) appear after save;
 typed text is live immediately.
 
-#### Applying unsaved changes on the server: `normalizeQuery` (experimental)
+#### Unsaved changes in server components: `normalizeQuery` (experimental, Next.js 16+)
 
-`normalizeQuery` applies the editor's unsaved changes to a query result
-wherever you fetch it, so server components render them without client
-wrappers:
+Server components show the editor's unsaved changes when you pass their query
+results through `normalizeQuery`, with whatever client you fetch with:
 
 ```ts
-import { normalizeQuery } from '@preprio/toolkit';
+import { normalizeQuery } from '@preprio/toolkit/nextjs';
+
+const preview = process.env.VERCEL_ENV !== 'production';
 
 const data = await fetchFromPrepr(GetPageDocument, { slug }); // any client
-const page = normalizeQuery(GetPageDocument, data, { log });
+const page = await normalizeQuery(GetPageDocument, data, { enabled: preview });
 ```
 
-- `log` is the list of changes the editor made since the last save
-  (`{ type: 'field', itemId, field, value }` and
-  `{ type: 'list', itemId, field, entries }`). It is treated as hostile input
-  and validated. Without a log the result comes back untouched and the query
-  is not parsed.
-- The query (source text, a `DocumentNode`, or a typed document string) tells
-  the toolkit which response key holds which field. Changes therefore land
-  under aliases, inside single components, on dynamic content entries, and on
-  every place the same item appears. Fields the query did not select are left
-  alone.
-- Select `_id` on every item and component that should update.
+Mount `<PreprRefresh />` in the root layout, inside your preview gate. While an
+editor types, it sends the unsaved changes to the server and the route
+re-renders with them; on save it refreshes with the stored content.
 
-Delivering the log from the editor to your server render is not part of this
-release yet; framework adapters will pass it in for you.
+- The query (source text, a `DocumentNode`, or a typed document string) tells
+  the toolkit which response key holds which field. Changes land under
+  aliases, inside single components, on dynamic content entries, and on every
+  place the same item appears. Fields the query did not select are left
+  alone. Select `_id` on every item and component that should update.
+- Changed text keeps its hidden edit link, so it stays click-to-edit.
+- `useLive` data keeps the typed values across these re-renders.
+
+**Production safety.** Pass `enabled` from the same preview flag you give the
+middleware, and never `true` on a production deployment:
+
+- With `enabled: false` (the default) the result is returned untouched and
+  the request is never read, so static and ISR pages stay static.
+- Changes only reach the response to the editor's own server action. The
+  action stores them in the server process under a random, single-use token
+  and sets only that token as a cookie that expires immediately. A request
+  carrying a forged or replayed cookie, such as a cacheable GET, sees
+  nothing. Next.js rejects the action from other origins.
+- Changes are only accepted from the Prepr editor (`https://*.prepr.io`, or
+  your `allowedEditorOrigins` via `initLivePreview`), never from another page
+  that frames your site, and they are validated as hostile input.
+
+On Next.js 15 and older the action does nothing and pages update on save.
+
+The framework-free core export, `normalizeQuery(query, result, { log })` from
+`@preprio/toolkit`, applies a log you deliver yourself (other frameworks).
 
 ## Astro
 
