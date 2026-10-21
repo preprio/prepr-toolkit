@@ -14,12 +14,15 @@ interface EditorMessage {
   editMode?: boolean;
   field?: unknown;
   id?: unknown;
+  block?: unknown;
 }
 
 /** Which field the editor asked the preview to bring on screen. */
 export interface ScrollToFieldMessage {
   field: string;
   id?: string;
+  /** Item within a list field value: the n-th `<li>` of a rich text list. */
+  block?: number;
 }
 
 export interface IframeBridge {
@@ -167,8 +170,12 @@ export function createIframeBridge(
       // rather than stringified further down.
       if (typeof data.field !== 'string' || !data.field) return;
       if (data.id !== undefined && typeof data.id !== 'string') return;
+      const block =
+        typeof data.block === 'number' && Number.isInteger(data.block)
+          ? data.block
+          : undefined;
       try {
-        onScrollToField?.({ field: data.field, id: data.id });
+        onScrollToField?.({ field: data.field, id: data.id, block });
       } catch (error) {
         // A throwing handler must not take down the message listener and with
         // it the rest of the editor integration.

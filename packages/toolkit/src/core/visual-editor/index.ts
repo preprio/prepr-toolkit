@@ -97,8 +97,12 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     // a click that selects a field.
     e.preventDefault();
     e.stopPropagation();
-    select(encoded);
-    opts.onEdit(readEditPayload(encoded));
+    const item = listItemIn(encoded, e.target);
+    select(item?.element ?? encoded, encoded);
+    opts.onEdit({
+      ...readEditPayload(encoded),
+      ...(item && { block: item.index }),
+    });
   };
 
   const handleKey = (e: KeyboardEvent): void => {
@@ -114,8 +118,38 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const handleScroll = (): void => overlay.onScroll();
   const handleResize = (): void => overlay.schedule();
 
-  function select(el: HTMLElement): void {
-    overlay.setSelected(el, labelFor(el));
+  /**
+   * The list item a click landed in, when the field's value is a rich text
+   * list: one field, but each `<li>` is its own line for the editor.
+   */
+  function listItemIn(
+    encoded: HTMLElement,
+    target: EventTarget | null,
+  ): { element: HTMLElement; index: number } | null {
+    if (!(target instanceof Element)) return null;
+    const li = target.closest('li');
+    if (!li || !encoded.contains(li) || !li.parentElement) return null;
+    const items = Array.from(li.parentElement.children).filter(
+      (child) => child.tagName === 'LI',
+    );
+    return { element: li as HTMLElement, index: items.indexOf(li) };
+  }
+
+  function nthListItem(
+    encoded: HTMLElement,
+    block: number,
+  ): HTMLElement | null {
+    const list = encoded.querySelector('ul, ol');
+    if (!list) return null;
+    const items = Array.from(list.children).filter(
+      (child) => child.tagName === 'LI',
+    );
+    return (items[block] as HTMLElement | undefined) ?? null;
+  }
+
+  /** `labelSource` names the field when `el` is a part of it, a list item. */
+  function select(el: HTMLElement, labelSource: HTMLElement = el): void {
+    overlay.setSelected(el, labelFor(labelSource));
     if (overlay.getHoverTarget() === el) overlay.setHover(null, '');
   }
 
@@ -195,10 +229,14 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       settlePendingFind = () => resolve(false);
       const tryFind = (): void => {
         findTimeout = null;
-        const el = findFieldElement(lookup);
-        if (el) {
+        const found = findFieldElement(lookup);
+        if (found) {
+          const el =
+            lookup.block !== undefined
+              ? (nthListItem(found, lookup.block) ?? found)
+              : found;
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          if (running) select(el);
+          if (running) select(el, found);
           finish(true);
           return;
         }

@@ -11,6 +11,8 @@ export interface StegaEditPayload extends StegaDecodedData {
   id?: string;
   field?: string;
   locale?: string;
+  /** Which list item inside the field value was clicked, when it was one. */
+  block?: number;
 }
 
 /**

@@ -193,4 +193,36 @@ describe('createVisualEditor', () => {
     heading.dispatchEvent(click);
     expect(onEdit).toHaveBeenCalledTimes(1);
   });
+
+  it('reports which list item was clicked and selects just that item', async () => {
+    const entry = tagged('content.2', 'div');
+    entry.innerHTML = '<ul><li>One</li><li id="second">Two</li></ul>';
+    const second = entry.querySelector<HTMLElement>('#second')!;
+    rect(second);
+    editor.start();
+
+    second.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await nextFrame();
+
+    expect(onEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ field: 'content.2', block: 1 }),
+    );
+    expect(box('selected').textContent).toBe('Content');
+  });
+
+  it('focusField with a block selects that list item', async () => {
+    const entry = tagged('content.2', 'div');
+    entry.innerHTML =
+      '<ol><li>One</li><li>Two</li><li id="third">Three</li></ol>';
+    const third = entry.querySelector<HTMLElement>('#third')!;
+    third.scrollIntoView = vi.fn();
+    editor.start();
+
+    await expect(
+      editor.focusField({ field: 'content.2', block: 2 }),
+    ).resolves.toBe(true);
+    expect(third.scrollIntoView).toHaveBeenCalled();
+  });
 });

@@ -50,6 +50,8 @@ export function fieldLabel(path: string | null | undefined): string {
 export interface FieldLookup {
   field: string;
   id?: string;
+  /** Narrow to the n-th list item inside the field's element. */
+  block?: number;
 }
 
 /**

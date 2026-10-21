@@ -179,6 +179,32 @@ describe('createIframeBridge — prepr:scrollToField', () => {
     bridge.stop();
   });
 
+  it('forwards an integer block and drops any other block value', () => {
+    const onScrollToField = vi.fn();
+    const bridge = createIframeBridge(null, { onScrollToField });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(EDITOR, {
+      event: 'prepr:scrollToField',
+      field: 'content.3',
+      block: 2,
+    });
+    postFrom(EDITOR, {
+      event: 'prepr:scrollToField',
+      field: 'content.3',
+      block: '2',
+    });
+
+    expect(onScrollToField).toHaveBeenNthCalledWith(1, {
+      field: 'content.3',
+      id: undefined,
+      block: 2,
+    });
+    expect(onScrollToField.mock.calls[1][0].block).toBeUndefined();
+    bridge.stop();
+  });
+
   it('ignores the request from an untrusted origin', () => {
     const onScrollToField = vi.fn();
     const bridge = createIframeBridge(null, { onScrollToField });
