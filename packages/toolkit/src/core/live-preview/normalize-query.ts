@@ -142,7 +142,9 @@ export function normalizeQuery<T>(
     const targets: LivePath[] = [];
     for (const ownerPath of ownerPaths) {
       if (doc) {
-        targets.push(...resolveTargets(root, doc, ownerPath, segments));
+        const resolved = resolveTargets(root, doc, ownerPath, segments);
+        root = resolved.root;
+        targets.push(...resolved.targets);
       } else {
         targets.push([...ownerPath, ...segments.map(toPathSegment)]);
       }
@@ -257,14 +259,15 @@ function resolveTargets(
   doc: QueryDocument,
   ownerPath: LivePath,
   segments: string[],
-): LivePath[] {
+): { root: unknown; targets: LivePath[] } {
   let owner: unknown = root;
   for (const step of ownerPath) {
     owner = (owner as Record<string | number, unknown>)[step];
   }
   const selections = selectionsAt(root, doc, ownerPath);
-  if (!selections) return [];
+  if (!selections) return { root, targets: [] };
 
+  let current = root;
   const out: LivePath[] = [];
   const walk = (
     node: unknown,
@@ -296,12 +299,36 @@ function resolveTargets(
       if (field.name !== segment && field.name !== wanted) continue;
       if (!(field.key in record)) continue;
       matched = true;
-      walk(record[field.key], field.selections, i + 1, [...path, field.key]);
+      const fieldPath = [...path, field.key];
+      let value = record[field.key];
+      // A component that is still empty (a section just added, with nothing
+      // typed into it yet) holds null. The query says what it looks like, so
+      // create it in that shape and write into it.
+      const next = segments[i + 1];
+      if (
+        value === null &&
+        field.selections.length &&
+        next !== undefined &&
+        next !== 'items' &&
+        !INDEX_SEGMENT.test(next)
+      ) {
+        const typename = resolveTypename(
+          doc,
+          field.selections,
+          undefined,
+          undefined,
+        );
+        if (typename !== undefined) {
+          value = fillObject(doc, field.selections, typename, {}, undefined);
+          current = writeAtPath(current, fieldPath, value as LiveValue);
+        }
+      }
+      walk(value, field.selections, i + 1, fieldPath);
     }
     if (!matched && segment === 'items') walk(node, sel, i + 1, path);
   };
   walk(owner, selections, 0, ownerPath);
-  return out;
+  return { root: current, targets: out };
 }
 
 const NON_ALPHANUMERIC = /[^a-z0-9]/gi;

@@ -697,3 +697,59 @@ describe('normalizeQuery new list entries', () => {
     ).toEqual([]);
   });
 });
+
+describe('normalizeQuery edits inside a new entry', () => {
+  it('creates an empty nested component in the queried shape when an edit needs it', () => {
+    const next = normalizeQuery(PAGE_QUERY, pageResult(), {
+      log: [
+        {
+          type: 'list',
+          itemId: 'page-1',
+          field: 'sections',
+          entries: [
+            { _id: 'sbs-1' },
+            { _id: 'content-1' },
+            {
+              _id: 'new-1',
+              __typename: 'SideBySide',
+              fields: { content: null },
+            },
+          ],
+        },
+        {
+          type: 'field',
+          itemId: 'new-1',
+          field: 'content.headline',
+          value: 'Typed',
+        },
+        {
+          type: 'field',
+          itemId: 'new-1',
+          field: 'content.headlineStyle',
+          value: 'H1',
+        },
+      ],
+    });
+    const added = (
+      next.Page.sections as unknown as Array<Record<string, unknown>>
+    )[2];
+    expect(added.content).toEqual({
+      __typename: 'TextGroup',
+      _id: null,
+      headline: 'Typed',
+      headline_style: 'H1',
+      content: null,
+      ctas: null,
+    });
+  });
+
+  it('does not invent objects for fields the query leaves out', () => {
+    const result = pageResult();
+    const next = normalizeQuery(PAGE_QUERY, result, {
+      log: [
+        { type: 'field', itemId: 'sbs-1', field: 'missing.title', value: 'x' },
+      ],
+    });
+    expect(next).toBe(result);
+  });
+});
