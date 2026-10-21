@@ -19,6 +19,40 @@ const LABEL_SPACE_PX = 22;
 
 const BOX_PADDING_PX = 3;
 
+// Where to hit-test a target for something drawn over it, as fractions of
+// its box: the centre and four points inset from the corners.
+const PROBE_POINTS: Array<[number, number]> = [
+  [0.5, 0.5],
+  [0.15, 0.2],
+  [0.85, 0.2],
+  [0.15, 0.8],
+  [0.85, 0.8],
+];
+
+/**
+ * Whether any probe point of `rect` that lies in the viewport hits `target`
+ * (or something inside it). False when an open menu, modal or sticky bar
+ * covers it, so its outline is not drawn on top of that layer. The overlay
+ * itself has `pointer-events: none`, so hit-testing looks straight through
+ * it.
+ */
+function isUncovered(target: HTMLElement, rect: DOMRect): boolean {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  let probed = false;
+  for (const [fx, fy] of PROBE_POINTS) {
+    const x = rect.left + rect.width * fx;
+    const y = rect.top + rect.height * fy;
+    if (x < 0 || y < 0 || x >= width || y >= height) continue;
+    probed = true;
+    const hit = document.elementFromPoint(x, y);
+    // No answer (no layout engine) is not evidence of a cover.
+    if (!hit || hit === target || target.contains(hit)) return true;
+  }
+  // Entirely off screen: nothing to hide it behind.
+  return !probed;
+}
+
 const STYLES = `
 :host {
   all: initial;
@@ -214,6 +248,7 @@ export class VisualEditorOverlay {
     }
     const rect = target.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return null;
+    if (!isUncovered(target, rect)) return null;
     return rect;
   }
 

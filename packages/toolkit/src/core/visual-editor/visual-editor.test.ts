@@ -239,4 +239,27 @@ describe('createVisualEditor', () => {
       expect.objectContaining({ field: 'content.4', entryId: 'element-7' }),
     );
   });
+
+  it('hides the selected outline while something else covers the element', async () => {
+    const heading = tagged('title');
+    rect(heading);
+    const menu = document.createElement('nav');
+    document.body.appendChild(menu);
+    editor.start();
+    heading.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+
+    const fromPoint = vi.spyOn(document, 'elementFromPoint');
+    fromPoint.mockReturnValue(heading);
+    window.dispatchEvent(new Event('resize'));
+    await nextFrame();
+    expect(box('selected').hasAttribute('data-visible')).toBe(true);
+
+    // An open menu now sits on top of the heading.
+    fromPoint.mockReturnValue(menu);
+    document.dispatchEvent(new Event('transitionend'));
+    await nextFrame();
+    expect(box('selected').hasAttribute('data-visible')).toBe(false);
+  });
 });

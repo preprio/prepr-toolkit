@@ -68,6 +68,9 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
 
   const updateHover = (): void => {
     pointerFrame = null;
+    // Menus open and close under the pointer without a scroll or resize, so
+    // re-check whether the selected element is still uncovered.
+    overlay.schedule();
     if (suspended) return;
     const encoded = encodedFrom(lastPointerTarget);
     // The selected box already outlines its element; a second box on top of
@@ -117,6 +120,8 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
 
   const handleScroll = (): void => overlay.onScroll();
   const handleResize = (): void => overlay.schedule();
+  // A menu sliding open or a modal fading in ends with one of these.
+  const handleSettled = (): void => overlay.schedule();
 
   /**
    * The list item a click landed in, when the field's value is a rich text
@@ -182,6 +187,14 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       passive: true,
     });
     window.addEventListener('resize', handleResize, { passive: true });
+    document.addEventListener('transitionend', handleSettled, {
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener('animationend', handleSettled, {
+      capture: true,
+      passive: true,
+    });
     debug.log('visual editor started');
   }
 
@@ -204,6 +217,12 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     window.removeEventListener('blur', handleBlur);
     window.removeEventListener('scroll', handleScroll, { capture: true });
     window.removeEventListener('resize', handleResize);
+    document.removeEventListener('transitionend', handleSettled, {
+      capture: true,
+    });
+    document.removeEventListener('animationend', handleSettled, {
+      capture: true,
+    });
     document
       .querySelectorAll(`style[${CURSOR_STYLE_MARKER}]`)
       .forEach((node) => node.remove());
