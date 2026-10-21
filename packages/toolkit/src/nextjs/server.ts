@@ -9,9 +9,6 @@ import type { QueryInput } from '../core/live-preview/query-document';
 import * as React from 'react';
 
 import { LIVE_LOG_COOKIE, takeLiveLog } from './live-log';
-
-// The request header Next.js sets on every server action call.
-const HEADER_NEXT_ACTION = 'next-action';
 import {
   getActiveSegmentFromHeaders,
   getActiveVariantFromHeaders,
@@ -78,67 +75,57 @@ export async function getToolbarProps(
 
 export interface NextNormalizeQueryOptions {
   /**
-   * Whether this render may show unsaved editor changes. Pass the same
-   * preview flag you pass the middleware, and never `true` on a production
-   * deployment. When false (the default) the result is returned untouched
-   * and the request is not read, so static and ISR pages stay static.
+   * Pass the same preview flag as the middleware; never `true` on a
+   * production deployment. When false (the default) the request is not read,
+   * so static and ISR pages stay static.
    */
   enabled?: boolean;
   /** Which operation to use when the document holds more than one. */
   operationName?: string;
 }
 
-/**
- * Unsaved changes the Prepr editor sent for this render, or an empty list.
- * Only the re-render of the editor's own server action has any. Reads the
- * request, which makes the route dynamic. Internal: `normalizeQuery` calls it
- * only when enabled.
- */
-export async function getPreprLiveLog(): Promise<LivePatch[]> {
-  return readLogOnce();
-}
+const HEADER_NEXT_ACTION = 'next-action';
 
-// Per render: the token is single-use, so every `normalizeQuery` call in the
-// same render must share the first read. React's `cache` scopes it to the
-// render; without it (outside React Server Components) each call reads anew.
+// The token is single-use, so every `normalizeQuery` call in one render must
+// share the first read. Outside React Server Components each call reads anew.
 const cacheForRender =
   (React as { cache?: <F extends (...args: never[]) => unknown>(fn: F) => F })
     .cache ?? (<F>(fn: F): F => fn);
 
-const readLogOnce = cacheForRender(async (): Promise<LivePatch[]> => {
-  let token: string | undefined;
-  try {
-    // Only the re-render of a server action call may see a log. Any other
-    // request carrying the cookie, such as a plain GET that replays a token
-    // no render consumed, must not.
-    if (!(await headers()).has(HEADER_NEXT_ACTION)) return [];
-    token = (await cookies()).get(LIVE_LOG_COOKIE)?.value;
-  } catch (error) {
-    // Next signals dynamic rendering and similar control flow by throwing;
-    // those must reach Next. Anything else means there is no request to read
-    // (a build-time call such as `generateStaticParams`): no changes apply.
-    (
-      navigation as { unstable_rethrow?: (error: unknown) => void }
-    ).unstable_rethrow?.(error);
-    return [];
-  }
-  return takeLiveLog(token);
-});
+/**
+ * Unsaved changes the Prepr editor sent for this render, or an empty list.
+ * Reads the request, which makes the route dynamic.
+ */
+export const getPreprLiveLog = cacheForRender(
+  async (): Promise<LivePatch[]> => {
+    let token: string | undefined;
+    try {
+      // Only a server action re-render may see a log, never a plain GET that
+      // replays an unconsumed token.
+      if (!(await headers()).has(HEADER_NEXT_ACTION)) return [];
+      token = (await cookies()).get(LIVE_LOG_COOKIE)?.value;
+    } catch (error) {
+      // Next's control-flow throws (dynamic rendering) must reach Next.
+      // Anything else means there is no request, e.g. at build time.
+      (
+        navigation as { unstable_rethrow?: (error: unknown) => void }
+      ).unstable_rethrow?.(error);
+      return [];
+    }
+    return takeLiveLog(token);
+  },
+);
 
 /**
  * Show the Prepr editor's unsaved changes in server components: pass the
- * query and the result you fetched (with any client), and render what comes
- * back. Outside the editor, or with `enabled: false`, the result is returned
- * as-is.
+ * query and its result, and render what comes back.
  *
  * ```ts
- * const data = await fetchFromPrepr(GetPageDocument, { slug });
  * const page = await normalizeQuery(GetPageDocument, data, { enabled: isPreview });
  * ```
  *
- * Needs `PreprRefresh` mounted in the page or layout, which sends the
- * editor's changes to the server and re-renders the route. Select `_id` on
- * every item and component that should update. Server-only; Next.js 16+.
+ * Needs `PreprRefresh` mounted, and `_id` selected on every item and
+ * component that should update. Server-only; Next.js 16+.
  */
 export async function normalizeQuery<T>(
   query: QueryInput,

@@ -1,9 +1,8 @@
 const UPPERCASE_BOUNDARY = /(.)(?=[A-Z])/g;
 
 /**
- * The GraphQL name Prepr gives a field with this API id: its snake_case form
- * (`headlineStyle` → `headline_style`). Single component fields inside a
- * component keep the API id as is, so callers try the API id first.
+ * The snake_case GraphQL name for an API id. Fields inside a component keep
+ * the API id as is, so callers try the API id first.
  */
 export function graphqlFieldName(apiId: string): string {
   return apiId.replace(UPPERCASE_BOUNDARY, '$1_').toLowerCase();

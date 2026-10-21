@@ -1,24 +1,16 @@
 import type { LivePatch } from '../core/live-preview/normalize-query';
 
-/**
- * Hands the editor's unsaved changes from `syncPreprLiveLog` to the render
- * it triggers. The action stores the log in this process under a random
- * token and sets only the token as a cookie that expires immediately: Next
- * shows cookies set in a server action to the re-render of the same request,
- * and the browser keeps nothing.
- *
- * A token that this process did not issue, or one already used, matches
- * nothing, so a request that carries a forged or replayed cookie (a plain
- * GET, cacheable by a CDN) never sees a log. Only the response to the
- * editor's own server action does.
- *
- * Kept on `globalThis` because the server action and the server helpers ship
- * as separate bundles, each of which would otherwise get its own store.
- */
+// Hands the log from `syncPreprLiveLog` to the render it triggers: the log
+// stays in this process under a random single-use token, and only the token
+// goes into an already-expired cookie, which Next shows to the re-render of
+// the same request. A forged or replayed cookie (a plain GET, cacheable by a
+// CDN) matches nothing. The store lives on `globalThis` because the action
+// and the server helpers ship as separate bundles.
+
 export const LIVE_LOG_COOKIE = '__prepr_live';
 
-// The re-render reads the log within milliseconds of the action storing it;
-// the limits only bound memory when the action is called in bulk.
+// The re-render reads the log within milliseconds; the limits only bound
+// memory when the action is called in bulk.
 const TTL_MS = 15_000;
 const MAX_SLOTS = 50;
 const TOKEN_PATTERN = /^[0-9a-f]{32}$/;
@@ -44,7 +36,7 @@ function prune(map: Map<string, Slot>, now: number): void {
   for (const [token, slot] of map) {
     if (slot.expires <= now) map.delete(token);
   }
-  // Insertion order is age order: drop the oldest beyond the cap.
+  // Insertion order is age order.
   while (map.size >= MAX_SLOTS) {
     map.delete(map.keys().next().value as string);
   }
@@ -65,9 +57,8 @@ export function putLiveLog(log: LivePatch[]): string {
 }
 
 /**
- * The log stored under `token`, removed from the store so the token cannot
- * be replayed by a later request; an empty list for anything else. Callers
- * memoize the result per render.
+ * The log stored under `token`, removed so it cannot be replayed; an empty
+ * list for anything else. Callers memoize the result per render.
  */
 export function takeLiveLog(token: string | undefined): LivePatch[] {
   if (!token || !TOKEN_PATTERN.test(token)) return [];

@@ -13,7 +13,6 @@ import {
 
 const debug = createScopedLogger('live-preview:bridge');
 
-// Message shapes the Prepr editor posts into the preview iframe.
 interface LiveEditorMessage {
   event?: string;
   itemId?: unknown;
@@ -29,19 +28,14 @@ export interface LiveBridge {
 }
 
 export interface LiveBridgeOptions {
-  /**
-   * Editor origins allowed to drive live preview, read on every handshake.
-   * Defaults to `https://<tenant>.prepr.io`; same semantics as the toolbar's
-   * `allowedEditorOrigins`.
-   */
+  /** Same semantics as the toolbar's `allowedEditorOrigins`. */
   allowedEditorOrigins?: () => string[] | undefined;
 }
 
 /**
- * Feeds editor live-preview events into the store. Same trusted-origin rule
- * as the toolbar bridge: the first `prepr:initVE` from an allowed editor
- * origin wins; everything else is ignored. Kept separate from the toolbar
- * bridge so live preview works without the toolbar mounted.
+ * Feeds editor live-preview events into the store. The first `prepr:initVE`
+ * from an allowed origin wins. Separate from the toolbar bridge so live
+ * preview works without the toolbar mounted.
  */
 export function createLiveBridge(
   store: LiveStore,
@@ -52,9 +46,8 @@ export function createLiveBridge(
   const onMessage = (evt: MessageEvent): void => {
     const data = evt?.data as LiveEditorMessage | undefined;
     if (data?.event === 'prepr:initVE' && !parentOrigin) {
-      // Pushed values end up in rendered HTML (rich text bodies), and on a
-      // server render in the site's own response. Only the Prepr editor may
-      // send them: any other page framing the site must be ignored.
+      // Pushed values reach rendered HTML and server responses, so any other
+      // page framing the site must be ignored.
       if (isAllowedEditorOrigin(evt.origin, options.allowedEditorOrigins?.())) {
         parentOrigin = evt.origin;
       } else {
@@ -62,9 +55,8 @@ export function createLiveBridge(
       }
       return;
     }
-    // This bridge starts when the first live component mounts, which can be
-    // after the editor handshake already ran; the toolbar bridge's
-    // allowlisted origin covers that case.
+    // This bridge may start after the handshake already ran; the toolbar
+    // bridge's allowlisted origin covers that case.
     const trusted = parentOrigin ?? getTrustedParentOrigin();
     if (!trusted || evt.origin !== trusted) return;
 
@@ -100,8 +92,8 @@ export function createLiveBridge(
     }
 
     if (data?.event === 'prepr:itemChanged') {
-      // Always the ROOT content item id (the item open in the editor), never
-      // a component instance id — see the design spec's protocol section.
+      // Always the id of the item open in the editor, never a component
+      // instance id.
       if (typeof data.itemId === 'string') {
         store.invalidate(data.itemId);
       } else {
@@ -113,10 +105,8 @@ export function createLiveBridge(
   return {
     start(): void {
       window.addEventListener('message', onMessage);
-      // Tells the editor this page applies `prepr:fieldChange` pushes and
-      // refreshes itself on `prepr:itemChanged`, so it can skip reloading the
-      // iframe after a save. Carries no content, so it may go out before the
-      // handshake.
+      // Lets the editor skip reloading the iframe after a save. Carries no
+      // content, so it may go out before the handshake.
       sendPreprEvent('live_ready', undefined, { allowUntrustedTarget: true });
     },
     stop(): void {

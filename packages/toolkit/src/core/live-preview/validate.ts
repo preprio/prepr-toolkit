@@ -1,8 +1,7 @@
 import type { LiveListEntry, LiveValue } from './patch';
 
-// Validation for editor-supplied live values. They arrive over postMessage, or
-// from an HTTP request when a server applies a patch log, so every check here
-// treats the input as hostile.
+// Editor-supplied values arrive over postMessage or in an HTTP request, so
+// every check here treats the input as hostile.
 
 function isScalar(v: unknown): v is string | number | boolean {
   return (
@@ -14,7 +13,6 @@ const MAX_DEPTH = 3;
 const MAX_ENTRIES = 50;
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const SAFE_URL = /^https?:\/\//i;
-// Keys and field names that a site renders as a link or a media source.
 const URL_KEY = /^(?:url|href|src|link)$|(?:_url|Url)$/;
 // Browsers ignore tabs and newlines anywhere in a URL, and leading control
 // characters and spaces, when they read its scheme.
@@ -22,9 +20,8 @@ const URL_IGNORED_ANYWHERE = /[\t\n\r]/g;
 const SCRIPT_SCHEME = /^(?:javascript|vbscript|data):/i;
 
 /**
- * Whether a string is safe as the value of a link or media field: never a
- * `javascript:`, `vbscript:` or `data:` URL. Relative links, `mailto:` and
- * other schemes pass, as they do in stored content.
+ * Whether a string is safe in a link or media field: never a `javascript:`,
+ * `vbscript:` or `data:` URL. Other schemes pass, as in stored content.
  */
 export function isSafeLinkValue(value: string): boolean {
   const stripped = value.replace(URL_IGNORED_ANYWHERE, '');
@@ -45,13 +42,9 @@ function isSafeKeyValue(key: string, value: unknown): boolean {
 }
 
 /**
- * Structured values (an asset swapped in the editor) arrive over postMessage
- * and end up in rendered props such as an image `src`: plain objects and
- * arrays only, bounded in size and depth, no prototype keys, any `url` must
- * be http(s), and other link keys (`href`, `src`, `link`, `…_url`) can never
- * hold a `javascript:`, `vbscript:` or `data:` URL. HTML text is passed on
- * as the editor sent it, like stored rich text: render it the way you
- * render rich text from the API.
+ * Whether a pushed value is safe to render: plain, bounded objects and
+ * arrays, no prototype keys, `url` must be http(s) and other link keys never
+ * a script URL. HTML text passes as sent, like stored rich text.
  */
 export function isLiveValue(v: unknown, depth = 0): v is LiveValue {
   if (v === null || isScalar(v)) return true;
@@ -74,11 +67,7 @@ export function isLiveValue(v: unknown, depth = 0): v is LiveValue {
   });
 }
 
-/**
- * Whether a `prepr:fieldChange` value is acceptable for the field it is sent
- * for: a valid live value, and no script URL in a link field
- * (`cta.url`, `button.href`).
- */
+/** A valid live value, and no script URL when the field is a link field. */
 export function isLiveFieldChange(
   field: string,
   value: unknown,
@@ -90,11 +79,7 @@ export function isLiveFieldChange(
 
 const MAX_LIST_ENTRIES = 200;
 
-/**
- * A `prepr:listChange` entry list, or null when it is not one. Entries are
- * flat: an id, a type, and for Text the HTML and heading level, which the
- * site renders exactly like a pushed `body`.
- */
+/** A valid `prepr:listChange` entry list, or null. */
 export function parseListEntries(value: unknown): LiveListEntry[] | null {
   if (!Array.isArray(value) || value.length > MAX_LIST_ENTRIES) return null;
   const list: LiveListEntry[] = [];
@@ -133,11 +118,7 @@ export function isPlainRecord(v: unknown): v is Record<string, unknown> {
 const MAX_FIELD_DEPTH = 6;
 const MAX_FIELD_KEYS = 100;
 
-/**
- * The field values of a new list entry: nested records and lists of records
- * (components, assets, dynamic content), bounded in depth and size, with the
- * same key and URL rules as `isLiveValue`.
- */
+/** A new list entry's fields: deeper than `isLiveValue`, same key rules. */
 function isFieldValue(v: unknown, depth: number): boolean {
   if (v === null || isScalar(v)) return true;
   if (depth >= MAX_FIELD_DEPTH) return false;

@@ -40,10 +40,9 @@ export type { LiveEditTarget } from './validate';
 const debug = createScopedLogger('live-preview:normalize');
 
 /**
- * One unsaved change made in the Prepr editor, addressed the way the editor
- * addresses it: the `_id` of the item (or stack entry) that owns the field,
- * and the field's API name, or a dotted path below that item
- * (`content.headline_style`, `content.3.body`).
+ * One unsaved change from the Prepr editor: the `_id` of the item (or stack
+ * entry) that owns the field, and the field's API name or a dotted path below
+ * it (`content.headline_style`, `content.3.body`).
  */
 export type LivePatch =
   | {
@@ -51,20 +50,15 @@ export type LivePatch =
       itemId: string;
       field: string;
       value: LiveValue;
-      /**
-       * Where a click on this text leads in the editor, for text that has no
-       * edit link yet (typed into an entry added before save).
-       */
+      /** Edit-link target for text that has none yet (an unsaved entry). */
       edit?: LiveEditTarget;
     }
   | { type: 'list'; itemId: string; field: string; entries: LiveListEntry[] };
 
 export interface NormalizeQueryOptions {
   /**
-   * The editor's unsaved changes for this render, oldest first. Usually read
-   * from the incoming request by a framework adapter. Treated as hostile:
-   * malformed entries are dropped. Without entries the result is returned
-   * as-is, without parsing the query.
+   * The editor's unsaved changes, oldest first. Treated as hostile: malformed
+   * entries are dropped.
    */
   log?: unknown;
   /** Which operation to use when the document holds more than one. */
@@ -79,8 +73,7 @@ const ENVELOPE_KEYS = new Set(['data', 'errors', 'extensions']);
 
 /**
  * Validate a patch log from an untrusted source (a request body, a cookie).
- * Accepts the array or its JSON text, drops every entry that is not a
- * well-formed `LivePatch`, and never throws.
+ * Accepts the array or its JSON text, drops malformed entries, never throws.
  */
 export function parsePatchLog(raw: unknown): LivePatch[] {
   let value = raw;
@@ -116,28 +109,18 @@ export function parsePatchLog(raw: unknown): LivePatch[] {
 
 /**
  * Apply the Prepr editor's unsaved changes to a GraphQL result, so the page
- * renders them before the editor saves. Call it on the server (or anywhere)
- * with the query that produced the result, then render what it returns:
+ * renders them before the editor saves. Pass the query that produced the
+ * result (`{ data }` or just `data`):
  *
  * ```ts
- * const data = await fetchFromPrepr(GetPageDocument, { slug });
  * const page = normalizeQuery(GetPageDocument, data, { log });
  * ```
  *
- * The query tells the toolkit which response key holds which field, so
- * changes land under aliases (`logoStyle: style`), inside single components
- * (`content.headline_style` below the section that holds them), on dynamic
- * content entries (`content.3.body`), and on every place the same item
- * appears in the result. Fields that are not in the query are left alone:
- * the result keeps exactly the shape the page was typed for.
- *
- * Requirements and limits:
- * - Select `_id` on every item and component whose fields should update.
- *   An object without `_id` cannot be found by the editor's address.
- * - Pass the whole response (`{ data }`) or just `data`; both work.
- * - Without a log, or with an empty one, the result is returned untouched
- *   and the query is not parsed, so production renders pay nothing.
- * - Never throws: an unreadable query or log returns the result unchanged.
+ * The query maps fields to response keys, so changes land under aliases and
+ * on every place the same item appears; fields not in the query are left
+ * alone. Select `_id` on every item and component that should update.
+ * Without a log the query is not parsed and the result is returned as-is.
+ * Never throws.
  */
 export function normalizeQuery<T>(
   query: QueryInput,
@@ -152,10 +135,7 @@ export function normalizeQuery<T>(
   );
 }
 
-/**
- * `normalizeQuery` for a log that already passed `parsePatchLog`, so
- * adapters holding a validated log do not parse it again on every render.
- */
+/** `normalizeQuery` for a log that already passed `parsePatchLog`. */
 export function applyPatchLog<T>(
   query: QueryInput,
   result: T,
@@ -181,12 +161,10 @@ export function applyPatchLog<T>(
   }
 
   let root: unknown = result;
-  // Rebuilt only when a change moved or replaced objects, and only once the
-  // next change needs it.
+  // Rebuilt lazily, only after a change moved or replaced objects.
   let index: SnapshotIndex | null = null;
   for (const patch of log) {
-    // One change that cannot be applied must not cost the others, nor the
-    // render: keep the result as it was before it.
+    // A change that fails must not cost the others, nor the render.
     try {
       index ??= indexSnapshot(root);
       const next = applyPatch(root, index, patch, doc, result);
@@ -320,11 +298,9 @@ function selectionsAt(
 }
 
 /**
- * Every response path that holds `segments` below the item at `ownerPath`.
- * A field name can map to several response keys (the same field selected
- * under different aliases), and each is written. `items` segments that the
- * editor uses for list containers (`tabs.items.0.items.icon`) are skipped
- * when the query has no field by that name. List indexes may be zero-padded.
+ * Every response path that holds `segments` below the item at `ownerPath`
+ * (one per alias). The editor's `items` list-container segments are skipped
+ * when the query has no field by that name.
  */
 function resolveTargets(
   root: unknown,
@@ -373,9 +349,8 @@ function resolveTargets(
       matched = true;
       const fieldPath = [...path, field.key];
       let value = record[field.key];
-      // A component that is still empty (a section just added, with nothing
-      // typed into it yet) holds null. The query says what it looks like, so
-      // create it in that shape and write into it.
+      // An empty component (just added, nothing typed yet) is null: build it
+      // in the query's shape so the write has somewhere to land.
       const next = segments[i + 1];
       if (
         value === null &&
@@ -415,12 +390,9 @@ const typeKey = (name: string): string =>
   name.replace(NON_ALPHANUMERIC, '').toLowerCase();
 
 /**
- * The type a new entry is built as: one the query names for this list. The
- * editor's `__typename` wins when the query knows it; otherwise its type
- * name is matched loosely (`Side by side` ↔ `SideBySide`); a field the query
- * selects for a single type takes that type when the editor named no type.
- * Undefined when nothing fits,
- * so the entry waits for the save.
+ * The query type a new entry is built as, matching the editor's type name
+ * loosely (`Side by side` ↔ `SideBySide`). Undefined when nothing fits, so
+ * the entry waits for the save.
  */
 function resolveTypename(
   doc: QueryDocument,
@@ -437,17 +409,15 @@ function resolveTypename(
     const match = known.find((name) => typeKey(name) === typeKey(candidate));
     if (match) return match;
   }
-  // A field the query selects for a single type takes that type, but only
-  // when the editor named none: an entry of another type must not be built
-  // in this type's shape.
+  // Fall back to the only selected type only when the editor named none:
+  // an entry of another type must not be built in this type's shape.
   const named = explicit !== undefined || typeof typeName === 'string';
   return known.length === 1 && !named ? known[0] : undefined;
 }
 
 /**
- * A new list entry in exactly the shape the query selects for its type, with
- * the editor's values where it sent them and null elsewhere (references and
- * other values only the server can resolve appear after save).
+ * A new list entry in the query's shape; null where the editor sent nothing
+ * (references only the server can resolve appear after save).
  */
 function buildEntry(
   doc: QueryDocument,
@@ -482,9 +452,9 @@ function fillObject(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const edit = isPlainRecord(values.__edit) ? values.__edit : null;
-  // The editor keys values by API id; the query selects GraphQL names, which
-  // are the API id or its snake_case form. Older editors send GraphQL names
-  // with an `apiIds` map instead.
+  // The editor keys values by API id; the query selects GraphQL names (the
+  // API id or its snake_case form). Older editors send GraphQL names with an
+  // `apiIds` map instead.
   const apiIdOf = new Map<string, string>();
   for (const key of Object.keys(values)) {
     apiIdOf.set(key, key);
@@ -501,9 +471,7 @@ function fillObject(
     const key = apiIdOf.get(name);
     return key !== undefined && key in values ? values[key] : undefined;
   };
-  // Where a click on this value leads in the editor: a field below this
-  // entry (`<path>.items.<field>`), or one fixed field (a dynamic content
-  // block's text lives in its dynamic content field).
+  // A dynamic content block's text lives in one fixed field (`edit.field`).
   const editField = (name: string): string | null => {
     if (!edit) return null;
     if (typeof edit.field === 'string')
@@ -566,7 +534,6 @@ function fillNested(
   return value === undefined ? null : one(value);
 }
 
-/** Adds the hidden edit link the API gives saved text to built text. */
 interface EditLinks {
   encode(text: string, field: string): string;
 }
@@ -574,13 +541,9 @@ interface EditLinks {
 const EDIT_PATH = /\/content\/edit\/[^/?#]+/;
 
 /**
- * Edit links for the values of a new entry, so they are click-to-edit like
- * saved content before the save. Prepr's edit links point at the item open
- * in the editor plus a field path; the path of a stack entry may name it by
- * its id (`sections.items.<id>.items.headline`), which the editor resolves
- * for unsaved entries too. The host and locale are taken from an edit link
- * the result already carries, so nothing is invented: without one (edit mode
- * off) or without the editor's `__edit` hints, values stay plain.
+ * Edit links for a new entry's text, so it is click-to-edit before save.
+ * Host and locale are copied from an edit link the result already carries;
+ * without one (edit mode off) or without `__edit` hints, values stay plain.
  */
 function editLinks(result: unknown, entry: LiveListEntry): EditLinks | null {
   const edit = entry.fields?.__edit;

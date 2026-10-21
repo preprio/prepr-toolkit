@@ -102,17 +102,6 @@ export interface VisualEditor {
 }
 
 /**
- * Hover outlines, click-to-select and editor-driven selection for a page
- * framed by the Prepr editor. Works on the elements the stega pass tagged
- * (`data-prepr-encoded`), so it adds no DOM scan of its own.
- *
- * Content of other items on the page (navigation, an author card, related
- * posts) is told apart from the open item once `setCurrentItem` is called.
- *
- * Holding Alt suspends it, so links and buttons on the page can be used
- * without leaving the editor.
- */
-/**
  * Centre `el` by scrolling this window only. `scrollIntoView` also scrolls
  * every scrollable ancestor frame, so inside the editor's preview iframe it
  * would scroll the editor page itself whenever a field is focused there.
@@ -126,6 +115,17 @@ function scrollIntoFrame(el: HTMLElement): void {
   });
 }
 
+/**
+ * Hover outlines, click-to-select and editor-driven selection for a page
+ * framed by the Prepr editor. Works on the elements the stega pass tagged
+ * (`data-prepr-encoded`), so it adds no DOM scan of its own.
+ *
+ * Content of other items on the page (navigation, an author card, related
+ * posts) is told apart from the open item once `setCurrentItem` is called.
+ *
+ * Holding Alt suspends it, so links and buttons on the page can be used
+ * without leaving the editor.
+ */
 export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const overlay = new VisualEditorOverlay();
   let running = false;

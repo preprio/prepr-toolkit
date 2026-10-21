@@ -7,10 +7,10 @@ const INDEX_SEGMENT = /^\d+$/;
 // The field path arrives over postMessage; these would reach the prototype.
 const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
 
-/** Values the push leg may write. Everything else goes through refetch. */
+/** Values a push may write. Everything else goes through refetch. */
 export type LiveScalar = string | number | boolean;
 
-/** A structured field value, such as an asset: `{ url, width, height }`. */
+/** A structured field value, such as an asset. */
 export interface LiveObject {
   [key: string]: LiveScalar | null | LiveObject;
 }
@@ -24,8 +24,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Fold `incoming` into `current` without changing its shape: only keys the
- * page's query already selected are updated, so a component keeps the props
- * it was typed for. The pushed value comes from the editor, not the query.
+ * query selected are updated, since the pushed value comes from the editor.
  */
 function mergeObject(
   current: Record<string, unknown>,
@@ -66,10 +65,8 @@ function shapeLike(
 }
 
 /**
- * New value for a structured field. Tolerates a single-value field receiving
- * a list and the reverse, since the editor and the query may disagree on
- * cardinality. An empty field takes the pushed value as-is: there is no
- * queried shape to fit it to.
+ * New value for a structured field. Tolerates a list for a single value and
+ * the reverse, since the editor and the query may disagree on cardinality.
  */
 function mergeStructured(current: unknown, incoming: LiveValue): unknown {
   if (incoming === null || (Array.isArray(incoming) && !incoming.length)) {
@@ -87,8 +84,7 @@ function mergeStructured(current: unknown, incoming: LiveValue): unknown {
         (c) => isPlainObject(c) && c._id !== undefined && c._id === entry._id,
       );
       if (isPlainObject(match)) return mergeObject(match, entry);
-      // A new entry takes the queried shape, never another entry's values:
-      // a key the editor did not send is null, not the first entry's value.
+      // A key the editor did not send is null, not the first entry's value.
       return isPlainObject(template) ? shapeLike(template, entry) : entry;
     });
   }
@@ -105,7 +101,6 @@ function isPatchable(current: unknown): boolean {
   );
 }
 
-/** Shallow-clone one container, preserving array vs object shape. */
 function cloneNode(node: unknown): Record<string | number, unknown> {
   return Array.isArray(node)
     ? ([...node] as unknown as Record<number, unknown>)
@@ -114,8 +109,7 @@ function cloneNode(node: unknown): Record<string | number, unknown> {
 
 /**
  * Write `field = value` on every indexed occurrence of `itemId`, cloning only
- * the containers along each changed path (structural sharing everywhere else).
- * Returns the original snapshot untouched when no occurrence qualifies.
+ * along changed paths. Returns `snapshot` itself when nothing changed.
  */
 export function patchSnapshot(
   snapshot: unknown,
@@ -146,13 +140,10 @@ function patchAtPath(
   value: LiveValue,
   markChanged: () => void,
 ): unknown {
-  // `field` is a key on the item, or a dotted path below it for values with
-  // no `_id` of their own: `content.3.body` is the body of the fourth entry
-  // in a dynamic content field.
+  // A dotted path addresses values with no `_id` of their own:
+  // `content.3.body` is the body of the fourth dynamic content entry.
   const segments = field.split('.');
   if (segments.some((s) => FORBIDDEN_SEGMENTS.has(s))) return root;
-  // The editor names fields by API id; the data holds them under the API id
-  // or its GraphQL (snake_case) name.
   let node: unknown = root;
   for (const step of path) {
     node = (node as Record<string | number, unknown>)[step];
@@ -163,6 +154,7 @@ function patchAtPath(
     if (INDEX_SEGMENT.test(segment)) {
       step = Number(segment);
     } else if (node !== null && typeof node === 'object') {
+      // The data holds the editor's API id or its snake_case GraphQL name.
       step = fieldKeyIn(node as Record<string, unknown>, segment) ?? segment;
     }
     fullPath.push(step);
@@ -175,9 +167,9 @@ function patchAtPath(
 }
 
 /**
- * Write `value` at `fullPath` from the snapshot root, under the same rules as
- * a field push: the key must already exist, scalars only replace scalars, and
- * structured values keep the queried shape. Clones only along the path.
+ * Write `value` at `fullPath`, cloning only along the path. The key must
+ * already exist, scalars only replace scalars, and structured values keep
+ * the queried shape.
  */
 export function writeAtPath(
   root: unknown,
@@ -189,8 +181,6 @@ export function writeAtPath(
   if (fullPath.some((s) => FORBIDDEN_SEGMENTS.has(String(s)))) return root;
   const last = fullPath.length - 1;
 
-  // Resolve the target container, bailing out if the path no longer matches
-  // the data.
   let node: unknown = root;
   for (let i = 0; i < last; i++) {
     if (node === null || typeof node !== 'object') return root;
@@ -211,7 +201,6 @@ export function writeAtPath(
   }
   if (container[key] === next) return root;
 
-  // Clone root → container along the path, then write the value.
   const newRoot = cloneNode(root);
   let cursor = newRoot;
   for (let i = 0; i < last; i++) {
@@ -231,19 +220,12 @@ export interface LiveListEntry {
   /** Stored id, or a temporary `tmp:` id for an entry added before save. */
   _id: string;
   __typename?: string;
-  /** Text entries only: the HTML and heading level the editor holds. */
+  /** Text entries only. */
   body?: string;
   format?: string | null;
-  /**
-   * A new entry's type as the editor names it (`Side by side`), used when
-   * `__typename` is unknown; the query's own type names decide.
-   */
+  /** A new entry's type as the editor names it (`Side by side`). */
   typeName?: string;
-  /**
-   * A new entry's field values, keyed by GraphQL field name and shaped as
-   * the API returns them. With them, `normalizeQuery` builds the entry in
-   * the shape the query selects.
-   */
+  /** A new entry's field values, shaped as the API returns them. */
   fields?: Record<string, unknown>;
 }
 
@@ -266,9 +248,8 @@ function listKeysOf(entry: unknown): string[] {
 const TAG_PATTERN = /<[^>]+>/g;
 
 /**
- * A new Text entry, in the shape the page queried for its sibling Text
- * entries. Internal links and the hidden edit marker are missing until the
- * entry is saved and the page refreshes.
+ * A new Text entry in its siblings' queried shape. Internal links and the
+ * edit marker are missing until save.
  */
 function buildText(
   entry: LiveListEntry,
@@ -292,22 +273,16 @@ function buildText(
 }
 
 /**
- * Rebuild one list in the editor's order. Existing entries are reused as the
- * same objects, so the page keeps their rendered output; new Text entries are
- * built; anything else new is left out and appears after save.
- *
- * Returns `current` untouched when nothing changed, when the page selected no
- * ids on these entries, or when none of the editor's ids match: ids that no
- * longer line up (for example right after a save) must not empty the list.
- * An empty `entries` does empty it: the editor removed the last entry.
+ * Rebuild one list in the editor's order, reusing existing entry objects.
+ * Returns `current` when no editor id matches: ids that no longer line up
+ * (right after a save) must not empty the list.
  */
 function syncList(
   current: unknown,
   entries: LiveListEntry[],
   build?: LiveEntryBuilder,
 ): unknown {
-  // A list field of a component added before save holds null until its
-  // first entry arrives; start it empty so that entry can be built.
+  // A list in a component added before save is null until its first entry.
   if (current === null || current === undefined) {
     const built = syncList([], entries, build) as unknown[];
     return built.length ? built : current;
@@ -316,10 +291,8 @@ function syncList(
   const byKey = new Map<string, unknown>();
   const templates = new Map<string, Record<string, unknown>>();
   for (const c of current) {
-    // An entry is found by its own `_id` and, for an assets entry, also by
-    // its first asset's `_id`: the editor and the page may be on different
-    // sides of an id change (an image swapped, a backend that just started
-    // returning entry ids) and must still meet.
+    // Also match an assets entry by its first asset's `_id`: the editor and
+    // the page may be on different sides of an id change and must still meet.
     for (const key of listKeysOf(c)) byKey.set(key, c);
     if (isPlainObject(c) && typeof c.__typename === 'string') {
       if (!templates.has(c.__typename)) templates.set(c.__typename, c);
@@ -348,10 +321,7 @@ function syncList(
   return same ? current : next;
 }
 
-/**
- * Apply a list change at `<owner>.<field>` on every indexed occurrence of
- * `itemId`, cloning only along the changed paths.
- */
+/** Apply a list change at `<owner>.<field>` on every occurrence of `itemId`. */
 export function syncListSnapshot(
   snapshot: unknown,
   index: SnapshotIndex,
@@ -371,10 +341,7 @@ export function syncListSnapshot(
   return root;
 }
 
-/**
- * Apply a list change to the list at `fullPath` from the snapshot root,
- * cloning only along that path. Returns `root` untouched when nothing changed.
- */
+/** Apply a list change at `fullPath`, cloning only along that path. */
 export function syncListAtPath(
   root: unknown,
   fullPath: LivePath,
@@ -404,9 +371,8 @@ export function syncListAtPath(
 }
 
 /**
- * Text the editor pushes carries no hidden edit link, while the value it
- * replaces does. Carrying the old link over keeps the element
- * click-to-edit while the editor types.
+ * Carry the replaced text's hidden edit link onto pushed text, which has
+ * none, so the element stays click-to-edit while the editor types.
  */
 export function keepEditLink(current: unknown, value: LiveValue): LiveValue {
   if (typeof current !== 'string' || typeof value !== 'string') return value;

@@ -36,20 +36,16 @@ export interface LiveStore {
     value: LiveValue,
     edit?: LiveEditTarget,
   ): void;
-  /** Reorder, remove and add entries of a list field (`prepr:listChange`). */
   pushList(itemId: string, field: string, list: LiveListEntry[]): void;
   invalidate(itemId: string): void;
   setFetcher(fetcher: LiveFetcher): void;
   /** Fires on every accepted `invalidate`, before refetches settle. */
   onInvalidate(fn: (itemId: string) => void): () => void;
   /**
-   * Every unsaved change received since the last save, oldest first, one
-   * entry per item and field (a newer value replaces the older entry). This
-   * is what a server render needs to show the same changes: pass it to
-   * `normalizeQuery`. Cleared when the editor saves.
+   * Unsaved changes since the last save, oldest first: what a server render
+   * passes to `normalizeQuery` to show the same changes.
    */
   getLog(): LivePatch[];
-  /** Fires whenever the log changes, including when it is cleared. */
   onLogChange(fn: (log: LivePatch[]) => void): () => void;
 }
 
@@ -65,19 +61,10 @@ interface Entry {
 }
 
 /**
- * Holds every registered query result. Push patches apply synchronously by
- * `_id`; invalidations debounce per item and refetch only registrations whose
- * index contains that item. Pure data + subscribers — postMessage wiring lives
- * in bridge-events.ts, framework reactivity in the adapters.
- */
-/**
- * The log with `patch` recorded. A newer change to the same field replaces
- * the older one, so the log stays short while an editor types. Changes are
- * replayed in order, though, and a field path can hold a list position
- * (`content.3.body`) that is only right after the list changes before it.
- * So the older change is only dropped when nothing recorded since depends on
- * where it sat: no list change after it, and for a list change no change
- * below that list either.
+ * The log with `patch` recorded, replacing an older change to the same field
+ * so the log stays short while an editor types. A field path can hold a list
+ * position (`content.3.body`), so the older change is kept when a list
+ * change recorded since could have moved what it addressed.
  */
 function withPatch(log: LivePatch[], patch: LivePatch): LivePatch[] {
   let previous = -1;
@@ -106,6 +93,10 @@ function withPatch(log: LivePatch[], patch: LivePatch): LivePatch[] {
   return [...log.slice(0, previous), ...since, patch];
 }
 
+/**
+ * Holds every registered query result. Pushes apply synchronously by `_id`;
+ * invalidations debounce per item and refetch only registrations holding it.
+ */
 export function createLiveStore(): LiveStore {
   const entries = new Set<Entry>();
   const invalidateListeners = new Set<(itemId: string) => void>();
@@ -155,10 +146,8 @@ export function createLiveStore(): LiveStore {
         listeners: new Set(),
         fetchToken: 0,
       };
-      // Data that arrives after the editor made changes (a server re-render,
-      // a component mounting late) starts from stored content: replay the
-      // unsaved changes so it shows what the editor shows. Replaying onto
-      // data that already includes them changes nothing.
+      // Data registered after the editor made changes starts from stored
+      // content: replay the log. Replaying onto data that has them is a no-op.
       for (const patch of log) {
         if (patch.type === 'field') {
           entry.snapshot = patchSnapshot(
@@ -231,8 +220,7 @@ export function createLiveStore(): LiveStore {
         );
         if (next !== entry.snapshot) {
           entry.snapshot = next;
-          // Entries moved and new ids appeared: positions in the old index
-          // no longer point at the same objects.
+          // Entries moved, so the old index paths are stale.
           entry.index = indexSnapshot(next);
           notify(entry);
         }
@@ -240,8 +228,7 @@ export function createLiveStore(): LiveStore {
     },
 
     invalidate(itemId) {
-      // A save makes the stored content current; replaying the unsaved
-      // changes on top of it would only resurrect stale values.
+      // After a save, replaying the log would resurrect stale values.
       if (log.length) {
         log = [];
         logListeners.forEach((fn) => fn(log));

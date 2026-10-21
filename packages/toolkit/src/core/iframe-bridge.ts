@@ -35,13 +35,13 @@ export interface ScrollToFieldMessage {
   entryId?: string;
 }
 
-/** What the editor told the preview when the handshake completed. */
 /** A content item the open item links to, and the field that links it. */
 export interface EditorReference {
   id: string;
   field: string;
 }
 
+/** What the editor told the preview when the handshake completed. */
 export interface EditorHandshake {
   /**
    * The content item open in the editor. Absent when the editor does not
@@ -76,10 +76,7 @@ export interface EditorHandshake {
 const MAX_REFERENCES = 500;
 const MAX_HREF_LENGTH = 8192;
 
-/**
- * The editor's reference list, or undefined when the value is not one.
- * Entries without a non-empty string `id` and `field` are dropped.
- */
+/** The editor's id list, or undefined when the value is not one. */
 function parseIds(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value
@@ -87,6 +84,10 @@ function parseIds(value: unknown): string[] | undefined {
     .filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
 
+/**
+ * The editor's reference list, or undefined when the value is not one.
+ * Entries without a non-empty string `id` and `field` are dropped.
+ */
 function parseReferences(value: unknown): EditorReference[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const list: EditorReference[] = [];

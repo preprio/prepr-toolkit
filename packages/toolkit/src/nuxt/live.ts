@@ -18,20 +18,13 @@ import type { QueryInput } from '../core/live-preview/query-document';
 
 export interface UseNormalizedQueryOptions {
   /**
-   * Whether live preview runs. Pass your preview flag, and never `true` on a
-   * production deployment. When false (the default) the data is returned
-   * unchanged and the page does not listen to the editor.
+   * Pass your preview flag; never `true` on a production deployment.
+   * Defaults to false: the data is returned unchanged.
    */
   enabled?: boolean;
-  /**
-   * Called when the editor saves, for example `refresh` from `useAsyncData`,
-   * so the page shows the stored content again.
-   */
+  /** Called when the editor saves, e.g. `refresh` from `useAsyncData`. */
   onSave?: () => void;
-  /**
-   * Replace the `*.prepr.io` editor-origin wildcard with an exact list, as
-   * the toolbar's option of the same name.
-   */
+  /** Exact editor origins, replacing the `*.prepr.io` default. */
   allowedEditorOrigins?: string[];
 }
 
@@ -47,11 +40,7 @@ function isFramed(): boolean {
   return typeof window !== 'undefined' && window.self !== window.top;
 }
 
-/**
- * Loads the live preview runtime and starts listening to the editor. Only
- * called with `enabled` inside an iframe, so other visitors never download
- * it.
- */
+/** Loaded lazily, only when enabled in an iframe, so visitors never download it. */
 function startLive(): void {
   starting ??= import('../core/live-preview').then(
     ({ applyPatchLog, createLiveBridge, createLiveStore }) => {
@@ -71,7 +60,6 @@ function startLive(): void {
   );
 }
 
-/** Runs `listener` once live preview has started; returns an unsubscribe. */
 function whenLive(listener: (store: LiveStore) => void): () => void {
   if (store) {
     listener(store);
@@ -82,22 +70,18 @@ function whenLive(listener: (store: LiveStore) => void): () => void {
 }
 
 /**
- * Show the Prepr editor's unsaved changes in a Nuxt page: pass the query and
- * the data you fetched, and render the computed value it returns.
+ * Show the Prepr editor's unsaved changes in a Nuxt page, applied in the
+ * browser while the editor types:
  *
  * ```ts
- * const { data, refresh } = await useAsyncData('page', () => fetchPage(slug));
  * const page = useNormalizedQuery(GetPageDocument, data, {
  *   enabled: isPreview,
  *   onSave: refresh,
  * });
  * ```
  *
- * Nuxt hydrates the whole page, so applying the changes in the browser
- * updates every component that renders them, while the editor types, with
- * no server round trip. Without `enabled`, on the server and outside the
- * Prepr editor's preview iframe it returns the data unchanged. Select `_id` on every item and
- * component that should update.
+ * Returns the data unchanged on the server and outside the editor iframe.
+ * Select `_id` on every item and component that should update.
  */
 export function useNormalizedQuery<T>(
   query: QueryInput,
@@ -122,7 +106,7 @@ export function useNormalizedQuery<T>(
       offInvalidate?.();
     });
   }
-  // The log only fills once the runtime, and with it `applyLog`, is loaded.
+  // The log only fills once `applyLog` is loaded.
   return computed(() => {
     const value = unref(data) as T;
     return log.value.length && applyLog

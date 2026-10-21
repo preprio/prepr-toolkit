@@ -1,19 +1,14 @@
-// The selection structure of a GraphQL query: which response keys each
-// selection set produces, which schema field each key comes from, and which
-// fragments apply. This is all live preview needs to map an editor address
-// (an item and a field name) onto a query result, so the parser below reads
-// only that and skips argument values, variables and directives as opaque
-// token runs. It avoids a dependency on `graphql` for a structural walk.
+// A minimal GraphQL reader: only the selection structure (response keys,
+// schema fields, fragments) that maps an editor address onto a result.
+// Arguments, variables and directives are skipped as opaque token runs, which
+// avoids a dependency on `graphql`.
 
-/** One selection inside a selection set. */
 export type QuerySelection =
   | {
       kind: 'field';
-      /** Schema field name. */
       name: string;
-      /** Response key: the alias, or the name when there is none. */
+      /** The alias, or the name when there is none. */
       key: string;
-      /** Whether the field takes arguments, such as `url(width: 1000)`. */
       hasArgs: boolean;
       selections: QuerySelection[] | null;
     }
@@ -26,7 +21,7 @@ export interface QueryFragment {
 }
 
 export interface QueryDocument {
-  /** Root selection set of the first (or the named) operation. */
+  /** The first operation, or the one named by `operationName`. */
   operation: QuerySelection[];
   fragments: Map<string, QueryFragment>;
 }
@@ -43,7 +38,7 @@ export type QueryInput = string | { kind: 'Document' } | { toString(): string };
 type Token =
   | { type: 'name'; value: string }
   | { type: 'punct'; value: string }
-  | { type: 'value' }; // string, number: never inspected
+  | { type: 'value' };
 
 const NAME_START = /[_A-Za-z]/;
 const NAME_CONTINUE = /[_0-9A-Za-z]/;
@@ -253,8 +248,7 @@ function pickOperation(
 
 // --- DocumentNode -----------------------------------------------------------
 
-// The subset of graphql-js AST nodes read here, typed structurally so the
-// toolkit works with any DocumentNode producer without importing `graphql`.
+// Typed structurally so any DocumentNode producer works without `graphql`.
 interface AstName {
   value: string;
 }
@@ -335,9 +329,8 @@ const sourceCache = new Map<string, QueryDocument>();
 const SOURCE_CACHE_LIMIT = 200;
 
 /**
- * Parse a query into its selection structure. Results are cached per
- * document, since the same query is normalized on every preview render.
- * Throws a `SyntaxError` for input that is not an executable document.
+ * Parse a query into its selection structure, cached per document. Throws a
+ * `SyntaxError` for input that is not an executable document.
  */
 export function readQueryDocument(
   query: QueryInput,
@@ -374,7 +367,6 @@ export function readQueryDocument(
   return parsed;
 }
 
-/** One response key of an object, with the schema field it comes from. */
 export interface ResolvedField {
   name: string;
   key: string;
@@ -382,21 +374,17 @@ export interface ResolvedField {
   selections: QuerySelection[];
 }
 
-/**
- * The fields a selection set yields for one response object. Fragments
- * whose type condition names the object's `__typename` take precedence;
- * conditions naming another type (an interface, a union, or a sibling
- * concrete type) only fill keys the exact match did not produce. Without a
- * schema the toolkit cannot tell an interface from a sibling type, and only
- * keys present on the object are ever used, so this errs towards mapping.
- */
-// Results per selection set, then per type and mode. A document is parsed
-// once and never changes, so a selection set always resolves the same way.
 const fieldsCache = new WeakMap<
   QuerySelection[],
   Map<string, Map<string, ResolvedField>>
 >();
 
+/**
+ * The fields a selection set yields for one response object, keyed by
+ * response key. Fragments matching the object's `__typename` win; other type
+ * conditions only fill missing keys, because without a schema an interface
+ * cannot be told from a sibling type. `strict` drops those other branches.
+ */
 export function collectFields(
   selections: QuerySelection[],
   typename: string | undefined,
@@ -424,12 +412,11 @@ function resolveFields(
 ): Map<string, ResolvedField> {
   const exact = new Map<string, ResolvedField>();
   const loose = new Map<string, ResolvedField>();
-  // Selection sets already merged into a key: the same field reached through
-  // several fragments must not repeat its sub-selections.
+  // The same field reached through several fragments must not repeat its
+  // sub-selections.
   const merged = new Map<ResolvedField, Set<QuerySelection[]>>();
-  // Fragments walked as matching / as not matching. A fragment spread from
-  // several places is walked once per state, which also stops a fragment
-  // that spreads itself (invalid GraphQL) from looping.
+  // Each fragment is walked once per state, which also stops a fragment that
+  // spreads itself (invalid GraphQL) from looping.
   const walkedMatched = new Set<QueryFragment>();
   const walkedLoose = new Set<QueryFragment>();
 
@@ -450,11 +437,9 @@ function resolveFields(
     }
   };
 
-  // A fragment on a union or interface (`fragment DCF on _prepr_types`)
-  // usually branches by type inside; it applies when one of its inner
-  // conditions names this object's type, and those conditions decide. A
-  // fragment on another concrete type never applies, even when it spreads
-  // fragments of its own.
+  // A fragment on a union or interface applies when one of its inner type
+  // conditions names this object's type; one on another concrete type never
+  // does.
   const applies = (on: string | null, list: QuerySelection[]): boolean =>
     conditionMatches(on, typename) ||
     (typename !== undefined && typeConditions(list, doc).includes(typename));
@@ -479,9 +464,8 @@ function resolveFields(
   };
   walk(selections, true);
 
-  // Building a new object (`strict`) must not borrow fields from other
-  // types' branches; reading an existing one may, since only keys present on
-  // it are used.
+  // Reading an existing object may borrow other types' keys, since only keys
+  // present on it are used; building one (`strict`) must not.
   if (!options.strict) {
     for (const [key, field] of loose) {
       if (!exact.has(key)) exact.set(key, field);
@@ -497,13 +481,12 @@ function conditionMatches(
   return on === null || typename === undefined || on === typename;
 }
 
-/**
- * The type names a selection set distinguishes with fragments, such as the
- * member types of a union field: `SideBySide`, `CTA`, … Empty for a set that
- * applies to one type only.
- */
 const conditionsCache = new WeakMap<QuerySelection[], string[]>();
 
+/**
+ * The type names a selection set distinguishes with fragments, such as a
+ * union's members. Empty for a set that applies to one type only.
+ */
 export function typeConditions(
   selections: QuerySelection[],
   doc: QueryDocument,
