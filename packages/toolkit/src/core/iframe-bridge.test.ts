@@ -415,3 +415,53 @@ describe('createIframeBridge — references', () => {
     bridge.stop();
   });
 });
+
+describe('createIframeBridge — navigation guard', () => {
+  it('passes the opt-in through the handshake only when it is exactly true', () => {
+    const onHandshake = vi.fn();
+    const bridge = createIframeBridge(null, { onHandshake });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE', navigationGuard: true });
+    expect(onHandshake).toHaveBeenCalledWith({ navigationGuard: true });
+    bridge.stop();
+
+    const other = vi.fn();
+    const second = createIframeBridge(null, { onHandshake: other });
+    second.start();
+    postFrom(EDITOR, { event: 'prepr:initVE', navigationGuard: 'yes' });
+    expect(other).toHaveBeenCalledWith({});
+    second.stop();
+  });
+
+  it('forwards prepr:allowNavigation from the editor', () => {
+    const onAllowNavigation = vi.fn();
+    const bridge = createIframeBridge(null, { onAllowNavigation });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(EDITOR, {
+      event: 'prepr:allowNavigation',
+      href: 'https://site.example/pricing',
+    });
+    expect(onAllowNavigation).toHaveBeenCalledWith(
+      'https://site.example/pricing',
+    );
+    bridge.stop();
+  });
+
+  it('ignores prepr:allowNavigation from another origin, before the handshake, or without a string href', () => {
+    const onAllowNavigation = vi.fn();
+    const bridge = createIframeBridge(null, { onAllowNavigation });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:allowNavigation', href: '/a' });
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(ATTACKER, { event: 'prepr:allowNavigation', href: '/b' });
+    postFrom(EDITOR, { event: 'prepr:allowNavigation', href: 42 });
+    postFrom(EDITOR, { event: 'prepr:allowNavigation', href: '' });
+    postFrom(EDITOR, {
+      event: 'prepr:allowNavigation',
+      href: `/${'x'.repeat(9000)}`,
+    });
+    expect(onAllowNavigation).not.toHaveBeenCalled();
+    bridge.stop();
+  });
+});

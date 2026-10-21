@@ -261,7 +261,12 @@ export function createPreprPreview(
   // focus. Standalone previews keep the CMS deep-link tooltip, or bare
   // click-to-edit when no UI is mounted.
   const visualEditor: VisualEditor | null = isIframe
-    ? createVisualEditor({ onEdit, locale })
+    ? createVisualEditor({
+        onEdit,
+        locale,
+        onNavigationBlocked: (href) =>
+          sendPreprEvent('navigation_blocked', { href }),
+      })
     : null;
 
   const stega =
@@ -309,12 +314,20 @@ export function createPreprPreview(
   // --- Iframe messaging -----------------------------------------------------
   const bridge = createIframeBridge(store, {
     allowedEditorOrigins: options?.allowedEditorOrigins,
-    onHandshake: ({ itemId, referencedIds, componentIds, uiLocale }) => {
+    onHandshake: ({
+      itemId,
+      referencedIds,
+      componentIds,
+      uiLocale,
+      navigationGuard,
+    }) => {
       // The labels are part of the editor's interface, so they follow its
       // language over the site's `locale` option.
       if (uiLocale) visualEditor?.setLocale(uiLocale);
       visualEditor?.setCurrentItem(itemId ?? null, referencedIds, componentIds);
+      visualEditor?.setNavigationGuard(navigationGuard === true);
     },
+    onAllowNavigation: (href) => visualEditor?.allowNavigation(href),
     onReferences: (referencedIds, componentIds) =>
       visualEditor?.setReferences(referencedIds, componentIds),
     // The editor selecting a field scrolls the matching element into view. The

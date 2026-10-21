@@ -138,7 +138,8 @@ export type PreprEventType =
   | 'getScrollPosition'
   | 'loaded'
   | 'field_edit_requested'
-  | 'live_ready';
+  | 'live_ready'
+  | 'navigation_blocked';
 
 export interface PreprHeaders {
   readonly 'prepr-customer-id'?: string;

@@ -5,6 +5,7 @@ import { fieldLabel, findFieldElement, type FieldLookup } from './field-path';
 import { t, type Locale } from '../i18n';
 import type { EditorReference } from '../iframe-bridge';
 import { VisualEditorOverlay, type ItemKind } from './overlay';
+import { createNavigationGuard, leavingLinkHref } from './navigation-guard';
 
 const debug = createScopedLogger('visual-editor');
 
@@ -26,6 +27,11 @@ export interface VisualEditorOptions {
   onEdit: (payload: StegaEditPayload) => void;
   /** Language of the outline labels. Defaults to English. */
   locale?: Locale;
+  /**
+   * Called with the absolute URL of a navigation that was stopped while the
+   * navigation guard is on (see `setNavigationGuard`).
+   */
+  onNavigationBlocked?: (href: string) => void;
 }
 
 export interface VisualEditor {
@@ -61,6 +67,20 @@ export interface VisualEditor {
    * whether an element was found.
    */
   focusField(lookup: FieldLookup): Promise<boolean>;
+  /**
+   * Stop every attempt to move the page to another page (links, client-side
+   * route changes, form submissions) and report it through
+   * `onNavigationBlocked`, so the editor can ask before the edited page is
+   * left. Off by default: links on content unrelated to the open item are
+   * then still kept from navigating, but silently. Alt+click, new-tab
+   * links and in-page anchors always work.
+   */
+  setNavigationGuard(enabled: boolean): void;
+  /**
+   * Go to a page the navigation guard stopped. Only `http(s)` URLs are
+   * followed; a stopped form submission is submitted again.
+   */
+  allowNavigation(href: string): void;
 }
 
 /**
@@ -100,6 +120,10 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   // Settles a superseded focusField promise as not found, so a caller that
   // awaits it is never left hanging.
   let settlePendingFind: (() => void) | null = null;
+  let guardEnabled = false;
+  const guard = createNavigationGuard({
+    onBlocked: (href) => opts.onNavigationBlocked?.(href),
+  });
 
   const encodedFrom = (node: EventTarget | null): HTMLElement | null =>
     node instanceof Element
@@ -210,31 +234,13 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     overlay.setHover(null, '');
   };
 
-  /**
-   * Whether following the clicked link would load another page in this
-   * frame. In-page anchors, new-tab links and downloads stay allowed.
-   */
-  const leavesPage = (target: EventTarget | null): boolean => {
-    if (!(target instanceof Element)) return false;
-    const link = target.closest<HTMLAnchorElement>('a[href]');
-    if (!link || link.hasAttribute('download')) return false;
-    if (link.target && link.target !== '_self') return false;
-    const href = link.getAttribute('href') ?? '';
-    if (href.startsWith('#')) return false;
-    try {
-      const url = new URL(link.href, window.location.href);
-      return !(
-        url.origin === window.location.origin &&
-        url.pathname === window.location.pathname &&
-        url.search === window.location.search
-      );
-    } catch {
-      return false;
-    }
-  };
-
   const handleClick = (e: MouseEvent): void => {
-    if (e.altKey) return;
+    if (e.altKey) {
+      // The browser follows the link natively; the guard must not stop it.
+      const href = leavingLinkHref(e.target);
+      if (href && guard.isActive()) guard.permit(href);
+      return;
+    }
     const encoded = encodedFrom(e.target);
     const kind = encoded ? itemKind(encoded) : null;
     if (!encoded || !kind) {
@@ -242,9 +248,14 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       // item (site navigation, footer), ends the selection like clicking
       // beside a focused field. The page still handles the click (menus,
       // tabs, buttons keep working), but a link does not navigate: leaving
-      // the page would leave the item being edited. Alt+click follows it.
+      // the page would leave the item being edited. Alt+click follows it,
+      // and so do Ctrl/Cmd/Shift-clicks, which open a new tab or window.
       overlay.setSelected(null, '');
-      if (leavesPage(e.target)) e.preventDefault();
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const href = leavingLinkHref(e.target);
+      if (!href) return;
+      e.preventDefault();
+      if (guard.isActive()) guard.block(href);
       return;
     }
     // Capture phase, so the page's own handlers and link navigation never see
@@ -354,6 +365,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       capture: true,
       passive: true,
     });
+    syncGuard();
     debug.log('visual editor started');
   }
 
@@ -386,6 +398,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       .querySelectorAll(`style[${CURSOR_STYLE_MARKER}]`)
       .forEach((node) => node.remove());
     overlay.unmount();
+    guard.stop();
     debug.log('visual editor stopped');
   }
 
@@ -458,5 +471,24 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     locale = value;
   }
 
-  return { start, stop, setCurrentItem, setReferences, setLocale, focusField };
+  function syncGuard(): void {
+    if (running && guardEnabled) guard.start();
+    else guard.stop();
+  }
+
+  function setNavigationGuard(enabled: boolean): void {
+    guardEnabled = enabled;
+    syncGuard();
+  }
+
+  return {
+    start,
+    stop,
+    setCurrentItem,
+    setReferences,
+    setLocale,
+    focusField,
+    setNavigationGuard,
+    allowNavigation: (href: string) => guard.allow(href),
+  };
 }

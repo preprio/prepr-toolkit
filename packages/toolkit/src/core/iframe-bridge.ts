@@ -21,6 +21,8 @@ interface EditorMessage {
   referencedIds?: unknown;
   componentIds?: unknown;
   uiLocale?: unknown;
+  navigationGuard?: unknown;
+  href?: unknown;
 }
 
 /** Which field the editor asked the preview to bring on screen. */
@@ -62,9 +64,17 @@ export interface EditorHandshake {
    * not send one or sends a language the toolkit has no translations for.
    */
   uiLocale?: Locale;
+  /**
+   * The editor asks before the preview leaves the page: navigations are
+   * stopped and reported as `navigation_blocked`, and
+   * `prepr:allowNavigation` follows one. Absent for editors that do not
+   * handle `navigation_blocked`.
+   */
+  navigationGuard?: boolean;
 }
 
 const MAX_REFERENCES = 500;
+const MAX_HREF_LENGTH = 8192;
 
 /**
  * The editor's reference list, or undefined when the value is not one.
@@ -174,6 +184,12 @@ export interface IframeBridgeOptions {
     referencedIds: EditorReference[],
     componentIds?: string[],
   ) => void;
+  /**
+   * The editor confirmed leaving the page for `href` after a
+   * `navigation_blocked` (`prepr:allowNavigation`). `href` is a non-empty
+   * string; its scheme is not checked here.
+   */
+  onAllowNavigation?: (href: string) => void;
 }
 
 /**
@@ -195,6 +211,8 @@ export interface IframeBridgeOptions {
  * - `prepr:getScrollPosition`: replies with the current scroll offset.
  * - `prepr:scrollToField`: brings the element rendering a given field on
  *   screen, via the `onScrollToField` option.
+ * - `prepr:allowNavigation`: follows a navigation the preview reported as
+ *   `navigation_blocked`, via the `onAllowNavigation` option.
  * - Outbound `loaded` reports the resolved feature flags, so the editor can
  *   hide controls for features the site disabled.
  * - Ctrl/Cmd+S/P/L are swallowed — the browser save/print dialogs break the
@@ -208,6 +226,7 @@ export function createIframeBridge(
   const onScrollToField = options.onScrollToField;
   const onHandshake = options.onHandshake;
   const onReferences = options.onReferences;
+  const onAllowNavigation = options.onAllowNavigation;
   let parentOrigin: string | null = null;
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -250,12 +269,14 @@ export function createIframeBridge(
       const referencedIds = parseReferences(data.referencedIds);
       const componentIds = parseIds(data.componentIds);
       const uiLocale = isLocale(data.uiLocale) ? data.uiLocale : undefined;
+      const navigationGuard = data.navigationGuard === true;
       try {
         onHandshake?.({
           ...(itemId && { itemId }),
           ...(referencedIds && { referencedIds }),
           ...(componentIds && { componentIds }),
           ...(uiLocale && { uiLocale }),
+          ...(navigationGuard && { navigationGuard }),
         });
       } catch (error) {
         debug.warn('handshake handler failed', error as object);
@@ -295,6 +316,17 @@ export function createIframeBridge(
         // A throwing handler must not take down the message listener and with
         // it the rest of the editor integration.
         debug.warn('scrollToField handler failed', error as object);
+      }
+    }
+    if (data?.event === 'prepr:allowNavigation') {
+      const href = data.href;
+      if (typeof href !== 'string' || !href || href.length > MAX_HREF_LENGTH) {
+        return;
+      }
+      try {
+        onAllowNavigation?.(href);
+      } catch (error) {
+        debug.warn('allowNavigation handler failed', error as object);
       }
     }
   };
