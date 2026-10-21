@@ -7,6 +7,72 @@ const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
 /** Values the push leg may write. Everything else goes through refetch. */
 export type LiveScalar = string | number | boolean;
 
+/** A structured field value, such as an asset: `{ url, width, height }`. */
+export interface LiveObject {
+  [key: string]: LiveScalar | null | LiveObject;
+}
+
+/** Anything a `prepr:fieldChange` may carry. */
+export type LiveValue = LiveScalar | null | LiveObject | LiveObject[];
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Fold `incoming` into `current` without changing its shape: only keys the
+ * page's query already selected are updated, so a component keeps the props
+ * it was typed for. The pushed value comes from the editor, not the query.
+ */
+function mergeObject(
+  current: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  let changed = false;
+  const next: Record<string, unknown> = { ...current };
+  for (const key of Object.keys(current)) {
+    if (!(key in incoming) || incoming[key] === undefined) continue;
+    const value =
+      isPlainObject(current[key]) && isPlainObject(incoming[key])
+        ? mergeObject(current[key], incoming[key])
+        : incoming[key];
+    if (value !== current[key]) {
+      next[key] = value;
+      changed = true;
+    }
+  }
+  return changed ? next : current;
+}
+
+/**
+ * New value for a structured field. Tolerates a single-value field receiving
+ * a list and the reverse, since the editor and the query may disagree on
+ * cardinality. An empty field takes the pushed value as-is: there is no
+ * queried shape to fit it to.
+ */
+function mergeStructured(current: unknown, incoming: LiveValue): unknown {
+  if (incoming === null || (Array.isArray(incoming) && !incoming.length)) {
+    if (Array.isArray(current)) return current.length ? [] : current;
+    return null;
+  }
+  const list = (Array.isArray(incoming) ? incoming : [incoming]) as Array<
+    Record<string, unknown>
+  >;
+  if (current === null || current === undefined) return incoming;
+  if (Array.isArray(current)) {
+    const template = current.find(isPlainObject);
+    return list.map((entry) => {
+      const match =
+        current.find(
+          (c) => isPlainObject(c) && c._id !== undefined && c._id === entry._id,
+        ) ?? template;
+      return isPlainObject(match) ? mergeObject(match, entry) : entry;
+    });
+  }
+  if (isPlainObject(current)) return mergeObject(current, list[0]);
+  return current;
+}
+
 function isPatchable(current: unknown): boolean {
   return (
     current === null ||
@@ -33,7 +99,7 @@ export function patchSnapshot(
   index: SnapshotIndex,
   itemId: string,
   field: string,
-  value: LiveScalar,
+  value: LiveValue,
 ): unknown {
   const paths = index.get(itemId);
   if (!paths?.length) return snapshot;
@@ -54,7 +120,7 @@ function patchAtPath(
   root: unknown,
   path: LivePath,
   field: string,
-  value: LiveScalar,
+  value: LiveValue,
   markChanged: () => void,
 ): unknown {
   // `field` is a key on the item, or a dotted path below it for values with
@@ -81,8 +147,13 @@ function patchAtPath(
   const container = node as Record<string | number, unknown>;
   const key = fullPath[last];
   if (!(key in container)) return root;
-  if (!isPatchable(container[key])) return root;
-  if (container[key] === value) return root;
+  let next: unknown = value;
+  if (value === null || typeof value === 'object') {
+    next = mergeStructured(container[key], value);
+  } else if (!isPatchable(container[key])) {
+    return root;
+  }
+  if (container[key] === next) return root;
 
   // Clone root → container along the path, then write the value.
   const newRoot = cloneNode(root);
@@ -92,7 +163,7 @@ function patchAtPath(
     cursor[fullPath[i]] = child;
     cursor = child;
   }
-  cursor[key] = value;
+  cursor[key] = next;
   markChanged();
   return newRoot;
 }

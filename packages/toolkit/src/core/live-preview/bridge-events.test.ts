@@ -59,10 +59,42 @@ describe('createLiveBridge', () => {
   it('drops malformed payloads', () => {
     post({ event: 'prepr:initVE' });
     post({ event: 'prepr:fieldChange', itemId: 42, field: 'f', value: 'v' });
-    post({ event: 'prepr:fieldChange', itemId: 'a', field: 'f', value: {} });
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'a',
+      field: 'f',
+      value: { url: 'javascript:alert(1)' },
+    });
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'a',
+      field: 'f',
+      value: { a: { b: { c: { d: 'too deep' } } } },
+    });
     post({ event: 'prepr:itemChanged' });
     expect(store.pushPatch).not.toHaveBeenCalled();
     expect(store.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('accepts an asset value with an http(s) url', () => {
+    post({ event: 'prepr:initVE' });
+    const value = {
+      _id: 'asset-1',
+      url: 'https://x.stream.prepr.io/w_800/a.jpg',
+      width: 800,
+      height: 600,
+    };
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'post-1',
+      field: 'cover_image',
+      value,
+    });
+    expect(store.pushPatch).toHaveBeenCalledWith(
+      'post-1',
+      'cover_image',
+      value,
+    );
   });
 
   it('stop removes the listener', () => {

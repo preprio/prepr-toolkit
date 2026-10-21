@@ -37,6 +37,11 @@ export type { IframeBridgeOptions } from './core/iframe-bridge';
 
 // --- Stega ------------------------------------------------------------------
 export { stegaClean } from './core/stega';
+export {
+  previewAttrs,
+  type PreviewAttrsOptions,
+  type PreviewAttrsTarget,
+} from './core/preview-attrs';
 
 // --- Server -----------------------------------------------------------------
 export {

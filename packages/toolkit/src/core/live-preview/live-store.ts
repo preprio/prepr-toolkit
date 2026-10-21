@@ -1,6 +1,6 @@
 import { createScopedLogger } from '../utils';
 import { indexSnapshot, type SnapshotIndex } from './index-snapshot';
-import { patchSnapshot, type LiveScalar } from './patch';
+import { patchSnapshot, type LiveValue } from './patch';
 
 const debug = createScopedLogger('live-preview');
 
@@ -23,7 +23,7 @@ export interface LiveRegistration {
 
 export interface LiveStore {
   register(data: unknown, opts?: LiveRegistrationOptions): LiveRegistration;
-  pushPatch(itemId: string, field: string, value: LiveScalar): void;
+  pushPatch(itemId: string, field: string, value: LiveValue): void;
   invalidate(itemId: string): void;
   setFetcher(fetcher: LiveFetcher): void;
   /** Fires on every accepted `invalidate`, before refetches settle. */

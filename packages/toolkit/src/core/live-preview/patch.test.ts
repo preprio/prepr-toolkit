@@ -117,4 +117,70 @@ describe('patchSnapshot', () => {
     expect(result).toBe(snapshot);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
+
+  describe('structured values (assets)', () => {
+    const post = {
+      Post: {
+        _id: 'post-1',
+        cover_image: {
+          url: 'https://cdn/w_800/old.jpg',
+          width: 800,
+          height: 600,
+        },
+        gallery: [{ _id: 'a', url: 'https://cdn/a.jpg', width: 10 }],
+        empty: null,
+      },
+    };
+    const index = indexSnapshot(post);
+
+    it('updates only the keys the query selected', () => {
+      const result = patchSnapshot(post, index, 'post-1', 'cover_image', {
+        _id: 'new',
+        url: 'https://cdn/w_800/new.jpg',
+        width: 1200,
+        height: 900,
+        name: 'not queried',
+      }) as typeof post;
+      expect(result.Post.cover_image).toEqual({
+        url: 'https://cdn/w_800/new.jpg',
+        width: 1200,
+        height: 900,
+      });
+      expect(post.Post.cover_image.url).toBe('https://cdn/w_800/old.jpg');
+    });
+
+    it('unwraps a list pushed into a single-asset field', () => {
+      const result = patchSnapshot(post, index, 'post-1', 'cover_image', [
+        { url: 'https://cdn/w_800/list.jpg', width: 1, height: 1 },
+      ]) as typeof post;
+      expect(result.Post.cover_image.url).toBe('https://cdn/w_800/list.jpg');
+    });
+
+    it('maps a list onto the queried entry shape', () => {
+      const result = patchSnapshot(post, index, 'post-1', 'gallery', [
+        { _id: 'b', url: 'https://cdn/b.jpg', width: 20, extra: 'x' },
+      ]) as typeof post;
+      expect(result.Post.gallery).toEqual([
+        { _id: 'b', url: 'https://cdn/b.jpg', width: 20 },
+      ]);
+    });
+
+    it('writes into an empty field as-is and clears with null', () => {
+      const filled = patchSnapshot(post, index, 'post-1', 'empty', {
+        url: 'https://cdn/c.jpg',
+      }) as { Post: { empty: unknown } };
+      expect(filled.Post.empty).toEqual({ url: 'https://cdn/c.jpg' });
+
+      const cleared = patchSnapshot(
+        post,
+        index,
+        'post-1',
+        'cover_image',
+        null,
+      ) as {
+        Post: { cover_image: unknown };
+      };
+      expect(cleared.Post.cover_image).toBeNull();
+    });
+  });
 });

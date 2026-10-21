@@ -4,6 +4,7 @@ import {
   sendPreprEvent,
 } from '../utils';
 import type { LiveStore } from './live-store';
+import type { LiveValue } from './patch';
 
 const debug = createScopedLogger('live-preview:bridge');
 
@@ -23,6 +24,48 @@ export interface LiveBridge {
 function isScalar(v: unknown): v is string | number | boolean {
   return (
     typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+  );
+}
+
+const MAX_DEPTH = 3;
+const MAX_ENTRIES = 50;
+const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const SAFE_URL = /^https?:\/\//i;
+
+/**
+ * Structured values (an asset swapped in the editor) arrive over postMessage
+ * and end up in rendered props such as an image `src`: plain objects and
+ * arrays only, bounded in size and depth, no prototype keys, and any `url`
+ * must be http(s) so a `javascript:` or `data:` URL never reaches the page.
+ */
+function isLiveValue(v: unknown, depth = 0): v is LiveValue {
+  if (v === null || isScalar(v)) return true;
+  if (depth >= MAX_DEPTH) return false;
+  if (Array.isArray(v)) {
+    return (
+      depth === 0 &&
+      v.length <= MAX_ENTRIES &&
+      v.every((entry) => isPlainRecord(entry) && isLiveValue(entry, depth + 1))
+    );
+  }
+  if (!isPlainRecord(v)) return false;
+  const keys = Object.keys(v);
+  if (keys.length > MAX_ENTRIES) return false;
+  return keys.every((key) => {
+    if (FORBIDDEN_KEYS.has(key)) return false;
+    const value = v[key];
+    if (key === 'url' && typeof value === 'string' && !SAFE_URL.test(value)) {
+      return false;
+    }
+    return !Array.isArray(value) && isLiveValue(value, depth + 1);
+  });
+}
+
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return (
+    v !== null &&
+    typeof v === 'object' &&
+    Object.getPrototypeOf(v) === Object.prototype
   );
 }
 
@@ -51,7 +94,7 @@ export function createLiveBridge(store: LiveStore): LiveBridge {
       if (
         typeof data.itemId === 'string' &&
         typeof data.field === 'string' &&
-        isScalar(data.value)
+        isLiveValue(data.value)
       ) {
         store.pushPatch(data.itemId, data.field, data.value);
       } else {
