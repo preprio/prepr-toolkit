@@ -287,6 +287,60 @@ describe('stega auto-clean reveals hidden content', () => {
 
     autoClean.stop();
   });
+
+  it('still tags a hidden node after the cleaner is stopped and started again', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+
+    document.body.innerHTML = `<nav><div id="panel"><a id="item">${encode('Digital leaders')}</a></div></nav>`;
+    const item = document.getElementById('item')!;
+    let open = false;
+    vi.spyOn(item, 'getClientRects').mockImplementation(
+      () => (open ? [{}] : []) as unknown as DOMRectList,
+    );
+
+    // React StrictMode mounts, unmounts and remounts the preview: the first
+    // instance strips the text, so the second one finds nothing to decode.
+    const first = createStegaAutoClean();
+    first.start();
+    first.stop();
+    const second = createStegaAutoClean();
+    second.start();
+
+    open = true;
+    document.getElementById('panel')!.setAttribute('style', 'display:block');
+
+    await vi.waitFor(() =>
+      expect(item.hasAttribute('data-prepr-encoded')).toBe(true),
+    );
+
+    second.stop();
+  });
+
+  it('tags a node revealed by a viewport resize', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+
+    // A desktop-only nav (`hidden lg:flex`) loaded in a narrow frame: widening
+    // the viewport reveals it through a media query, without any DOM mutation.
+    document.body.innerHTML = `<nav><a id="item">${encode('Pricing')}</a></nav>`;
+    const item = document.getElementById('item')!;
+    let wide = false;
+    vi.spyOn(item, 'getClientRects').mockImplementation(
+      () => (wide ? [{}] : []) as unknown as DOMRectList,
+    );
+
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+    expect(item.hasAttribute('data-prepr-encoded')).toBe(false);
+
+    wide = true;
+    window.dispatchEvent(new Event('resize'));
+
+    await vi.waitFor(() =>
+      expect(item.hasAttribute('data-prepr-encoded')).toBe(true),
+    );
+
+    autoClean.stop();
+  });
 });
 
 describe('stega auto-clean mutation batching', () => {

@@ -44,6 +44,15 @@ export interface StegaAutoCleanOptions {
 }
 
 /**
+ * Shared by every cleaner instance and kept across `stop()`. Stripping
+ * rewrites the DOM, so once one instance has cleaned a node the payload exists
+ * nowhere else: a cleaner that is stopped and started again (React StrictMode
+ * remounts the preview in development) must still be able to tag a node that
+ * was hidden the first time round. Weakly held, so removed nodes are released.
+ */
+const cleanedNodes = new WeakMap<Text, CleanedInfo>();
+
+/**
  * Strips stega characters out of visible text at runtime, tagging the closest
  * `[data-prepr-edit-target]` ancestor (or the parent) so the overlay can find
  * it. A debounced MutationObserver re-cleans nodes that frameworks re-render
@@ -55,7 +64,6 @@ export function createStegaAutoClean(
   const stripText = options?.enabled ?? true;
   let observer: MutationObserver | null = null;
   let processing = false;
-  let cleaned = new WeakMap<Text, CleanedInfo>();
   // Nodes stripped while their element had no layout box. Held strongly (a
   // WeakSet could not be iterated) and dropped as soon as tagging succeeds.
   let pendingHidden = new Set<Text>();
@@ -68,7 +76,7 @@ export function createStegaAutoClean(
     if (isIgnoredTextNode(textNode)) return false;
 
     const textContent = textNode.textContent!;
-    const info = cleaned.get(textNode);
+    const info = cleanedNodes.get(textNode);
     // With stripping disabled the text keeps its payload, so the "already
     // handled" marker is the original rather than the stripped form.
     const settled = stripText ? info?.cleaned : info?.original;
@@ -79,7 +87,12 @@ export function createStegaAutoClean(
       // observer can see — so retry the tagging from the remembered payload.
       if (!info.decoded) return false;
       const shown = resolveEditTarget(textNode);
-      if (!shown) return false;
+      if (!shown) {
+        // Still hidden. Park it again: a fresh instance's first scan lands
+        // here for every node an earlier instance stripped.
+        pendingHidden.add(textNode);
+        return false;
+      }
       pendingHidden.delete(textNode);
       if (shown.hasAttribute('data-prepr-encoded')) return false;
       tagEncodedElement(shown, info.decoded);
@@ -98,7 +111,7 @@ export function createStegaAutoClean(
       const decoded = decodeStega(textContent);
       if (!decoded?.href && !stripText) return false;
 
-      cleaned.set(textNode, {
+      cleanedNodes.set(textNode, {
         original: textContent,
         cleaned: stripped,
         decoded: decoded?.href ? decoded : null,
@@ -150,7 +163,7 @@ export function createStegaAutoClean(
         mutation.target.nodeType === Node.TEXT_NODE
       ) {
         const textNode = mutation.target as Text;
-        const info = cleaned.get(textNode);
+        const info = cleanedNodes.get(textNode);
         const text = textNode.textContent ?? '';
         // Anything other than this pass's own write is a framework write:
         // either the encoded original put back by a re-render, or new encoded
@@ -212,7 +225,19 @@ export function createStegaAutoClean(
     }, 50);
   }
 
+  // A media query can reveal content (a desktop-only nav once the editor
+  // frame is widened) without touching the DOM, so the observer never sees it.
+  let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+  function handleResize(): void {
+    if (pendingHidden.size === 0 || resizeTimeout) return;
+    resizeTimeout = setTimeout(() => {
+      resizeTimeout = null;
+      retryPendingHidden();
+    }, 100);
+  }
+
   function setupObserver(): void {
+    window.addEventListener('resize', handleResize, { passive: true });
     observer = new MutationObserver(handleMutations);
     observer.observe(document.body, {
       childList: true,
@@ -243,11 +268,15 @@ export function createStegaAutoClean(
       clearTimeout(debounceTimeout);
       debounceTimeout = null;
     }
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = null;
+    }
     if (observer) {
       observer.disconnect();
       observer = null;
+      window.removeEventListener('resize', handleResize);
     }
-    cleaned = new WeakMap();
     pendingHidden = new Set();
     pendingDirty = new Set();
     debug.log('stega auto-clean stopped');
