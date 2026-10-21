@@ -43,6 +43,7 @@ describe('createVisualEditor', () => {
   let onEdit: ReturnType<typeof vi.fn<(payload: StegaEditPayload) => void>>;
 
   beforeEach(() => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     onEdit = vi.fn<(payload: StegaEditPayload) => void>();
     editor = createVisualEditor({ onEdit });
   });
@@ -136,10 +137,7 @@ describe('createVisualEditor', () => {
     ).resolves.toBe(true);
     await nextFrame();
 
-    expect(scroll).toHaveBeenCalledWith({
-      behavior: 'smooth',
-      block: 'center',
-    });
+    expect(window.scrollTo).toHaveBeenCalled();
     expect(box('selected').hasAttribute('data-visible')).toBe(true);
     expect(box('selected').textContent).toBe('Title');
   });
@@ -223,7 +221,7 @@ describe('createVisualEditor', () => {
     await expect(
       editor.focusField({ field: 'content.2', block: 2 }),
     ).resolves.toBe(true);
-    expect(third.scrollIntoView).toHaveBeenCalled();
+    expect(window.scrollTo).toHaveBeenCalled();
   });
 
   it('sends the entry id of a clicked dynamic content entry', () => {
@@ -390,8 +388,43 @@ describe('createVisualEditor', () => {
       ).resolves.toBe(true);
       await nextFrame();
 
-      expect(scroll).toHaveBeenCalled();
+      expect(window.scrollTo).toHaveBeenCalled();
       expect(box('selected').hasAttribute('data-visible')).toBe(false);
     });
+  });
+
+  it('focusField scrolls only this window, never the editor page around the iframe', async () => {
+    const heading = tagged('title');
+    rect(heading);
+    heading.scrollIntoView = vi.fn();
+    editor.start();
+
+    await editor.focusField({ field: 'title' });
+
+    expect(heading.scrollIntoView).not.toHaveBeenCalled();
+    expect(window.scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'smooth' }),
+    );
+  });
+
+  it('clears the selection when clicking beside it, and lets that click through', async () => {
+    const heading = tagged('title');
+    rect(heading);
+    const plain = document.createElement('p');
+    document.body.appendChild(plain);
+    editor.start();
+
+    heading.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await nextFrame();
+    expect(box('selected').hasAttribute('data-visible')).toBe(true);
+
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    plain.dispatchEvent(click);
+    await nextFrame();
+
+    expect(click.defaultPrevented).toBe(false);
+    expect(box('selected').hasAttribute('data-visible')).toBe(false);
   });
 });

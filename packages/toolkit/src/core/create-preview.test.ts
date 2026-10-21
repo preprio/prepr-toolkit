@@ -518,6 +518,7 @@ describe('createPreprPreview', () => {
     heading.setAttribute('data-prepr-encoded', '');
     heading.setAttribute('data-prepr-field', 'stack.items.0.title');
     heading.scrollIntoView = vi.fn();
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     document.body.appendChild(heading);
 
     const controller = createPreprPreview({ props: PROPS });
@@ -527,7 +528,7 @@ describe('createPreprPreview', () => {
       field: 'stack.items.000.title',
     });
 
-    expect(heading.scrollIntoView).toHaveBeenCalled();
+    expect(window.scrollTo).toHaveBeenCalled();
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     const selected = document
       .querySelector('prepr-visual-editor')

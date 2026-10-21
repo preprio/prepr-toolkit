@@ -51,6 +51,20 @@ export interface VisualEditor {
  * Holding Alt suspends it, so links and buttons on the page can be used
  * without leaving the editor.
  */
+/**
+ * Centre `el` by scrolling this window only. `scrollIntoView` also scrolls
+ * every scrollable ancestor frame, so inside the editor's preview iframe it
+ * would scroll the editor page itself whenever a field is focused there.
+ */
+function scrollIntoFrame(el: HTMLElement): void {
+  const rect = el.getBoundingClientRect();
+  const offset = Math.max(0, (window.innerHeight - rect.height) / 2);
+  window.scrollTo({
+    top: Math.max(0, window.scrollY + rect.top - offset),
+    behavior: 'smooth',
+  });
+}
+
 export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const overlay = new VisualEditorOverlay();
   let running = false;
@@ -124,7 +138,12 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const handleClick = (e: MouseEvent): void => {
     if (e.altKey) return;
     const encoded = encodedFrom(e.target);
-    if (!encoded) return;
+    if (!encoded) {
+      // A click on nothing editable ends the selection, like clicking beside
+      // a focused field in a form. The page still handles the click itself.
+      overlay.setSelected(null, '');
+      return;
+    }
     // Capture phase, so the page's own handlers and link navigation never see
     // a click that selects a field.
     e.preventDefault();
@@ -285,7 +304,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
             lookup.block !== undefined
               ? (nthListItem(found, lookup.block) ?? found)
               : found;
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          scrollIntoFrame(el);
           if (running && isCurrentItem(found)) select(el, found);
           finish(true);
           return;
