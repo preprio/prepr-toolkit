@@ -200,17 +200,15 @@ export interface LiveListEntry {
   format?: string | null;
 }
 
-/**
- * The key an entry is known by on both sides: its `_id`, or for an assets
- * entry (which has no `_id` of its own) its first asset's `_id`.
- */
-function listKeyOf(entry: unknown): string | null {
-  if (!isPlainObject(entry)) return null;
-  if (typeof entry._id === 'string') return entry._id;
+function listKeysOf(entry: unknown): string[] {
+  if (!isPlainObject(entry)) return [];
+  const keys: string[] = [];
+  if (typeof entry._id === 'string') keys.push(entry._id);
   const first = Array.isArray(entry.items) ? entry.items[0] : null;
-  return isPlainObject(first) && typeof first._id === 'string'
-    ? first._id
-    : null;
+  if (isPlainObject(first) && typeof first._id === 'string') {
+    keys.push(first._id);
+  }
+  return keys;
 }
 
 const TAG_PATTERN = /<[^>]+>/g;
@@ -255,8 +253,11 @@ function syncList(current: unknown, entries: LiveListEntry[]): unknown {
   const byKey = new Map<string, unknown>();
   const templates = new Map<string, Record<string, unknown>>();
   for (const c of current) {
-    const key = listKeyOf(c);
-    if (key) byKey.set(key, c);
+    // An entry is found by its own `_id` and, for an assets entry, also by
+    // its first asset's `_id`: the editor and the page may be on different
+    // sides of an id change (an image swapped, a backend that just started
+    // returning entry ids) and must still meet.
+    for (const key of listKeysOf(c)) byKey.set(key, c);
     if (isPlainObject(c) && typeof c.__typename === 'string') {
       if (!templates.has(c.__typename)) templates.set(c.__typename, c);
     }

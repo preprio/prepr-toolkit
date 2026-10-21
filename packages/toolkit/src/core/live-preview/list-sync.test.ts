@@ -158,3 +158,30 @@ describe('structured list values', () => {
     });
   });
 });
+
+describe('syncListSnapshot — assets entries', () => {
+  it('matches an assets entry by its own _id or by its first asset, so a swapped image keeps its place', () => {
+    const data = {
+      Post: {
+        _id: 'post-1',
+        content: [
+          { __typename: 'Text', _id: 't1', body: 'x' },
+          { __typename: 'Assets', _id: 'e1', items: [{ _id: 'a1' }] },
+        ],
+      },
+    };
+    const index = indexSnapshot(data);
+    // The editor still knows the block by its pinned first-asset id.
+    const byAsset = syncListSnapshot(data, index, 'post-1', 'content', [
+      { _id: 'a1' },
+      { _id: 't1' },
+    ]) as typeof data;
+    expect(byAsset.Post.content[0]).toBe(data.Post.content[1]);
+    // Or by the entry's own id once the API returns one.
+    const byEntry = syncListSnapshot(data, index, 'post-1', 'content', [
+      { _id: 't1' },
+      { _id: 'e1' },
+    ]);
+    expect(byEntry).toBe(data);
+  });
+});
