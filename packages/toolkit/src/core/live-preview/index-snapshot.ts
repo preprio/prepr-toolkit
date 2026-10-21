@@ -36,7 +36,7 @@ export function indexSnapshot(data: unknown): SnapshotIndex {
       // Live-update requirement: items must select `_id` (debug-only warning,
       // same visibility rules as every other scoped log).
       debug.log(
-        `item with __typename "${record.__typename}" has no _id — it will not live-update`
+        `item with __typename "${record.__typename}" has no _id — it will not live-update`,
       );
     }
     for (const [key, value] of Object.entries(record)) {

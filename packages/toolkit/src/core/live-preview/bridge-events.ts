@@ -1,4 +1,8 @@
-import { createScopedLogger } from '../utils';
+import {
+  createScopedLogger,
+  getTrustedParentOrigin,
+  sendPreprEvent,
+} from '../utils';
 import type { LiveStore } from './live-store';
 
 const debug = createScopedLogger('live-preview:bridge');
@@ -37,7 +41,11 @@ export function createLiveBridge(store: LiveStore): LiveBridge {
       parentOrigin = evt.origin;
       return;
     }
-    if (!parentOrigin || evt.origin !== parentOrigin) return;
+    // This bridge starts when the first live component mounts, which can be
+    // after the editor handshake already ran; the toolbar bridge's
+    // allowlisted origin covers that case.
+    const trusted = parentOrigin ?? getTrustedParentOrigin();
+    if (!trusted || evt.origin !== trusted) return;
 
     if (data?.event === 'prepr:fieldChange') {
       if (
@@ -66,6 +74,11 @@ export function createLiveBridge(store: LiveStore): LiveBridge {
   return {
     start(): void {
       window.addEventListener('message', onMessage);
+      // Tells the editor this page applies `prepr:fieldChange` pushes and
+      // refreshes itself on `prepr:itemChanged`, so it can skip reloading the
+      // iframe after a save. Carries no content, so it may go out before the
+      // handshake.
+      sendPreprEvent('live_ready', undefined, { allowUntrustedTarget: true });
     },
     stop(): void {
       window.removeEventListener('message', onMessage);

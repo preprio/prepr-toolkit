@@ -1,5 +1,9 @@
 import type { LivePath, SnapshotIndex } from './index-snapshot';
 
+const INDEX_SEGMENT = /^\d+$/;
+// The field path arrives over postMessage; these would reach the prototype.
+const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
+
 /** Values the push leg may write. Everything else goes through refetch. */
 export type LiveScalar = string | number | boolean;
 
@@ -29,7 +33,7 @@ export function patchSnapshot(
   index: SnapshotIndex,
   itemId: string,
   field: string,
-  value: LiveScalar
+  value: LiveScalar,
 ): unknown {
   const paths = index.get(itemId);
   if (!paths?.length) return snapshot;
@@ -51,31 +55,44 @@ function patchAtPath(
   path: LivePath,
   field: string,
   value: LiveScalar,
-  markChanged: () => void
+  markChanged: () => void,
 ): unknown {
-  // Resolve the item, bailing out if the path no longer matches the data.
+  // `field` is a key on the item, or a dotted path below it for values with
+  // no `_id` of their own: `content.3.body` is the body of the fourth entry
+  // in a dynamic content field.
+  const fieldPath: LivePath = field
+    .split('.')
+    .map((segment) =>
+      INDEX_SEGMENT.test(segment) ? Number(segment) : segment,
+    );
+  if (fieldPath.some((s) => FORBIDDEN_SEGMENTS.has(String(s)))) return root;
+  const fullPath = [...path, ...fieldPath];
+  const last = fullPath.length - 1;
+
+  // Resolve the target container, bailing out if the path no longer matches
+  // the data.
   let node: unknown = root;
-  for (const key of path) {
+  for (let i = 0; i < last; i++) {
     if (node === null || typeof node !== 'object') return root;
-    node = (node as Record<string | number, unknown>)[key];
+    node = (node as Record<string | number, unknown>)[fullPath[i]];
   }
   if (node === null || typeof node !== 'object') return root;
 
-  const item = node as Record<string, unknown>;
-  if (!(field in item)) return root;
-  if (!isPatchable(item[field])) return root;
-  if (item[field] === value) return root;
+  const container = node as Record<string | number, unknown>;
+  const key = fullPath[last];
+  if (!(key in container)) return root;
+  if (!isPatchable(container[key])) return root;
+  if (container[key] === value) return root;
 
-  // Clone root → item along the path, then write the field.
+  // Clone root → container along the path, then write the value.
   const newRoot = cloneNode(root);
   let cursor = newRoot;
-  for (let i = 0; i < path.length; i++) {
-    const key = path[i];
-    const child = cloneNode(cursor[key]);
-    cursor[key] = child;
+  for (let i = 0; i < last; i++) {
+    const child = cloneNode(cursor[fullPath[i]]);
+    cursor[fullPath[i]] = child;
     cursor = child;
   }
-  cursor[field] = value;
+  cursor[key] = value;
   markChanged();
   return newRoot;
 }

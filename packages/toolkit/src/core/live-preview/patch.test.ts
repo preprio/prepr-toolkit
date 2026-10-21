@@ -22,7 +22,7 @@ describe('patchSnapshot', () => {
       index,
       'hero-1',
       'heading',
-      'Hello'
+      'Hello',
     ) as typeof snapshot;
 
     expect(result.Page.content[0].heading).toBe('Hello');
@@ -38,19 +38,19 @@ describe('patchSnapshot', () => {
 
   it('returns the same reference for an unknown item', () => {
     expect(patchSnapshot(snapshot, index, 'nope', 'heading', 'x')).toBe(
-      snapshot
+      snapshot,
     );
   });
 
   it('skips fields whose current value is not scalar or null', () => {
     expect(patchSnapshot(snapshot, index, 'hero-1', 'image', 'x')).toBe(
-      snapshot
+      snapshot,
     );
   });
 
   it('skips fields that were never selected in this snapshot', () => {
     expect(patchSnapshot(snapshot, index, 'hero-1', 'subtitle', 'x')).toBe(
-      snapshot
+      snapshot,
     );
   });
 
@@ -61,14 +61,60 @@ describe('patchSnapshot', () => {
       indexSnapshot(withNull),
       'i-1',
       'caption',
-      'now set'
+      'now set',
     ) as typeof withNull;
     expect(result.item.caption).toBe('now set');
   });
 
   it('returns the same reference when the value is already current', () => {
     expect(patchSnapshot(snapshot, index, 'hero-1', 'heading', 'Hi')).toBe(
-      snapshot
+      snapshot,
     );
+  });
+
+  it('patches a dotted path below the item, for values without an _id', () => {
+    const post = {
+      Post: {
+        _id: 'post-1',
+        content: [
+          { __typename: 'Text', body: '<p>One</p>' },
+          { __typename: 'Text', body: '<p>Two</p>' },
+        ],
+      },
+    };
+    const result = patchSnapshot(
+      post,
+      indexSnapshot(post),
+      'post-1',
+      'content.1.body',
+      '<p>Changed</p>',
+    ) as typeof post;
+
+    expect(result.Post.content[1].body).toBe('<p>Changed</p>');
+    expect(result.Post.content[0]).toBe(post.Post.content[0]);
+    expect(post.Post.content[1].body).toBe('<p>Two</p>');
+  });
+
+  it('leaves the snapshot alone when a dotted path does not resolve', () => {
+    const result = patchSnapshot(
+      snapshot,
+      index,
+      'page-1',
+      'content.9.heading',
+      'x',
+    );
+    expect(result).toBe(snapshot);
+  });
+
+  it('refuses prototype keys in a dotted path', () => {
+    const result = patchSnapshot(
+      snapshot,
+      index,
+      'page-1',
+      '__proto__.polluted',
+      'x',
+    );
+    expect(result).toBe(snapshot);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });

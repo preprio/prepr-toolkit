@@ -137,7 +137,8 @@ export type PreprEventType =
   | 'preview_mode_toggled'
   | 'getScrollPosition'
   | 'loaded'
-  | 'field_edit_requested';
+  | 'field_edit_requested'
+  | 'live_ready';
 
 export interface PreprHeaders {
   readonly 'prepr-customer-id'?: string;

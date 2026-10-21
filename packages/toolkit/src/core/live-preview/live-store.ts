@@ -53,7 +53,7 @@ export function createLiveStore(): LiveStore {
   let defaultFetcher: LiveFetcher | null = null;
 
   function notify(entry: Entry): void {
-    entry.listeners.forEach(fn => fn());
+    entry.listeners.forEach((fn) => fn());
   }
 
   async function refetch(entry: Entry): Promise<void> {
@@ -73,7 +73,7 @@ export function createLiveStore(): LiveStore {
 
   function runInvalidate(itemId: string): void {
     pendingInvalidates.delete(itemId);
-    invalidateListeners.forEach(fn => fn(itemId));
+    invalidateListeners.forEach((fn) => fn(itemId));
     for (const entry of entries) {
       if (entry.index.has(itemId)) void refetch(entry);
     }
@@ -109,7 +109,7 @@ export function createLiveStore(): LiveStore {
           entry.index,
           itemId,
           field,
-          value
+          value,
         );
         if (next !== entry.snapshot) {
           entry.snapshot = next;
@@ -123,7 +123,7 @@ export function createLiveStore(): LiveStore {
       if (pending) clearTimeout(pending);
       pendingInvalidates.set(
         itemId,
-        setTimeout(() => runInvalidate(itemId), INVALIDATE_DEBOUNCE_MS)
+        setTimeout(() => runInvalidate(itemId), INVALIDATE_DEBOUNCE_MS),
       );
     },
 

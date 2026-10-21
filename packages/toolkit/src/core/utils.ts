@@ -21,6 +21,11 @@ export function setTrustedParentOrigin(origin: string | null): void {
   trustedParentOrigin = origin;
 }
 
+/** @internal The allowlisted editor origin, or `null` before the handshake. */
+export function getTrustedParentOrigin(): string | null {
+  return trustedParentOrigin;
+}
+
 /**
  * Fans a Prepr event out to the current window and, if framed, the parent.
  *

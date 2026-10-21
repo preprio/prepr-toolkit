@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setTrustedParentOrigin } from '../utils';
 import { createLiveBridge } from './bridge-events';
 import type { LiveStore } from './live-store';
 
@@ -44,7 +45,7 @@ describe('createLiveBridge', () => {
     post({ event: 'prepr:initVE' });
     post(
       { event: 'prepr:fieldChange', itemId: 'a', field: 'f', value: 'v' },
-      'https://evil.example'
+      'https://evil.example',
     );
     expect(store.pushPatch).not.toHaveBeenCalled();
   });
@@ -69,5 +70,30 @@ describe('createLiveBridge', () => {
     bridge.stop();
     post({ event: 'prepr:fieldChange', itemId: 'a', field: 'f', value: 'v' });
     expect(store.pushPatch).not.toHaveBeenCalled();
+  });
+
+  it('accepts events when the toolbar bridge completed the handshake before this bridge started', () => {
+    bridge.stop();
+    setTrustedParentOrigin('https://editor.prepr.io');
+    const late = createLiveBridge(store);
+    late.start();
+    post({ event: 'prepr:fieldChange', itemId: 'a', field: 'f', value: 'v' });
+    expect(store.pushPatch).toHaveBeenCalledWith('a', 'f', 'v');
+    late.stop();
+    setTrustedParentOrigin(null);
+  });
+
+  it('announces live_ready to the page when it starts', () => {
+    const seen = vi.fn();
+    window.addEventListener('prepr_preview_bar', seen);
+    const another = createLiveBridge(store);
+    another.start();
+    expect(seen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({ event: 'live_ready' }),
+      }),
+    );
+    another.stop();
+    window.removeEventListener('prepr_preview_bar', seen);
   });
 });

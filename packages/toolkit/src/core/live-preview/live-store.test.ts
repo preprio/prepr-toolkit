@@ -60,7 +60,7 @@ describe('createLiveStore', () => {
     });
     expect(
       (reg.getSnapshot() as ReturnType<typeof pageData>).Page.content[0]
-        .heading
+        .heading,
     ).toBe('Saved');
     expect(listener).toHaveBeenCalledTimes(1);
   });
@@ -88,7 +88,7 @@ describe('createLiveStore', () => {
 
     expect(
       (reg.getSnapshot() as ReturnType<typeof pageData>).Page.content[0]
-        .heading
+        .heading,
     ).toBe('Hi');
   });
 
@@ -104,9 +104,9 @@ describe('createLiveStore', () => {
     await vi.advanceTimersByTimeAsync(200);
     store.pushPatch('new-1', 'heading', 'Newer');
 
-    expect(
-      (reg.getSnapshot() as typeof fresh).Page.content[0].heading
-    ).toBe('Newer');
+    expect((reg.getSnapshot() as typeof fresh).Page.content[0].heading).toBe(
+      'Newer',
+    );
   });
 
   it('onInvalidate fires per accepted invalidate and supports unsubscribe', async () => {
