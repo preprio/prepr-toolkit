@@ -1,0 +1,10 @@
+---
+import { normalizeQuery } from '@preprio/toolkit/astro';
+import { PAGE_QUERY, STORED } from '../content';
+
+// A preview render: unsaved editor changes apply.
+const page = normalizeQuery(PAGE_QUERY, STORED, { enabled: true, locals: Astro.locals });
+const [sideBySide, logos] = page.Page.sections as any[];
+const Heading = sideBySide.content.headline_style === 'H1' ? 'h1' : 'h2';
+---
+<html><body><main><Heading>{sideBySide.content.headline}</Heading><p>logo-style:{logos.logoStyle}</p></main></body></html>

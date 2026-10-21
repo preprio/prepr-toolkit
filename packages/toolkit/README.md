@@ -372,8 +372,10 @@ middleware, and never `true` on a production deployment:
 
 On Next.js 15 and older the action does nothing and pages update on save.
 
-The framework-free core export, `normalizeQuery(query, result, { log })` from
-`@preprio/toolkit`, applies a log you deliver yourself (other frameworks).
+For Astro and Nuxt, see their sections. The framework-free core exports,
+`normalizeQuery(query, result, { log })`, `startHtmlLivePreview()` and
+`readLiveLogFromRequest(request)` from `@preprio/toolkit`, cover any other
+server-rendered stack.
 
 ## Astro
 
@@ -425,6 +427,34 @@ const headers = getPreprHeaders(Astro.request.headers);
 The `.astro` components ship as source, compiled by your own Astro/Vite pipeline. They use full-page navigation by default, matching Astro's MPA model — switching segment or variant re-runs the server-rendered output.
 
 See the runnable example at `examples/astro` for the full source of truth.
+
+### Live preview (experimental)
+
+Show the editor's unsaved changes while they type. Pass `preview` to
+`onPreprRequest` as above, and run each query result through
+`normalizeQuery` with your preview flag:
+
+```astro
+---
+import { normalizeQuery } from '@preprio/toolkit/astro';
+
+const data = await fetchFromPrepr(GetPageDocument, { slug }); // any client
+const page = normalizeQuery(GetPageDocument, data, {
+  enabled: preview,
+  locals: Astro.locals,
+});
+---
+```
+
+`PreprToolbar.astro` does the rest. Inside the Prepr editor it requests the
+page again with the unsaved changes and updates only the parts of the DOM that
+changed; on save it shows the stored content. Preview must render on demand
+(`output: 'server'`).
+
+Safety: the middleware only accepts changes in preview, from a same-origin
+`POST` that carries the toolkit's header and a JSON body, and marks that
+response `Cache-Control: private, no-store`. With `enabled: false` the result
+is returned untouched. Changes are accepted only from the Prepr editor.
 
 ## SvelteKit
 
@@ -536,6 +566,22 @@ const preprHeaders = getPreprHeadersFromEvent(event);
 The `.vue` components ship as source (compiled by your own Vite/Vue pipeline) and mount client-side via `onMounted`, so they never run during SSR.
 
 See the runnable example at `examples/nuxt` for the full source of truth.
+
+### Live preview (experimental)
+
+Show the editor's unsaved changes while they type, with no server round trip:
+
+```ts
+import { useNormalizedQuery } from '@preprio/toolkit/nuxt/live';
+
+const { data, refresh } = await useAsyncData('page', () => fetchPage(slug));
+const page = useNormalizedQuery(GetPageDocument, data, { onSave: refresh });
+```
+
+Render from `page`. Nuxt hydrates the whole page, so every component that
+shows a changed field updates. On the server and outside the Prepr editor's
+preview iframe it returns the data unchanged. Changes are accepted only from
+the Prepr editor.
 
 ## React (no framework)
 

@@ -15,6 +15,12 @@ import type {
   PreprHeaders,
   PreprToolbarProps,
 } from '../core/types';
+import {
+  normalizeQuery as applyPatchLog,
+  type LivePatch,
+} from '../core/live-preview/normalize-query';
+import { readLiveLogFromRequest } from '../core/live-preview/live-request';
+import type { QueryInput } from '../core/live-preview/query-document';
 
 export type { PreprMiddlewareOptions };
 
@@ -26,7 +32,13 @@ export interface AstroLikeContext {
   request: Request;
   /** Unused; typed loosely so passing the real Astro context still checks. */
   cookies?: unknown;
+  /** Per-request storage; carries the editor's unsaved changes in preview. */
+  locals?: object;
 }
+
+// Where `onPreprRequest` leaves the editor's unsaved changes for
+// `normalizeQuery`. A symbol, so it cannot collide with a site's own locals.
+const LIVE_LOG = Symbol.for('@preprio/toolkit/astro-live-log');
 
 /** Astro middleware's `next()` — resolves to the `Response` from downstream. */
 export type AstroNext = () => Promise<Response>;
@@ -56,7 +68,22 @@ export async function onPreprRequest(
     context.request.headers.set(key, value);
   });
 
+  // In preview, a live-preview re-render carries the editor's unsaved
+  // changes; `normalizeQuery` applies them while the page renders.
+  const log =
+    options?.preview && context.locals
+      ? await readLiveLogFromRequest(context.request)
+      : [];
+  if (log.length && context.locals) {
+    (context.locals as Record<symbol, unknown>)[LIVE_LOG] = log;
+  }
+
   const response = await next();
+
+  if (log.length) {
+    // One editor's unsaved changes must never be served to anyone else.
+    response.headers.set('Cache-Control', 'private, no-store');
+  }
 
   for (const cookie of responseCookies) {
     response.headers.append('Set-Cookie', serializeCookie(cookie));
@@ -101,4 +128,52 @@ export async function getToolbarProps(
   features?: PreprFeatures,
 ): Promise<PreprToolbarProps> {
   return getToolbarPropsFromHeaders(headers, token, features);
+}
+
+export interface AstroNormalizeQueryOptions {
+  /**
+   * Whether this render may show unsaved editor changes. Pass your preview
+   * flag, and never `true` on a production deployment. When false (the
+   * default) the result is returned untouched.
+   */
+  enabled?: boolean;
+  /** `Astro.locals`, where `onPreprRequest` leaves the editor's changes. */
+  locals?: object;
+  /** Which operation to use when the document holds more than one. */
+  operationName?: string;
+}
+
+/**
+ * Show the Prepr editor's unsaved changes on a server-rendered Astro page:
+ * pass the query and the result you fetched (with any client), and render
+ * what comes back.
+ *
+ * ```astro
+ * ---
+ * const data = await fetchFromPrepr(GetPageDocument, { slug });
+ * const page = normalizeQuery(GetPageDocument, data, {
+ *   enabled: preview,
+ *   locals: Astro.locals,
+ * });
+ * ---
+ * ```
+ *
+ * Needs `onPreprRequest` with `preview: true` in your middleware and
+ * `PreprToolbar.astro` on the page; the toolbar re-requests the page with
+ * the editor's changes while they type. Select `_id` on every item and
+ * component that should update.
+ */
+export function normalizeQuery<T>(
+  query: QueryInput,
+  result: T,
+  options: AstroNormalizeQueryOptions = {},
+): T {
+  if (!options.enabled || !options.locals) return result;
+  const log = (options.locals as Record<symbol, unknown>)[LIVE_LOG] as
+    LivePatch[] | undefined;
+  if (!log?.length) return result;
+  return applyPatchLog(query, result, {
+    log,
+    operationName: options.operationName,
+  });
 }

@@ -17,3 +17,7 @@ export const PARAM_HIDE_BAR = 'prepr_hide_bar';
 
 // maxAge for all Prepr cookies.
 export const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+
+// Marks the request a live-preview page re-render sends with the editor's
+// unsaved changes in its body.
+export const HEADER_LIVE_RENDER = 'x-prepr-live';

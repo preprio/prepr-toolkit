@@ -1,0 +1,9 @@
+---
+import { normalizeQuery } from '@preprio/toolkit/astro';
+import { PAGE_QUERY, STORED } from '../content';
+
+// A production render: `enabled` is false, so nothing a request sends can change it.
+const page = normalizeQuery(PAGE_QUERY, STORED, { enabled: false, locals: Astro.locals });
+const [sideBySide] = page.Page.sections as any[];
+---
+<html><body><main><h2>{sideBySide.content.headline}</h2></main></body></html>

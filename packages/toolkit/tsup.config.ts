@@ -133,11 +133,11 @@ export default defineConfig([
     // and are compiled by the *consumer's* Vite/Vue pipeline (tsup has no
     // `.vue` loader). Published verbatim via package.json's `files` field,
     // resolved via the `./nuxt/components/*` export map entry.
-    entry: { index: 'src/nuxt/index.ts' },
+    entry: { index: 'src/nuxt/index.ts', live: 'src/nuxt/live.ts' },
     outDir: 'dist/nuxt',
     clean: false,
-    // Typed structurally against a minimal `H3EventLike` — nothing to
-    // externalize.
-    external: [],
+    // The server side is typed structurally against a minimal `H3EventLike`;
+    // `live` uses Vue's reactivity, which comes from the consumer's app.
+    external: ['vue'],
   },
 ]);

@@ -91,6 +91,11 @@
       "import": "./dist/nuxt/index.js",
       "require": "./dist/nuxt/index.cjs"
     },
+    "./nuxt/live": {
+      "types": "./dist/nuxt/live.d.ts",
+      "import": "./dist/nuxt/live.js",
+      "require": "./dist/nuxt/live.cjs"
+    },
     "./nuxt/components/*": "./src/nuxt/*.vue"
   },
   "files": [

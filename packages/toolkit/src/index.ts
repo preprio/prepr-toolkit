@@ -51,6 +51,12 @@ export {
   type NormalizeQueryOptions,
 } from './core/live-preview/normalize-query';
 export type { QueryInput } from './core/live-preview/query-document';
+export {
+  startHtmlLivePreview,
+  type HtmlLivePreview,
+  type HtmlLivePreviewOptions,
+} from './core/live-preview/html-live';
+export { readLiveLogFromRequest } from './core/live-preview/live-request';
 
 // --- Server -----------------------------------------------------------------
 export {

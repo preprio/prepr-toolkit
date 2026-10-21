@@ -50,11 +50,16 @@ const payload = {
 />
 
 <script>
-  import { createPreprPreview } from '@preprio/toolkit';
+  import { createPreprPreview, startHtmlLivePreview } from '@preprio/toolkit';
 
   const el = document.querySelector('script[data-prepr-toolbar-props]');
   if (el?.textContent) {
     const { props, options } = JSON.parse(el.textContent);
     createPreprPreview({ props, options });
+    // Inside the Prepr editor: re-render the page with the editor's unsaved
+    // changes while they type (see `normalizeQuery`). A no-op elsewhere.
+    startHtmlLivePreview({
+      allowedEditorOrigins: options?.allowedEditorOrigins,
+    });
   }
 </script>
