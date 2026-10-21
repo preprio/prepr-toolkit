@@ -8,18 +8,12 @@ import {
   type Ref,
 } from 'vue';
 
-import {
-  createLiveBridge,
-  type LiveBridge,
-} from '../core/live-preview/bridge-events';
-import {
-  createLiveStore,
-  type LiveStore,
-} from '../core/live-preview/live-store';
-import {
+import type {
+  LiveBridge,
+  LivePatch,
+  LiveStore,
   normalizeQuery,
-  type LivePatch,
-} from '../core/live-preview/normalize-query';
+} from '../core/live-preview';
 import type { QueryInput } from '../core/live-preview/query-document';
 
 export interface UseNormalizedQueryOptions {
@@ -41,27 +35,50 @@ export interface UseNormalizedQueryOptions {
   allowedEditorOrigins?: string[];
 }
 
+let starting: Promise<void> | null = null;
 let store: LiveStore | null = null;
 let bridge: LiveBridge | null = null;
+let applyLog: typeof normalizeQuery | null = null;
 const log = shallowRef<LivePatch[]>([]);
 let allowedEditorOrigins: string[] | undefined;
+const startListeners = new Set<(store: LiveStore) => void>();
 
 function isFramed(): boolean {
   return typeof window !== 'undefined' && window.self !== window.top;
 }
 
-function liveStore(): LiveStore {
-  if (!store) {
-    store = createLiveStore();
-    bridge = createLiveBridge(store, {
-      allowedEditorOrigins: () => allowedEditorOrigins,
-    });
-    bridge.start();
-    store.onLogChange((next) => {
-      log.value = next;
-    });
+/**
+ * Loads the live preview runtime and starts listening to the editor. Only
+ * called with `enabled` inside an iframe, so other visitors never download
+ * it.
+ */
+function startLive(): void {
+  starting ??= import('../core/live-preview').then(
+    ({ createLiveBridge, createLiveStore, normalizeQuery }) => {
+      applyLog = normalizeQuery;
+      const started = createLiveStore();
+      bridge = createLiveBridge(started, {
+        allowedEditorOrigins: () => allowedEditorOrigins,
+      });
+      bridge.start();
+      started.onLogChange((next) => {
+        log.value = next;
+      });
+      store = started;
+      startListeners.forEach((listener) => listener(started));
+      startListeners.clear();
+    },
+  );
+}
+
+/** Runs `listener` once live preview has started; returns an unsubscribe. */
+function whenLive(listener: (store: LiveStore) => void): () => void {
+  if (store) {
+    listener(store);
+    return () => {};
   }
-  return store;
+  startListeners.add(listener);
+  return () => startListeners.delete(listener);
 }
 
 /**
@@ -93,15 +110,23 @@ export function useNormalizedQuery<T>(
   if (options.allowedEditorOrigins) {
     allowedEditorOrigins = [...options.allowedEditorOrigins];
   }
-  const s = liveStore();
+  startLive();
   if (options.onSave && getCurrentScope()) {
     const onSave = options.onSave;
-    onScopeDispose(s.onInvalidate(() => onSave()));
+    let offInvalidate: (() => void) | null = null;
+    const stopWaiting = whenLive((started) => {
+      offInvalidate = started.onInvalidate(() => onSave());
+    });
+    onScopeDispose(() => {
+      stopWaiting();
+      offInvalidate?.();
+    });
   }
+  // The log only fills once the runtime, and with it `applyLog`, is loaded.
   return computed(() => {
     const value = unref(data) as T;
-    return log.value.length
-      ? normalizeQuery(query, value, { log: log.value })
+    return log.value.length && applyLog
+      ? applyLog(query, value, { log: log.value })
       : value;
   });
 }
@@ -111,6 +136,9 @@ export function resetNuxtLivePreviewForTests(): void {
   bridge?.stop();
   bridge = null;
   store = null;
+  starting = null;
+  applyLog = null;
+  startListeners.clear();
   log.value = [];
   allowedEditorOrigins = undefined;
 }

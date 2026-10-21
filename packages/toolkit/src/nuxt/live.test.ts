@@ -27,6 +27,7 @@ describe('useNormalizedQuery', () => {
       useNormalizedQuery(QUERY, data, { enabled: true }),
     )!;
     expect(page.value.Post.title).toBe('Old');
+    await vi.dynamicImportSettled();
 
     post({ event: 'prepr:initVE' });
     post({
@@ -70,6 +71,7 @@ describe('useNormalizedQuery', () => {
     scope.run(() =>
       useNormalizedQuery(QUERY, ref({}), { enabled: true, onSave }),
     );
+    await vi.dynamicImportSettled();
     post({ event: 'prepr:initVE' });
     post({ event: 'prepr:itemChanged', itemId: 'p' });
     await vi.advanceTimersByTimeAsync(200);

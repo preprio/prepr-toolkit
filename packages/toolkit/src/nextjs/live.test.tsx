@@ -49,6 +49,13 @@ async function render(ui: React.ReactElement) {
   };
 }
 
+/** Lets the lazily loaded live preview runtime finish starting. */
+async function liveStarted(): Promise<void> {
+  await React.act(async () => {
+    await vi.dynamicImportSettled();
+  });
+}
+
 function Heading({ page }: { page: { _id: string; heading: string } }) {
   const live = useLive(page, { query: 'q', variables: {} });
   return <h1>{live.heading}</h1>;
@@ -94,9 +101,29 @@ describe('useLive', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Hi');
   });
 
+  it('picks up a registration made before live preview started', async () => {
+    stubFramed();
+    const { container } = await render(
+      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
+    );
+    initLivePreview({ enabled: true });
+    await liveStarted();
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({
+        event: 'prepr:fieldChange',
+        itemId: 'hero-1',
+        field: 'heading',
+        value: 'Hello',
+      });
+    });
+    expect(container.querySelector('h1')?.textContent).toBe('Hello');
+  });
+
   it('re-renders with pushed field values inside the editor iframe', async () => {
     stubFramed();
     initLivePreview({ enabled: true });
+    await liveStarted();
     const { container } = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
@@ -121,6 +148,7 @@ describe('useLive', () => {
       .fn()
       .mockResolvedValue({ _id: 'hero-1', heading: 'Saved' });
     initLivePreview({ enabled: true, fetcher });
+    await liveStarted();
     const { container } = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
@@ -139,6 +167,7 @@ describe('useLive', () => {
   it('stops updating after unmount', async () => {
     stubFramed();
     initLivePreview({ enabled: true });
+    await liveStarted();
     const { unmount } = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
@@ -161,6 +190,7 @@ describe('useLive after a server re-render', () => {
   it('keeps typed text when the server sends the stored content again', async () => {
     stubFramed();
     initLivePreview({ enabled: true });
+    await liveStarted();
     const first = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Stored' }} />,
     );
@@ -196,7 +226,9 @@ describe('PreprRefresh', () => {
     vi.useFakeTimers();
     stubFramed();
     initLivePreview({ enabled: true });
+    await liveStarted();
     await render(<PreprRefresh enabled />);
+    await liveStarted();
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' });
@@ -223,6 +255,7 @@ describe('PreprRefresh', () => {
 
   it('does nothing outside the iframe', async () => {
     await render(<PreprRefresh enabled />);
+    await liveStarted();
     post({ event: 'prepr:initVE' });
     post({ event: 'prepr:itemChanged', itemId: 'any' });
     await React.act(async () => {});
@@ -234,6 +267,7 @@ describe('PreprRefresh', () => {
     stubFramed();
     syncPreprLiveLog.mockClear();
     await render(<PreprRefresh enabled />);
+    await liveStarted();
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' });
@@ -261,6 +295,7 @@ describe('PreprRefresh', () => {
     stubFramed();
     syncPreprLiveLog.mockClear();
     await render(<PreprRefresh enabled />);
+    await liveStarted();
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' });
@@ -284,6 +319,7 @@ describe('PreprRefresh', () => {
     stubFramed();
     syncPreprLiveLog.mockClear();
     await render(<PreprRefresh enabled />);
+    await liveStarted();
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' }, 'https://attacker.example');

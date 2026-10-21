@@ -3,13 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import {
-  createLiveBridge,
-  createLiveStore,
-  type LiveBridge,
-  type LiveFetcher,
-  type LiveStore,
-} from '../core/live-preview';
+import type { LiveBridge, LiveFetcher, LiveStore } from '../core/live-preview';
 import type { LivePatch } from '../core/live-preview/normalize-query';
 import { createScopedLogger } from '../core/utils';
 import { syncPreprLiveLog } from './live-action';
@@ -50,33 +44,47 @@ export interface UseLiveOptions {
   variables?: Record<string, unknown>;
 }
 
+let starting: Promise<LiveStore> | null = null;
 let store: LiveStore | null = null;
 let bridge: LiveBridge | null = null;
 let allowedEditorOrigins: string[] | undefined;
+const startListeners = new Set<(store: LiveStore) => void>();
 
 function isFramed(): boolean {
   return typeof window !== 'undefined' && window.self !== window.top;
 }
 
-function getLiveStore(): LiveStore {
-  if (!store) store = createLiveStore();
-  return store;
+/**
+ * Loads the live preview runtime and starts listening to the editor. Only
+ * `initLivePreview` and `PreprRefresh` with `enabled` call this, so visitors
+ * outside preview never download the runtime, and a production page in an
+ * iframe never takes changes from anyone.
+ */
+function startLive(): Promise<LiveStore> {
+  starting ??= import('../core/live-preview').then(
+    ({ createLiveBridge, createLiveStore }) => {
+      const started = createLiveStore();
+      bridge = createLiveBridge(started, {
+        allowedEditorOrigins: () => allowedEditorOrigins,
+      });
+      bridge.start();
+      store = started;
+      startListeners.forEach((listener) => listener(started));
+      startListeners.clear();
+      return started;
+    },
+  );
+  return starting;
 }
 
-/**
- * Starts listening to the editor. Only preview-only code calls this
- * (`initLivePreview` or `PreprRefresh` with `enabled`), so a
- * production page in an iframe never takes changes from anyone.
- */
-function startBridge(): LiveStore {
-  const s = getLiveStore();
-  if (!bridge) {
-    bridge = createLiveBridge(s, {
-      allowedEditorOrigins: () => allowedEditorOrigins,
-    });
-    bridge.start();
+/** Runs `listener` once live preview has started; returns an unsubscribe. */
+function whenLive(listener: (store: LiveStore) => void): () => void {
+  if (store) {
+    listener(store);
+    return () => {};
   }
-  return s;
+  startListeners.add(listener);
+  return () => startListeners.delete(listener);
 }
 
 /**
@@ -90,8 +98,10 @@ export function initLivePreview(config: LivePreviewConfig = {}): void {
   if (config.allowedEditorOrigins) {
     allowedEditorOrigins = [...config.allowedEditorOrigins];
   }
-  const s = startBridge();
-  if (config.fetcher) s.setFetcher(config.fetcher);
+  const { fetcher } = config;
+  void startLive().then((started) => {
+    if (fetcher) started.setFetcher(fetcher);
+  });
 }
 
 /**
@@ -108,15 +118,22 @@ export function useLive<T>(data: T, opts?: UseLiveOptions): T {
 
   useEffect(() => {
     if (!isFramed()) return;
-    const registration = getLiveStore().register(data, opts);
-    // A new payload from the server, with any unsaved changes replayed.
-    setLive(registration.getSnapshot() as T);
-    const unsubscribe = registration.subscribe(() =>
-      setLive(registration.getSnapshot() as T),
-    );
+    let unregister: (() => void) | null = null;
+    const stopWaiting = whenLive((started) => {
+      const registration = started.register(data, opts);
+      // A new payload from the server, with any unsaved changes replayed.
+      setLive(registration.getSnapshot() as T);
+      const unsubscribe = registration.subscribe(() =>
+        setLive(registration.getSnapshot() as T),
+      );
+      unregister = () => {
+        unsubscribe();
+        registration.unregister();
+      };
+    });
     return () => {
-      unsubscribe();
-      registration.unregister();
+      stopWaiting();
+      unregister?.();
     };
     // opts is intentionally excluded: it changes identity every render but is
     // only read at registration time, which is keyed by the data payload.
@@ -142,16 +159,24 @@ export function PreprRefresh({ enabled = false }: PreprRefreshProps): null {
 
   useEffect(() => {
     if (!enabled || !isFramed()) return;
-    const store = startBridge();
     const sync = createLogSync();
-    const offLog = store.onLogChange((log) => {
-      if (log.length) sync.schedule(log);
-      else sync.cancel();
+    let unsubscribe: (() => void) | null = null;
+    let active = true;
+    void startLive().then((started) => {
+      if (!active) return;
+      const offLog = started.onLogChange((log) => {
+        if (log.length) sync.schedule(log);
+        else sync.cancel();
+      });
+      const offInvalidate = started.onInvalidate(() => router.refresh());
+      unsubscribe = () => {
+        offLog();
+        offInvalidate();
+      };
     });
-    const offInvalidate = store.onInvalidate(() => router.refresh());
     return () => {
-      offLog();
-      offInvalidate();
+      active = false;
+      unsubscribe?.();
       sync.cancel();
     };
   }, [enabled, router]);
@@ -210,5 +235,7 @@ export function resetLivePreviewForTests(): void {
   bridge?.stop();
   bridge = null;
   store = null;
+  starting = null;
+  startListeners.clear();
   allowedEditorOrigins = undefined;
 }
