@@ -16,6 +16,17 @@ describe('patchSnapshot', () => {
   };
   const index = indexSnapshot(snapshot);
 
+  it('finds a field the data holds under its GraphQL name by its API id', () => {
+    const data = {
+      Page: { _id: 'p', headline_style: 'H2', heroBlock: { title: 'Old' } },
+    };
+    const index = indexSnapshot(data);
+    const styled = patchSnapshot(data, index, 'p', 'headlineStyle', 'H1');
+    expect(styled.Page.headline_style).toBe('H1');
+    const nested = patchSnapshot(data, index, 'p', 'heroBlock.title', 'New');
+    expect(nested.Page.heroBlock.title).toBe('New');
+  });
+
   it('patches every occurrence of the item, immutably, with structural sharing', () => {
     const result = patchSnapshot(
       snapshot,

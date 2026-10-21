@@ -1,5 +1,6 @@
 import { vercelStegaSplit } from '@vercel/stega';
 
+import { fieldKeyIn } from './field-name';
 import type { LivePath, SnapshotIndex } from './index-snapshot';
 
 const INDEX_SEGMENT = /^\d+$/;
@@ -148,13 +149,29 @@ function patchAtPath(
   // `field` is a key on the item, or a dotted path below it for values with
   // no `_id` of their own: `content.3.body` is the body of the fourth entry
   // in a dynamic content field.
-  const fieldPath: LivePath = field
-    .split('.')
-    .map((segment) =>
-      INDEX_SEGMENT.test(segment) ? Number(segment) : segment,
-    );
-  if (fieldPath.some((s) => FORBIDDEN_SEGMENTS.has(String(s)))) return root;
-  return writeAtPath(root, [...path, ...fieldPath], value, markChanged);
+  const segments = field.split('.');
+  if (segments.some((s) => FORBIDDEN_SEGMENTS.has(s))) return root;
+  // The editor names fields by API id; the data holds them under the API id
+  // or its GraphQL (snake_case) name.
+  let node: unknown = root;
+  for (const step of path) {
+    node = (node as Record<string | number, unknown>)[step];
+  }
+  const fullPath: LivePath = [...path];
+  for (const segment of segments) {
+    let step: string | number = segment;
+    if (INDEX_SEGMENT.test(segment)) {
+      step = Number(segment);
+    } else if (node !== null && typeof node === 'object') {
+      step = fieldKeyIn(node as Record<string, unknown>, segment) ?? segment;
+    }
+    fullPath.push(step);
+    node =
+      node !== null && typeof node === 'object'
+        ? (node as Record<string | number, unknown>)[step]
+        : undefined;
+  }
+  return writeAtPath(root, fullPath, value, markChanged);
 }
 
 /**

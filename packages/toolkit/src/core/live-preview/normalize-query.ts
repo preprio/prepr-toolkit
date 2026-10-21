@@ -5,6 +5,7 @@ import {
 } from '@vercel/stega';
 
 import { createScopedLogger } from '../utils';
+import { graphqlFieldName } from './field-name';
 import {
   indexSnapshot,
   type LivePath,
@@ -74,7 +75,6 @@ const MAX_LOG_ENTRIES = 500;
 const MAX_LOG_SOURCE_LENGTH = 1_000_000;
 const INDEX_SEGMENT = /^\d+$/;
 const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
-const UPPERCASE_BOUNDARY = /(.)(?=[A-Z])/g;
 const ENVELOPE_KEYS = new Set(['data', 'errors', 'extensions']);
 
 /**
@@ -278,14 +278,6 @@ function toPathSegment(segment: string): string | number {
   return INDEX_SEGMENT.test(segment) ? Number(segment) : segment;
 }
 
-/**
- * GraphQL field names are the snake_case form of the API ids the editor
- * uses (`headlineStyle` → `headline_style`), matching how Prepr derives them.
- */
-function graphqlFieldName(apiId: string): string {
-  return apiId.replace(UPPERCASE_BOUNDARY, '$1_').toLowerCase();
-}
-
 function typenameOf(node: unknown): string | undefined {
   const typename = (node as { __typename?: unknown }).__typename;
   return typeof typename === 'string' ? typename : undefined;
@@ -478,7 +470,25 @@ function fillObject(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const edit = isPlainRecord(values.__edit) ? values.__edit : null;
-  const apiIds = edit && isPlainRecord(edit.apiIds) ? edit.apiIds : {};
+  // The editor keys values by API id; the query selects GraphQL names, which
+  // are the API id or its snake_case form. Older editors send GraphQL names
+  // with an `apiIds` map instead.
+  const apiIdOf = new Map<string, string>();
+  for (const key of Object.keys(values)) {
+    apiIdOf.set(key, key);
+    const name = graphqlFieldName(key);
+    if (!apiIdOf.has(name)) apiIdOf.set(name, key);
+  }
+  if (edit && isPlainRecord(edit.apiIds)) {
+    for (const [name, apiId] of Object.entries(edit.apiIds)) {
+      if (typeof apiId === 'string') apiIdOf.set(name, apiId);
+    }
+  }
+  const valueOf = (name: string): unknown => {
+    if (Object.prototype.hasOwnProperty.call(values, name)) return values[name];
+    const key = apiIdOf.get(name);
+    return key !== undefined && key in values ? values[key] : undefined;
+  };
   // Where a click on this value leads in the editor: a field below this
   // entry (`<path>.items.<field>`), or one fixed field (a dynamic content
   // block's text lives in its dynamic content field).
@@ -489,8 +499,9 @@ function fillObject(
     if (typeof edit.path !== 'string') return null;
     // Only text fields carry edit links in the API; an enum or a color with
     // a hidden link would no longer match the values the site compares.
-    if (!Array.isArray(edit.text) || !edit.text.includes(name)) return null;
-    const apiId = typeof apiIds[name] === 'string' ? apiIds[name] : name;
+    const apiId = apiIdOf.get(name) ?? name;
+    const text = Array.isArray(edit.text) ? edit.text : [];
+    if (!text.includes(apiId) && !text.includes(name)) return null;
     return `${edit.path}.items.${apiId}`;
   };
   const fields = collectFields(selections, typename ?? undefined, doc, {
@@ -505,11 +516,11 @@ function fillObject(
       out[field.key] = fillNested(
         doc,
         field.selections,
-        values[field.name],
+        valueOf(field.name),
         links,
       );
     } else {
-      const value = values[field.name];
+      const value = valueOf(field.name);
       const scalar =
         value === undefined || (value !== null && typeof value === 'object')
           ? null

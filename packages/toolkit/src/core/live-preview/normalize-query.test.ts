@@ -1024,6 +1024,79 @@ describe('normalizeQuery edit targets on pushes', () => {
   });
 });
 
+describe('normalizeQuery field names', () => {
+  // Prepr names fields by the snake_case form of their API id, except a
+  // single component field inside a component, which keeps its API id.
+  const query = `{
+    Page {
+      _id
+      sections {
+        __typename
+        ... on Hero {
+          _id
+          headline_style
+          heroBlock { __typename title }
+        }
+      }
+    }
+  }`;
+  const result = () => ({
+    Page: {
+      _id: 'p',
+      sections: [
+        {
+          __typename: 'Hero',
+          _id: 'h1',
+          headline_style: 'H2',
+          heroBlock: { __typename: 'Block', title: 'Old' },
+        },
+      ],
+    },
+  });
+
+  it('applies changes addressed by API id to both kinds of field name', () => {
+    const next = normalizeQuery(query, result(), {
+      log: [
+        { type: 'field', itemId: 'h1', field: 'headlineStyle', value: 'H1' },
+        { type: 'field', itemId: 'h1', field: 'heroBlock.title', value: 'New' },
+      ],
+    });
+    expect(next.Page.sections[0]).toMatchObject({
+      headline_style: 'H1',
+      heroBlock: { title: 'New' },
+    });
+  });
+
+  it('builds a new entry from values keyed by API id', () => {
+    const next = normalizeQuery(query, result(), {
+      log: [
+        {
+          type: 'list',
+          itemId: 'p',
+          field: 'sections',
+          entries: [
+            { _id: 'h1' },
+            {
+              _id: 'h2',
+              __typename: 'Hero',
+              fields: {
+                headlineStyle: 'H3',
+                heroBlock: { __typename: 'Block', title: 'Fresh' },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(next.Page.sections[1]).toEqual({
+      __typename: 'Hero',
+      _id: 'h2',
+      headline_style: 'H3',
+      heroBlock: { __typename: 'Block', title: 'Fresh' },
+    });
+  });
+});
+
 describe('normalizeQuery robustness', () => {
   it('returns the result unchanged instead of throwing on an unreadable result', () => {
     const result = { Post: { _id: 'p', title: 'Old' } };
