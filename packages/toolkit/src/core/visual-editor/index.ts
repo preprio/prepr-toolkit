@@ -34,14 +34,18 @@ export interface VisualEditor {
    * requests the edit, so the editor can lead to the field that references
    * that item. `null` (the default) treats every element as the open item's.
    */
-  setCurrentItem(itemId: string | null, references?: EditorReference[]): void;
+  setCurrentItem(
+    itemId: string | null,
+    references?: EditorReference[],
+    componentIds?: string[],
+  ): void;
   /**
    * Items the open item references, each with the field that links it.
    * Their content is outlined as linked and a click leads to that field;
    * content of any other item gets no outline and its clicks reach the page.
    * Until a list is given, other items are all treated alike (muted).
    */
-  setReferences(references: EditorReference[]): void;
+  setReferences(references: EditorReference[], componentIds?: string[]): void;
   /**
    * Language of the outline labels, such as the editor's interface language
    * once the handshake names it. Labels already on screen keep their text
@@ -104,13 +108,15 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
 
   // Referencing field per linked item id; null until the editor sends one.
   let references: Map<string, string> | null = null;
+  // Component instances of the open item: their content is the item's own.
+  let ownComponents = new Set<string>();
 
   // An element without an id cannot be attributed to another item, so it
   // keeps the open item's behaviour.
   const isCurrentItem = (el: HTMLElement): boolean => {
     if (currentItemId === null) return true;
     const id = el.getAttribute('data-prepr-id');
-    return !id || id === currentItemId;
+    return !id || id === currentItemId || ownComponents.has(id);
   };
 
   /** null: unrelated to the open item, so the visual editor leaves it alone. */
@@ -372,15 +378,21 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   function setCurrentItem(
     itemId: string | null,
     referenceList?: EditorReference[],
+    componentIds?: string[],
   ): void {
     currentItemId = itemId;
-    if (referenceList) setReferences(referenceList);
+    if (referenceList) setReferences(referenceList, componentIds);
+    else if (componentIds) ownComponents = new Set(componentIds);
     const selected = overlay.getSelectedTarget();
     const owner = selected ? encodedFrom(selected) : null;
     if (owner && !isCurrentItem(owner)) overlay.setSelected(null, '');
   }
 
-  function setReferences(referenceList: EditorReference[]): void {
+  function setReferences(
+    referenceList: EditorReference[],
+    componentIds?: string[],
+  ): void {
+    if (componentIds) ownComponents = new Set(componentIds);
     references = new Map();
     for (const { id, field } of referenceList) {
       // The first referencing field wins: it is where a click leads.

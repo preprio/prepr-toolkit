@@ -575,4 +575,20 @@ describe('createVisualEditor', () => {
     expect(box('hover').hasAttribute('data-visible')).toBe(true);
     expect(box('selected').hasAttribute('data-label-inside')).toBe(true);
   });
+
+  it("treats content of the open item's components as its own", async () => {
+    const screenshot = tagged('screenshot', 'figure');
+    screenshot.setAttribute('data-prepr-id', 'component-7');
+    rect(screenshot);
+    editor.start();
+    editor.setCurrentItem('item-1', [], ['component-7']);
+
+    screenshot.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true }),
+    );
+    await nextFrame();
+
+    expect(box('hover').getAttribute('data-item-kind')).toBe('current');
+    expect(box('hover').textContent).toBe('Screenshot');
+  });
 });

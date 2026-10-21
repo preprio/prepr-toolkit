@@ -19,6 +19,7 @@ interface EditorMessage {
   entryId?: unknown;
   itemId?: unknown;
   referencedIds?: unknown;
+  componentIds?: unknown;
   uiLocale?: unknown;
 }
 
@@ -51,6 +52,12 @@ export interface EditorHandshake {
    */
   referencedIds?: EditorReference[];
   /**
+   * `_id`s of component instances inside the open item. Content tagged with
+   * one of them (`previewAttrs` on a component's image) belongs to the open
+   * item, not to another one.
+   */
+  componentIds?: string[];
+  /**
    * The language of the editor's own interface. Absent when the editor does
    * not send one or sends a language the toolkit has no translations for.
    */
@@ -63,6 +70,13 @@ const MAX_REFERENCES = 500;
  * The editor's reference list, or undefined when the value is not one.
  * Entries without a non-empty string `id` and `field` are dropped.
  */
+function parseIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .slice(0, MAX_REFERENCES)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
 function parseReferences(value: unknown): EditorReference[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const list: EditorReference[] = [];
@@ -156,7 +170,10 @@ export interface IframeBridgeOptions {
    */
   onHandshake?: (handshake: EditorHandshake) => void;
   /** The editor's reference list changed (`prepr:references`). */
-  onReferences?: (referencedIds: EditorReference[]) => void;
+  onReferences?: (
+    referencedIds: EditorReference[],
+    componentIds?: string[],
+  ) => void;
 }
 
 /**
@@ -231,11 +248,13 @@ export function createIframeBridge(
           ? data.itemId
           : undefined;
       const referencedIds = parseReferences(data.referencedIds);
+      const componentIds = parseIds(data.componentIds);
       const uiLocale = isLocale(data.uiLocale) ? data.uiLocale : undefined;
       try {
         onHandshake?.({
           ...(itemId && { itemId }),
           ...(referencedIds && { referencedIds }),
+          ...(componentIds && { componentIds }),
           ...(uiLocale && { uiLocale }),
         });
       } catch (error) {
@@ -247,7 +266,7 @@ export function createIframeBridge(
       const referencedIds = parseReferences(data.referencedIds);
       if (!referencedIds) return;
       try {
-        onReferences?.(referencedIds);
+        onReferences?.(referencedIds, parseIds(data.componentIds));
       } catch (error) {
         debug.warn('references handler failed', error as object);
       }

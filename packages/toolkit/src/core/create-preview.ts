@@ -309,13 +309,14 @@ export function createPreprPreview(
   // --- Iframe messaging -----------------------------------------------------
   const bridge = createIframeBridge(store, {
     allowedEditorOrigins: options?.allowedEditorOrigins,
-    onHandshake: ({ itemId, referencedIds, uiLocale }) => {
+    onHandshake: ({ itemId, referencedIds, componentIds, uiLocale }) => {
       // The labels are part of the editor's interface, so they follow its
       // language over the site's `locale` option.
       if (uiLocale) visualEditor?.setLocale(uiLocale);
-      visualEditor?.setCurrentItem(itemId ?? null, referencedIds);
+      visualEditor?.setCurrentItem(itemId ?? null, referencedIds, componentIds);
     },
-    onReferences: (referencedIds) => visualEditor?.setReferences(referencedIds),
+    onReferences: (referencedIds, componentIds) =>
+      visualEditor?.setReferences(referencedIds, componentIds),
     // The editor selecting a field scrolls the matching element into view. The
     // lookup relies on the attributes the stega scan writes, so it finds
     // nothing until encoded content has been tagged.

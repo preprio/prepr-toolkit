@@ -408,9 +408,10 @@ describe('createIframeBridge — references', () => {
       referencedIds: [{ id: 'person-1', field: 'author' }],
     });
     expect(onReferences).toHaveBeenCalledTimes(1);
-    expect(onReferences).toHaveBeenCalledWith([
-      { id: 'person-1', field: 'author' },
-    ]);
+    expect(onReferences).toHaveBeenCalledWith(
+      [{ id: 'person-1', field: 'author' }],
+      undefined,
+    );
     bridge.stop();
   });
 });
