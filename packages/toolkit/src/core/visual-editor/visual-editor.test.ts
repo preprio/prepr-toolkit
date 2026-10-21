@@ -350,6 +350,51 @@ describe('createVisualEditor', () => {
       expect(box('selected').hasAttribute('data-visible')).toBe(false);
     });
 
+    it('treats content nested in a data-prepr-reference container as that linked item', async () => {
+      const container = document.createElement('section');
+      container.setAttribute('data-prepr-reference', 'personalization-1');
+      document.body.appendChild(container);
+      const label = item('label', 'tabs-1');
+      container.appendChild(label);
+      rect(label);
+      editor.start();
+      editor.setCurrentItem('item-1', [
+        { id: 'personalization-1', field: 'sections' },
+      ]);
+
+      label.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+      expect(box('hover').getAttribute('data-item-kind')).toBe('referenced');
+
+      const click = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      });
+      label.dispatchEvent(click);
+      await nextFrame();
+      expect(onEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'personalization-1',
+          referenceField: 'sections',
+        }),
+      );
+    });
+
+    it('ignores a data-prepr-reference container the editor does not list', async () => {
+      const container = document.createElement('section');
+      container.setAttribute('data-prepr-reference', 'unknown-1');
+      document.body.appendChild(container);
+      const label = item('label', 'tabs-1');
+      container.appendChild(label);
+      rect(label);
+      editor.start();
+      editor.setCurrentItem('item-1', [{ id: 'person-1', field: 'author' }]);
+
+      label.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+      expect(box('hover').hasAttribute('data-visible')).toBe(false);
+    });
+
     it('leaves unrelated content alone: no outline, and its clicks reach the page', async () => {
       const nav = item('label', 'navigation-1', 'a');
       rect(nav);

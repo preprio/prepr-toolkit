@@ -271,6 +271,12 @@ blocks before saving:
 - Values without a hidden edit link (images, videos, other URLs) are made
   click-to-edit with `previewAttrs({ id, field }, { enabled: isPreview })`
   on the element that renders them.
+- Where the page renders a linked item whose content comes from items nested
+  inside it (for example a personalization or a shared section referenced
+  from a stack), wrap it in an element with
+  `data-prepr-reference="<linked item _id>"`. The editor only knows the items
+  the open item links to directly; content inside the wrapper is outlined as
+  that linked item, and clicking it opens the link in the editor.
 
 Configure once in a small client component mounted in your root layout:
 

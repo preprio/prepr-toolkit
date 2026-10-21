@@ -9,6 +9,9 @@ import { VisualEditorOverlay, type ItemKind } from './overlay';
 const debug = createScopedLogger('visual-editor');
 
 const ENCODED_SELECTOR = '[data-prepr-encoded]';
+/** Marks where the page renders a linked item; its value is that item's id. */
+const REFERENCE_ATTR = 'data-prepr-reference';
+const REFERENCE_SELECTOR = `[${REFERENCE_ATTR}]`;
 const CURSOR_STYLE_MARKER = 'data-prepr-visual-editor';
 const CURSOR_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}html[data-prepr-ve-suspended] ${ENCODED_SELECTOR}{cursor:auto}`;
 const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
@@ -119,17 +122,39 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     return !id || id === currentItemId || ownComponents.has(id);
   };
 
+  /**
+   * The linked item an element's content belongs to: its own item when the
+   * editor lists it, otherwise the nearest enclosing `data-prepr-reference`
+   * container the editor lists. The container covers items nested inside a
+   * linked item (a reference within a reference), which the editor of the
+   * open item does not know about.
+   */
+  const linkedIdOf = (el: HTMLElement): string | null => {
+    if (!references) return null;
+    const id = el.getAttribute('data-prepr-id') ?? '';
+    if (references.has(id)) return id;
+    let container = el.closest<HTMLElement>(REFERENCE_SELECTOR);
+    while (container) {
+      const linked = container.getAttribute(REFERENCE_ATTR) ?? '';
+      if (references.has(linked)) return linked;
+      container =
+        container.parentElement?.closest<HTMLElement>(REFERENCE_SELECTOR) ??
+        null;
+    }
+    return null;
+  };
+
   /** null: unrelated to the open item, so the visual editor leaves it alone. */
   const itemKind = (el: HTMLElement): ItemKind | null => {
     if (isCurrentItem(el)) return 'current';
     if (!references) return 'other';
-    return references.has(el.getAttribute('data-prepr-id') ?? '')
-      ? 'referenced'
-      : null;
+    return linkedIdOf(el) ? 'referenced' : null;
   };
 
-  const referenceFieldOf = (el: HTMLElement): string | undefined =>
-    references?.get(el.getAttribute('data-prepr-id') ?? '');
+  const referenceFieldOf = (el: HTMLElement): string | undefined => {
+    const linked = linkedIdOf(el);
+    return linked ? references?.get(linked) : undefined;
+  };
 
   const hoverLabel = (el: HTMLElement, kind: ItemKind): string => {
     if (kind === 'other') {
@@ -232,8 +257,11 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     if (kind === 'current') select(item?.element ?? encoded, encoded);
     const referenceField =
       kind === 'referenced' ? referenceFieldOf(encoded) : undefined;
+    // Nested content is reported as the linked item the open item knows.
+    const linkedId = kind === 'referenced' ? linkedIdOf(encoded) : null;
     opts.onEdit({
       ...readEditPayload(encoded),
+      ...(linkedId && { id: linkedId }),
       ...(item && { block: item.index }),
       ...(referenceField && { referenceField }),
     });
