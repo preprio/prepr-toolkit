@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Prepr editor emulator</title>
+<style>
+  body { margin: 0; display: grid; grid-template-columns: 340px 1fr; height: 100vh; font: 14px system-ui; }
+  #panel { border-right: 1px solid #ddd; padding: 12px; overflow-y: auto; }
+  #panel h2 { font-size: 13px; margin: 16px 0 4px; }
+  #panel .id { color: #999; font-size: 11px; word-break: break-all; }
+  #panel label { display: block; margin: 8px 0 2px; font-weight: 600; }
+  #panel input[type=text] { width: 100%; box-sizing: border-box; padding: 4px; }
+  #toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  #toolbar #url { flex: 1; min-width: 0; }
+  iframe { width: 100%; height: 100vh; border: 0; }
+  button { cursor: pointer; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div id="toolbar">
+      <input type="text" id="url" value="http://localhost:3000" />
+      <button id="load">Load</button>
+      <button id="save">Save</button>
+    </div>
+    <p id="hint">Load the preview; fields appear when the page posts its data.</p>
+    <div id="fields"></div>
+  </div>
+  <iframe id="preview"></iframe>
+<script>
+const iframe = document.getElementById('preview');
+const fieldsEl = document.getElementById('fields');
+let rootItemId = null;
+
+function post(message) {
+  iframe.contentWindow.postMessage(message, '*');
+}
+
+document.getElementById('load').onclick = () => {
+  iframe.src = document.getElementById('url').value;
+};
+
+iframe.addEventListener('load', () => {
+  // Handshake: the toolkit records this window's origin as the trusted
+  // editor origin (first prepr:initVE wins). editMode false keeps the
+  // toolkit's edit overlays out of the way.
+  post({ event: 'prepr:initVE', editMode: false });
+});
+
+document.getElementById('save').onclick = () => {
+  // Emulates a CMS save: itemChanged always carries the ROOT content item
+  // id (spec: Protocol), which triggers the refetch leg in the preview.
+  if (rootItemId) post({ event: 'prepr:itemChanged', itemId: rootItemId });
+};
+
+// The example's PageContent posts its query result up as `page_data`;
+// build the field panel from whatever arrives — nothing hardcoded.
+window.addEventListener('message', (evt) => {
+  const data = evt.data;
+  if (data?.name === 'prepr_preview_bar' && data.event === 'page_data') {
+    // The page re-posts its data after every live patch; rebuilding the
+    // panel mid-keystroke would steal focus from the input being typed in.
+    if (fieldsEl.contains(document.activeElement)) return;
+    buildPanel(data.data);
+  }
+});
+
+function isScalar(v) {
+  return ['string', 'number', 'boolean'].includes(typeof v);
+}
+
+function collectItems(node, depth, out, seen) {
+  if (!node || typeof node !== 'object' || seen.has(node)) return;
+  seen.add(node);
+  if (Array.isArray(node)) {
+    node.forEach((child) => collectItems(child, depth + 1, out, seen));
+    return;
+  }
+  if (typeof node._id === 'string') out.push({ item: node, depth });
+  Object.values(node).forEach((v) => collectItems(v, depth + 1, out, seen));
+}
+
+function buildPanel(data) {
+  const items = [];
+  collectItems(data, 0, items, new Set());
+  if (!items.length) return;
+
+  // Shallowest _id-carrying object = the root content item.
+  rootItemId = items.reduce((a, b) => (b.depth < a.depth ? b : a)).item._id;
+  document.getElementById('hint').textContent = 'root item: ' + rootItemId;
+
+  fieldsEl.innerHTML = '';
+  for (const { item } of items) {
+    const section = document.createElement('div');
+    const title = document.createElement('h2');
+    title.textContent = item.__typename ?? 'Item';
+    const id = document.createElement('div');
+    id.className = 'id';
+    id.textContent = item._id;
+    section.append(title, id);
+
+    for (const [field, value] of Object.entries(item)) {
+      // Skip meta fields (includes __typename) and anything non-scalar —
+      // mirrors the push leg's scalar-only rule.
+      if (field.startsWith('_') || !isScalar(value)) continue;
+      const label = document.createElement('label');
+      label.textContent = field;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = String(value);
+      let timer;
+      input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          post({
+            event: 'prepr:fieldChange',
+            itemId: item._id,
+            field,
+            value: input.value,
+          });
+        }, 100); // same debounce the real editor will use
+      });
+      section.append(label, input);
+    }
+    fieldsEl.append(section);
+  }
+}
+</script>
+</body>
+</html>
