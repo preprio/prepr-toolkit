@@ -390,11 +390,37 @@ export interface ResolvedField {
  * schema the toolkit cannot tell an interface from a sibling type, and only
  * keys present on the object are ever used, so this errs towards mapping.
  */
+// Results per selection set, then per type and mode. A document is parsed
+// once and never changes, so a selection set always resolves the same way.
+const fieldsCache = new WeakMap<
+  QuerySelection[],
+  Map<string, Map<string, ResolvedField>>
+>();
+
 export function collectFields(
   selections: QuerySelection[],
   typename: string | undefined,
   doc: QueryDocument,
   options: { strict?: boolean } = {},
+): Map<string, ResolvedField> {
+  const cacheKey = `${options.strict ? 's' : 'l'}:${typename ?? ''}`;
+  let cached = fieldsCache.get(selections);
+  if (!cached) {
+    cached = new Map();
+    fieldsCache.set(selections, cached);
+  }
+  const hit = cached.get(cacheKey);
+  if (hit) return hit;
+  const fields = resolveFields(selections, typename, doc, options);
+  cached.set(cacheKey, fields);
+  return fields;
+}
+
+function resolveFields(
+  selections: QuerySelection[],
+  typename: string | undefined,
+  doc: QueryDocument,
+  options: { strict?: boolean },
 ): Map<string, ResolvedField> {
   const exact = new Map<string, ResolvedField>();
   const loose = new Map<string, ResolvedField>();
@@ -476,10 +502,14 @@ function conditionMatches(
  * member types of a union field: `SideBySide`, `CTA`, … Empty for a set that
  * applies to one type only.
  */
+const conditionsCache = new WeakMap<QuerySelection[], string[]>();
+
 export function typeConditions(
   selections: QuerySelection[],
   doc: QueryDocument,
 ): string[] {
+  const hit = conditionsCache.get(selections);
+  if (hit) return hit;
   const names = new Set<string>();
   const seen = new Set<QueryFragment>();
   const walk = (list: QuerySelection[]): void => {
@@ -497,5 +527,7 @@ export function typeConditions(
     }
   };
   walk(selections);
-  return [...names];
+  const conditions = [...names];
+  conditionsCache.set(selections, conditions);
+  return conditions;
 }

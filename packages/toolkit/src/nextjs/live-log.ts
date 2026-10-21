@@ -74,6 +74,8 @@ export function takeLiveLog(token: string | undefined): LivePatch[] {
   const map = slots();
   const slot = map.get(token);
   map.delete(token);
-  if (!slot || slot.expires <= Date.now()) return [];
+  const now = Date.now();
+  prune(map, now);
+  if (!slot || slot.expires <= now) return [];
   return slot.log;
 }

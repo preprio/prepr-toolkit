@@ -2,7 +2,7 @@ import { cookies, headers } from 'next/headers';
 import * as navigation from 'next/navigation';
 
 import {
-  normalizeQuery as applyPatchLog,
+  applyPatchLog,
   type LivePatch,
 } from '../core/live-preview/normalize-query';
 import type { QueryInput } from '../core/live-preview/query-document';
@@ -148,8 +148,5 @@ export async function normalizeQuery<T>(
   if (!options.enabled) return result;
   const log = await getPreprLiveLog();
   if (!log.length) return result;
-  return applyPatchLog(query, result, {
-    log,
-    operationName: options.operationName,
-  });
+  return applyPatchLog(query, result, log, options.operationName);
 }

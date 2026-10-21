@@ -21,9 +21,21 @@ describe('patchSnapshot', () => {
       Page: { _id: 'p', headline_style: 'H2', heroBlock: { title: 'Old' } },
     };
     const index = indexSnapshot(data);
-    const styled = patchSnapshot(data, index, 'p', 'headlineStyle', 'H1');
+    const styled = patchSnapshot(
+      data,
+      index,
+      'p',
+      'headlineStyle',
+      'H1',
+    ) as typeof data;
     expect(styled.Page.headline_style).toBe('H1');
-    const nested = patchSnapshot(data, index, 'p', 'heroBlock.title', 'New');
+    const nested = patchSnapshot(
+      data,
+      index,
+      'p',
+      'heroBlock.title',
+      'New',
+    ) as typeof data;
     expect(nested.Page.heroBlock.title).toBe('New');
   });
 

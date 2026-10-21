@@ -16,34 +16,43 @@ export type SnapshotIndex = Map<string, LivePath[]>;
 export function indexSnapshot(data: unknown): SnapshotIndex {
   const index: SnapshotIndex = new Map();
   const visited = new WeakSet<object>();
+  // One path, extended and shortened during the walk; copied only when an
+  // item is recorded.
+  const path: LivePath = [];
 
-  function walk(node: unknown, path: LivePath): void {
+  function walk(node: unknown): void {
     if (node === null || typeof node !== 'object') return;
     if (visited.has(node)) return;
     visited.add(node);
 
     if (Array.isArray(node)) {
-      node.forEach((child, i) => walk(child, [...path, i]));
+      for (let i = 0; i < node.length; i++) {
+        path.push(i);
+        walk(node[i]);
+        path.pop();
+      }
       return;
     }
 
     const record = node as Record<string, unknown>;
     if (typeof record._id === 'string') {
-      const paths = index.get(record._id) ?? [];
-      paths.push(path);
-      index.set(record._id, paths);
+      const paths = index.get(record._id);
+      if (paths) paths.push([...path]);
+      else index.set(record._id, [[...path]]);
     } else if (typeof record.__typename === 'string') {
-      // Live-update requirement: items must select `_id` (debug-only warning,
-      // same visibility rules as every other scoped log).
-      debug.log(
-        `item with __typename "${record.__typename}" has no _id — it will not live-update`,
-      );
+      // Live-update requirement: items must select `_id`.
+      debug.log('item without _id will not live-update', {
+        __typename: record.__typename,
+      });
     }
-    for (const [key, value] of Object.entries(record)) {
-      walk(value, [...path, key]);
+    for (const key in record) {
+      if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+      path.push(key);
+      walk(record[key]);
+      path.pop();
     }
   }
 
-  walk(data, []);
+  walk(data);
   return index;
 }

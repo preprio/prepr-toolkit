@@ -144,19 +144,36 @@ export function normalizeQuery<T>(
   result: T,
   options: NormalizeQueryOptions = {},
 ): T {
-  const log = parsePatchLog(options.log);
+  return applyPatchLog(
+    query,
+    result,
+    parsePatchLog(options.log),
+    options.operationName,
+  );
+}
+
+/**
+ * `normalizeQuery` for a log that already passed `parsePatchLog`, so
+ * adapters holding a validated log do not parse it again on every render.
+ */
+export function applyPatchLog<T>(
+  query: QueryInput,
+  result: T,
+  log: LivePatch[],
+  operationName?: string,
+): T {
   if (!log.length || result === null || typeof result !== 'object') {
     return result;
   }
 
   if (isEnvelope(result)) {
-    const data = normalizeQuery(query, result.data, options);
+    const data = applyPatchLog(query, result.data, log, operationName);
     return data === result.data ? result : ({ ...result, data } as T);
   }
 
   let doc: QueryDocument | null = null;
   try {
-    doc = readQueryDocument(query, options.operationName);
+    doc = readQueryDocument(query, operationName);
   } catch (error) {
     debug.log('could not read the query; applying fields by literal path', {
       error: String(error),
@@ -164,24 +181,19 @@ export function normalizeQuery<T>(
   }
 
   let root: unknown = result;
-  let index: SnapshotIndex;
-  try {
-    index = indexSnapshot(root);
-  } catch (error) {
-    debug.log('could not read the result', { error: String(error) });
-    return result;
-  }
+  // Rebuilt only when a change moved or replaced objects, and only once the
+  // next change needs it.
+  let index: SnapshotIndex | null = null;
   for (const patch of log) {
     // One change that cannot be applied must not cost the others, nor the
     // render: keep the result as it was before it.
     try {
+      index ??= indexSnapshot(root);
       const next = applyPatch(root, index, patch, doc, result);
       if (next !== root) {
         root = next;
-        // Lists moved or objects were replaced: paths recorded before the
-        // change no longer point at the same objects.
         if (patch.type === 'list' || !isScalarValue(patch.value)) {
-          index = indexSnapshot(root);
+          index = null;
         }
       }
     } catch (error) {

@@ -12,7 +12,7 @@ import type {
   LiveBridge,
   LivePatch,
   LiveStore,
-  normalizeQuery,
+  applyPatchLog,
 } from '../core/live-preview';
 import type { QueryInput } from '../core/live-preview/query-document';
 
@@ -38,7 +38,7 @@ export interface UseNormalizedQueryOptions {
 let starting: Promise<void> | null = null;
 let store: LiveStore | null = null;
 let bridge: LiveBridge | null = null;
-let applyLog: typeof normalizeQuery | null = null;
+let applyLog: typeof applyPatchLog | null = null;
 const log = shallowRef<LivePatch[]>([]);
 let allowedEditorOrigins: string[] | undefined;
 const startListeners = new Set<(store: LiveStore) => void>();
@@ -54,8 +54,8 @@ function isFramed(): boolean {
  */
 function startLive(): void {
   starting ??= import('../core/live-preview').then(
-    ({ createLiveBridge, createLiveStore, normalizeQuery }) => {
-      applyLog = normalizeQuery;
+    ({ applyPatchLog, createLiveBridge, createLiveStore }) => {
+      applyLog = applyPatchLog;
       const started = createLiveStore();
       bridge = createLiveBridge(started, {
         allowedEditorOrigins: () => allowedEditorOrigins,
@@ -126,7 +126,7 @@ export function useNormalizedQuery<T>(
   return computed(() => {
     const value = unref(data) as T;
     return log.value.length && applyLog
-      ? applyLog(query, value, { log: log.value })
+      ? applyLog(query, value, log.value)
       : value;
   });
 }
