@@ -284,6 +284,12 @@ function syncList(
   entries: LiveListEntry[],
   build?: LiveEntryBuilder,
 ): unknown {
+  // A list field of a component added before save holds null until its
+  // first entry arrives; start it empty so that entry can be built.
+  if (current === null || current === undefined) {
+    const built = syncList([], entries, build) as unknown[];
+    return built.length ? built : current;
+  }
   if (!Array.isArray(current)) return current;
   const byKey = new Map<string, unknown>();
   const templates = new Map<string, Record<string, unknown>>();

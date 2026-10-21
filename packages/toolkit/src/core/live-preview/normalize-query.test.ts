@@ -753,3 +753,78 @@ describe('normalizeQuery edits inside a new entry', () => {
     expect(next).toBe(result);
   });
 });
+
+describe('normalizeQuery lists inside a new entry', () => {
+  const addSection = {
+    type: 'list',
+    itemId: 'page-1',
+    field: 'sections',
+    entries: [
+      { _id: 'sbs-1' },
+      { _id: 'content-1' },
+      { _id: 'new-1', __typename: 'SideBySide', fields: { content: null } },
+    ],
+  };
+
+  it('adds the first stack entry to a list that is still empty', () => {
+    const next = normalizeQuery(PAGE_QUERY, pageResult(), {
+      log: [
+        addSection,
+        {
+          type: 'list',
+          itemId: 'new-1',
+          field: 'content.ctas',
+          entries: [
+            { _id: 'btn-new', __typename: 'Button', fields: { value: 'Go' } },
+          ],
+        },
+        { type: 'field', itemId: 'btn-new', field: 'value', value: 'Go now' },
+      ],
+    });
+    const added = (
+      next.Page.sections as unknown as Array<{ content: { ctas: unknown } }>
+    )[2];
+    expect(added.content.ctas).toEqual([
+      { _id: 'btn-new', value: 'Go now', link: null },
+    ]);
+  });
+
+  it('adds the first text block to dynamic content that is still empty', () => {
+    const next = normalizeQuery(PAGE_QUERY, pageResult(), {
+      log: [
+        addSection,
+        {
+          type: 'list',
+          itemId: 'new-1',
+          field: 'content.content',
+          entries: [
+            {
+              _id: 'tmp:1',
+              __typename: 'Text',
+              body: '<p>Test</p>',
+              fields: { body: '<p>Test</p>', format: null, text: 'Test' },
+            },
+          ],
+        },
+        {
+          type: 'field',
+          itemId: 'tmp:1',
+          field: 'body',
+          value: '<p>Test 2</p>',
+        },
+      ],
+    });
+    const added = (
+      next.Page.sections as unknown as Array<{ content: { content: unknown } }>
+    )[2];
+    expect(added.content.content).toEqual([
+      {
+        __typename: 'Text',
+        _id: 'tmp:1',
+        body: '<p>Test 2</p>',
+        format: null,
+        text: 'Test',
+      },
+    ]);
+  });
+});
