@@ -228,6 +228,7 @@ export function createPreprPreview(
     locale: contentLocale,
     block,
     entryId,
+    referenceField,
   }: StegaEditPayload) => {
     // Validated even though only the standalone branch opens the URL: a
     // href the browser would refuse is a malformed payload, and must not
@@ -246,6 +247,7 @@ export function createPreprPreview(
         locale: contentLocale,
         ...(block !== undefined && { block }),
         ...(entryId && { entryId }),
+        ...(referenceField && { referenceField }),
       });
     } else if (safeHref) {
       // `noopener` — without it the opened tab keeps a live `window.opener`
@@ -307,7 +309,9 @@ export function createPreprPreview(
   // --- Iframe messaging -----------------------------------------------------
   const bridge = createIframeBridge(store, {
     allowedEditorOrigins: options?.allowedEditorOrigins,
-    onHandshake: ({ itemId }) => visualEditor?.setCurrentItem(itemId ?? null),
+    onHandshake: ({ itemId, referencedIds }) =>
+      visualEditor?.setCurrentItem(itemId ?? null, referencedIds),
+    onReferences: (referencedIds) => visualEditor?.setReferences(referencedIds),
     // The editor selecting a field scrolls the matching element into view. The
     // lookup relies on the attributes the stega scan writes, so it finds
     // nothing until encoded content has been tagged.

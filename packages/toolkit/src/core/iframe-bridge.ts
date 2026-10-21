@@ -17,6 +17,7 @@ interface EditorMessage {
   block?: unknown;
   entryId?: unknown;
   itemId?: unknown;
+  referencedIds?: unknown;
 }
 
 /** Which field the editor asked the preview to bring on screen. */
@@ -30,12 +31,42 @@ export interface ScrollToFieldMessage {
 }
 
 /** What the editor told the preview when the handshake completed. */
+/** A content item the open item links to, and the field that links it. */
+export interface EditorReference {
+  id: string;
+  field: string;
+}
+
 export interface EditorHandshake {
   /**
    * The content item open in the editor. Absent when the editor does not
    * send one, in which case every tagged element counts as part of it.
    */
   itemId?: string;
+  /**
+   * Items the open item references. Absent when the editor does not send
+   * them, in which case other items are not split into linked and unrelated.
+   */
+  referencedIds?: EditorReference[];
+}
+
+const MAX_REFERENCES = 500;
+
+/**
+ * The editor's reference list, or undefined when the value is not one.
+ * Entries without a non-empty string `id` and `field` are dropped.
+ */
+function parseReferences(value: unknown): EditorReference[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const list: EditorReference[] = [];
+  for (const entry of value.slice(0, MAX_REFERENCES)) {
+    const id = (entry as { id?: unknown } | null)?.id;
+    const field = (entry as { field?: unknown } | null)?.field;
+    if (typeof id === 'string' && id && typeof field === 'string' && field) {
+      list.push({ id, field });
+    }
+  }
+  return list;
 }
 
 export interface IframeBridge {
@@ -117,6 +148,8 @@ export interface IframeBridgeOptions {
    * (navigation, an author card, related posts).
    */
   onHandshake?: (handshake: EditorHandshake) => void;
+  /** The editor's reference list changed (`prepr:references`). */
+  onReferences?: (referencedIds: EditorReference[]) => void;
 }
 
 /**
@@ -149,6 +182,7 @@ export function createIframeBridge(
   const allowedOrigins = options.allowedEditorOrigins;
   const onScrollToField = options.onScrollToField;
   const onHandshake = options.onHandshake;
+  const onReferences = options.onReferences;
   let parentOrigin: string | null = null;
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -188,13 +222,26 @@ export function createIframeBridge(
         typeof data.itemId === 'string' && data.itemId
           ? data.itemId
           : undefined;
+      const referencedIds = parseReferences(data.referencedIds);
       try {
-        onHandshake?.(itemId ? { itemId } : {});
+        onHandshake?.({
+          ...(itemId && { itemId }),
+          ...(referencedIds && { referencedIds }),
+        });
       } catch (error) {
         debug.warn('handshake handler failed', error as object);
       }
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;
+    if (data?.event === 'prepr:references') {
+      const referencedIds = parseReferences(data.referencedIds);
+      if (!referencedIds) return;
+      try {
+        onReferences?.(referencedIds);
+      } catch (error) {
+        debug.warn('references handler failed', error as object);
+      }
+    }
     if (data?.event === 'prepr:getScrollPosition') {
       const currentScrollY =
         window.scrollY || document.documentElement.scrollTop;

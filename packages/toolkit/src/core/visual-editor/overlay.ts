@@ -230,11 +230,16 @@ const STYLES = `
 .hover .label { background: rgba(79, 70, 229, 0.92); }
 /* Content of another item than the one open in the editor: still clickable,
    but visibly not part of the item being edited. */
-.hover[data-other-item] {
+.hover[data-item-kind='other'] {
   border: 1.5px dashed #a5b4fc;
   background: rgba(100, 116, 139, 0.05);
 }
-.hover[data-other-item] .label { background: #64748b; }
+.hover[data-item-kind='other'] .label { background: #64748b; }
+.hover[data-item-kind='referenced'] {
+  border: 1.5px solid #a5b4fc;
+  background: rgba(79, 70, 229, 0.03);
+}
+.hover[data-item-kind='referenced'] .label { background: #818cf8; }
 .box[data-label-covered] .label { visibility: hidden; }
 .box[data-label-inside] .label {
   bottom: auto;
@@ -247,9 +252,15 @@ const STYLES = `
 }
 `;
 
+/**
+ * How the hovered element relates to the item open in the editor:
+ * its own content, content of an item it references, or another item when
+ * the editor did not say which items are referenced.
+ */
+export type ItemKind = 'current' | 'referenced' | 'other';
+
 export interface HoverOptions {
-  /** Draw the muted style for content of another item than the open one. */
-  otherItem?: boolean;
+  kind?: ItemKind;
 }
 
 interface Box {
@@ -314,9 +325,9 @@ export class VisualEditorOverlay {
     // Set before retargeting, so the box never paints one frame in the style
     // of the element it is leaving.
     if (target) {
-      this.hoverBox?.root.toggleAttribute(
-        'data-other-item',
-        options.otherItem ?? false,
+      this.hoverBox?.root.setAttribute(
+        'data-item-kind',
+        options.kind ?? 'current',
       );
     }
     this.retarget(this.hoverBox, target, label);

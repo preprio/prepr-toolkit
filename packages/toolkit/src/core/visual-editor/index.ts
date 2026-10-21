@@ -2,7 +2,8 @@ import { readEditPayload } from '../stega/dom';
 import type { StegaEditPayload } from '../stega/overlay';
 import { createScopedLogger } from '../utils';
 import { fieldLabel, findFieldElement, type FieldLookup } from './field-path';
-import { VisualEditorOverlay } from './overlay';
+import type { EditorReference } from '../iframe-bridge';
+import { VisualEditorOverlay, type ItemKind } from './overlay';
 
 const debug = createScopedLogger('visual-editor');
 
@@ -11,6 +12,7 @@ const CURSOR_STYLE_MARKER = 'data-prepr-visual-editor';
 const CURSOR_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}html[data-prepr-ve-suspended] ${ENCODED_SELECTOR}{cursor:auto}`;
 const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
 const OTHER_ITEM_SUFFIX = ' · other item';
+const LINKED_ITEM_SUFFIX = ' · linked item';
 
 // Content can be tagged a moment after the editor asks for it: the field sits
 // in a section that renders late, or hydration re-renders it first.
@@ -31,7 +33,14 @@ export interface VisualEditor {
    * requests the edit, so the editor can lead to the field that references
    * that item. `null` (the default) treats every element as the open item's.
    */
-  setCurrentItem(itemId: string | null): void;
+  setCurrentItem(itemId: string | null, references?: EditorReference[]): void;
+  /**
+   * Items the open item references, each with the field that links it.
+   * Their content is outlined as linked and a click leads to that field;
+   * content of any other item gets no outline and its clicks reach the page.
+   * Until a list is given, other items are all treated alike (muted).
+   */
+  setReferences(references: EditorReference[]): void;
   /**
    * Scroll the element rendering `field` into view and mark it selected.
    * Retries briefly while the content may still be tagging; resolves to
@@ -85,12 +94,36 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const labelFor = (el: HTMLElement): string =>
     fieldLabel(el.getAttribute('data-prepr-field'));
 
+  // Referencing field per linked item id; null until the editor sends one.
+  let references: Map<string, string> | null = null;
+
   // An element without an id cannot be attributed to another item, so it
   // keeps the open item's behaviour.
   const isCurrentItem = (el: HTMLElement): boolean => {
     if (currentItemId === null) return true;
     const id = el.getAttribute('data-prepr-id');
     return !id || id === currentItemId;
+  };
+
+  /** null: unrelated to the open item, so the visual editor leaves it alone. */
+  const itemKind = (el: HTMLElement): ItemKind | null => {
+    if (isCurrentItem(el)) return 'current';
+    if (!references) return 'other';
+    return references.has(el.getAttribute('data-prepr-id') ?? '')
+      ? 'referenced'
+      : null;
+  };
+
+  const referenceFieldOf = (el: HTMLElement): string | undefined =>
+    references?.get(el.getAttribute('data-prepr-id') ?? '');
+
+  const hoverLabel = (el: HTMLElement, kind: ItemKind): string => {
+    if (kind === 'other') return labelFor(el) + OTHER_ITEM_SUFFIX;
+    if (kind === 'referenced') {
+      const via = referenceFieldOf(el);
+      return `${via ? `${fieldLabel(via)} › ` : ''}${labelFor(el)}${LINKED_ITEM_SUFFIX}`;
+    }
+    return labelFor(el);
   };
 
   const setSuspended = (value: boolean): void => {
@@ -114,12 +147,12 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       overlay.setHover(null, '');
       return;
     }
-    const otherItem = !isCurrentItem(target);
-    overlay.setHover(
-      target,
-      otherItem ? labelFor(target) + OTHER_ITEM_SUFFIX : labelFor(target),
-      { otherItem },
-    );
+    const kind = itemKind(target);
+    if (!kind) {
+      overlay.setHover(null, '');
+      return;
+    }
+    overlay.setHover(target, hoverLabel(target, kind), { kind });
   };
 
   const handlePointerMove = (e: PointerEvent): void => {
@@ -138,9 +171,11 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const handleClick = (e: MouseEvent): void => {
     if (e.altKey) return;
     const encoded = encodedFrom(e.target);
-    if (!encoded) {
-      // A click on nothing editable ends the selection, like clicking beside
-      // a focused field in a form. The page still handles the click itself.
+    const kind = encoded ? itemKind(encoded) : null;
+    if (!encoded || !kind) {
+      // A click on nothing editable, or on content unrelated to the open
+      // item (site navigation, footer), ends the selection like clicking
+      // beside a focused field. The page still handles the click itself.
       overlay.setSelected(null, '');
       return;
     }
@@ -151,10 +186,13 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     const item = listItemIn(encoded, e.target);
     // Another item's field is edited from the field that references it, so it
     // is reported to the editor but not marked as this item's selection.
-    if (isCurrentItem(encoded)) select(item?.element ?? encoded, encoded);
+    if (kind === 'current') select(item?.element ?? encoded, encoded);
+    const referenceField =
+      kind === 'referenced' ? referenceFieldOf(encoded) : undefined;
     opts.onEdit({
       ...readEditPayload(encoded),
       ...(item && { block: item.index }),
+      ...(referenceField && { referenceField }),
     });
   };
 
@@ -320,12 +358,24 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     });
   }
 
-  function setCurrentItem(itemId: string | null): void {
+  function setCurrentItem(
+    itemId: string | null,
+    referenceList?: EditorReference[],
+  ): void {
     currentItemId = itemId;
+    if (referenceList) setReferences(referenceList);
     const selected = overlay.getSelectedTarget();
     const owner = selected ? encodedFrom(selected) : null;
     if (owner && !isCurrentItem(owner)) overlay.setSelected(null, '');
   }
 
-  return { start, stop, setCurrentItem, focusField };
+  function setReferences(referenceList: EditorReference[]): void {
+    references = new Map();
+    for (const { id, field } of referenceList) {
+      // The first referencing field wins: it is where a click leads.
+      if (!references.has(id)) references.set(id, field);
+    }
+  }
+
+  return { start, stop, setCurrentItem, setReferences, focusField };
 }

@@ -352,3 +352,41 @@ describe('createIframeBridge — handshake item id', () => {
     bridge.stop();
   });
 });
+
+describe('createIframeBridge — references', () => {
+  it('passes the editor reference list on the handshake, dropping malformed entries', () => {
+    const onHandshake = vi.fn();
+    const bridge = createIframeBridge(null, { onHandshake });
+    bridge.start();
+    postFrom(EDITOR, {
+      event: 'prepr:initVE',
+      itemId: 'post-1',
+      referencedIds: [{ id: 'person-1', field: 'author' }, { id: 7 }, null],
+    });
+    expect(onHandshake).toHaveBeenCalledWith({
+      itemId: 'post-1',
+      referencedIds: [{ id: 'person-1', field: 'author' }],
+    });
+    bridge.stop();
+  });
+
+  it('forwards prepr:references from the editor origin only', () => {
+    const onReferences = vi.fn();
+    const bridge = createIframeBridge(null, { onReferences });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(ATTACKER, {
+      event: 'prepr:references',
+      referencedIds: [{ id: 'x', field: 'y' }],
+    });
+    postFrom(EDITOR, {
+      event: 'prepr:references',
+      referencedIds: [{ id: 'person-1', field: 'author' }],
+    });
+    expect(onReferences).toHaveBeenCalledTimes(1);
+    expect(onReferences).toHaveBeenCalledWith([
+      { id: 'person-1', field: 'author' },
+    ]);
+    bridge.stop();
+  });
+});

@@ -306,6 +306,82 @@ describe('createVisualEditor', () => {
     expect(selected.hasAttribute('data-label-covered')).toBe(false);
   });
 
+  describe('linked and unrelated items', () => {
+    function item(field: string, id: string, tag = 'p'): HTMLElement {
+      const el = tagged(field, tag);
+      el.setAttribute('data-prepr-id', id);
+      return el;
+    }
+
+    it('outlines a linked item and names the field that links it', async () => {
+      const name = item('name', 'person-1');
+      rect(name);
+      editor.start();
+      editor.setCurrentItem('item-1', [{ id: 'person-1', field: 'author' }]);
+
+      name.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+
+      expect(box('hover').getAttribute('data-item-kind')).toBe('referenced');
+      expect(box('hover').textContent).toBe('Author › Name · linked item');
+    });
+
+    it('sends the referencing field on click and does not select the linked item', async () => {
+      const name = item('name', 'person-1');
+      rect(name);
+      editor.start();
+      editor.setCurrentItem('item-1', [{ id: 'person-1', field: 'author' }]);
+
+      const click = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      });
+      name.dispatchEvent(click);
+      await nextFrame();
+
+      expect(click.defaultPrevented).toBe(true);
+      expect(onEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'person-1',
+          field: 'name',
+          referenceField: 'author',
+        }),
+      );
+      expect(box('selected').hasAttribute('data-visible')).toBe(false);
+    });
+
+    it('leaves unrelated content alone: no outline, and its clicks reach the page', async () => {
+      const nav = item('label', 'navigation-1', 'a');
+      rect(nav);
+      editor.start();
+      editor.setCurrentItem('item-1', [{ id: 'person-1', field: 'author' }]);
+
+      nav.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+      expect(box('hover').hasAttribute('data-visible')).toBe(false);
+
+      const click = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      });
+      nav.dispatchEvent(click);
+      expect(click.defaultPrevented).toBe(false);
+      expect(onEdit).not.toHaveBeenCalled();
+    });
+
+    it('updates the split when the reference list changes', async () => {
+      const name = item('name', 'person-2');
+      rect(name);
+      editor.start();
+      editor.setCurrentItem('item-1', []);
+      editor.setReferences([{ id: 'person-2', field: 'reviewer' }]);
+
+      name.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+      expect(box('hover').textContent).toBe('Reviewer › Name · linked item');
+    });
+  });
+
   describe('content of other items', () => {
     function otherItem(field: string): HTMLElement {
       const el = tagged(field);
@@ -322,7 +398,7 @@ describe('createVisualEditor', () => {
       name.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
       await nextFrame();
 
-      expect(box('hover').hasAttribute('data-other-item')).toBe(true);
+      expect(box('hover').getAttribute('data-item-kind')).toBe('other');
       expect(box('hover').textContent).toBe('Name · other item');
     });
 
@@ -335,7 +411,7 @@ describe('createVisualEditor', () => {
       heading.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
       await nextFrame();
 
-      expect(box('hover').hasAttribute('data-other-item')).toBe(false);
+      expect(box('hover').getAttribute('data-item-kind')).toBe('current');
       expect(box('hover').textContent).toBe('Title');
     });
 
@@ -347,7 +423,7 @@ describe('createVisualEditor', () => {
       name.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
       await nextFrame();
 
-      expect(box('hover').hasAttribute('data-other-item')).toBe(false);
+      expect(box('hover').getAttribute('data-item-kind')).toBe('current');
       name.dispatchEvent(
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
