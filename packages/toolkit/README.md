@@ -330,6 +330,34 @@ iframe — `examples/editor-emulator` emulates this for local development.
 Unsaved structural changes (adding/reordering components) appear after save;
 typed text is live immediately.
 
+#### Applying unsaved changes on the server: `normalizeQuery` (experimental)
+
+`normalizeQuery` applies the editor's unsaved changes to a query result
+wherever you fetch it, so server components render them without client
+wrappers:
+
+```ts
+import { normalizeQuery } from '@preprio/toolkit';
+
+const data = await fetchFromPrepr(GetPageDocument, { slug }); // any client
+const page = normalizeQuery(GetPageDocument, data, { log });
+```
+
+- `log` is the list of changes the editor made since the last save
+  (`{ type: 'field', itemId, field, value }` and
+  `{ type: 'list', itemId, field, entries }`). It is treated as hostile input
+  and validated. Without a log the result comes back untouched and the query
+  is not parsed.
+- The query (source text, a `DocumentNode`, or a typed document string) tells
+  the toolkit which response key holds which field. Changes therefore land
+  under aliases, inside single components, on dynamic content entries, and on
+  every place the same item appears. Fields the query did not select are left
+  alone.
+- Select `_id` on every item and component that should update.
+
+Delivering the log from the editor to your server render is not part of this
+release yet; framework adapters will pass it in for you.
+
 ## Astro
 
 **`src/middleware.ts`**

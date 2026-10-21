@@ -152,7 +152,22 @@ function patchAtPath(
       INDEX_SEGMENT.test(segment) ? Number(segment) : segment,
     );
   if (fieldPath.some((s) => FORBIDDEN_SEGMENTS.has(String(s)))) return root;
-  const fullPath = [...path, ...fieldPath];
+  return writeAtPath(root, [...path, ...fieldPath], value, markChanged);
+}
+
+/**
+ * Write `value` at `fullPath` from the snapshot root, under the same rules as
+ * a field push: the key must already exist, scalars only replace scalars, and
+ * structured values keep the queried shape. Clones only along the path.
+ */
+export function writeAtPath(
+  root: unknown,
+  fullPath: LivePath,
+  value: LiveValue,
+  markChanged: () => void = () => {},
+): unknown {
+  if (!fullPath.length) return root;
+  if (fullPath.some((s) => FORBIDDEN_SEGMENTS.has(String(s)))) return root;
   const last = fullPath.length - 1;
 
   // Resolve the target container, bailing out if the path no longer matches
@@ -297,25 +312,38 @@ export function syncListSnapshot(
 
   let root = snapshot;
   for (const path of paths) {
-    const full = [...path, ...fieldPath];
-    let node: unknown = root;
-    for (const key of full) {
-      node =
-        node !== null && typeof node === 'object'
-          ? (node as Record<string | number, unknown>)[key]
-          : undefined;
-    }
-    const next = syncList(node, entries);
-    if (next === node) continue;
-    const newRoot = cloneNode(root);
-    let cursor = newRoot;
-    for (let i = 0; i < full.length - 1; i++) {
-      const child = cloneNode(cursor[full[i]]);
-      cursor[full[i]] = child;
-      cursor = child;
-    }
-    cursor[full[full.length - 1]] = next;
-    root = newRoot;
+    root = syncListAtPath(root, [...path, ...fieldPath], entries);
   }
   return root;
+}
+
+/**
+ * Apply a list change to the list at `fullPath` from the snapshot root,
+ * cloning only along that path. Returns `root` untouched when nothing changed.
+ */
+export function syncListAtPath(
+  root: unknown,
+  fullPath: LivePath,
+  entries: LiveListEntry[],
+): unknown {
+  if (!fullPath.length) return root;
+  if (fullPath.some((s) => FORBIDDEN_SEGMENTS.has(String(s)))) return root;
+  let node: unknown = root;
+  for (const key of fullPath) {
+    node =
+      node !== null && typeof node === 'object'
+        ? (node as Record<string | number, unknown>)[key]
+        : undefined;
+  }
+  const next = syncList(node, entries);
+  if (next === node) return root;
+  const newRoot = cloneNode(root);
+  let cursor = newRoot;
+  for (let i = 0; i < fullPath.length - 1; i++) {
+    const child = cloneNode(cursor[fullPath[i]]);
+    cursor[fullPath[i]] = child;
+    cursor = child;
+  }
+  cursor[fullPath[fullPath.length - 1]] = next;
+  return newRoot;
 }

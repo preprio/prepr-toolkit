@@ -43,6 +43,15 @@ export {
   type PreviewAttrsTarget,
 } from './core/preview-attrs';
 
+// --- Live preview ---------------------------------------------------------
+export {
+  normalizeQuery,
+  parsePatchLog,
+  type LivePatch,
+  type NormalizeQueryOptions,
+} from './core/live-preview/normalize-query';
+export type { QueryInput } from './core/live-preview/query-document';
+
 // --- Server -----------------------------------------------------------------
 export {
   PreprError,
