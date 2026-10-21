@@ -7,6 +7,7 @@ import {
 import { createScopedLogger } from '../utils';
 import { indexSnapshot, type LivePath } from './index-snapshot';
 import {
+  keepEditLink,
   syncListAtPath,
   writeAtPath,
   type LiveEntryBuilder,
@@ -226,18 +227,6 @@ function readAtPath(root: unknown, path: LivePath): unknown {
     node = (node as Record<string | number, unknown>)[step];
   }
   return node;
-}
-
-/**
- * Text the editor pushes carries no hidden edit link, while the value it
- * replaces does. Carrying the old link over keeps the element click-to-edit
- * after a server render shows the new text.
- */
-function keepEditLink(current: unknown, value: LiveValue): LiveValue {
-  if (typeof current !== 'string' || typeof value !== 'string') return value;
-  const { encoded } = vercelStegaSplit(current);
-  if (!encoded || vercelStegaSplit(value).encoded) return value;
-  return value + encoded;
 }
 
 function isEnvelope(value: object): value is { data: unknown } {

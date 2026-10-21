@@ -1,3 +1,5 @@
+import { vercelStegaSplit } from '@vercel/stega';
+
 import type { LivePath, SnapshotIndex } from './index-snapshot';
 
 const INDEX_SEGMENT = /^\d+$/;
@@ -182,11 +184,13 @@ export function writeAtPath(
   const container = node as Record<string | number, unknown>;
   const key = fullPath[last];
   if (!(key in container)) return root;
-  let next: unknown = value;
+  let next: unknown;
   if (value === null || typeof value === 'object') {
     next = mergeStructured(container[key], value);
   } else if (!isPatchable(container[key])) {
     return root;
+  } else {
+    next = keepEditLink(container[key], value);
   }
   if (container[key] === next) return root;
 
@@ -377,4 +381,16 @@ export function syncListAtPath(
   }
   cursor[fullPath[fullPath.length - 1]] = next;
   return newRoot;
+}
+
+/**
+ * Text the editor pushes carries no hidden edit link, while the value it
+ * replaces does. Carrying the old link over keeps the element
+ * click-to-edit while the editor types.
+ */
+export function keepEditLink(current: unknown, value: LiveValue): LiveValue {
+  if (typeof current !== 'string' || typeof value !== 'string') return value;
+  const { encoded } = vercelStegaSplit(current);
+  if (!encoded || vercelStegaSplit(value).encoded) return value;
+  return value + encoded;
 }

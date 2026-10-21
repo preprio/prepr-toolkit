@@ -184,3 +184,30 @@ describe('patchSnapshot', () => {
     });
   });
 });
+
+describe('patchSnapshot edit links', () => {
+  it('keeps the hidden edit link of the text it replaces', async () => {
+    const { vercelStegaCombine, vercelStegaSplit } =
+      await import('@vercel/stega');
+    const snapshot = {
+      Post: {
+        _id: 'p',
+        body: vercelStegaCombine('<p>Old</p>', {
+          origin: 'prepr.io',
+          href: 'https://x/content/edit/p',
+        }),
+      },
+    };
+    const next = patchSnapshot(
+      snapshot,
+      indexSnapshot(snapshot),
+      'p',
+      'body',
+      '<p>New</p>',
+    ) as typeof snapshot;
+    expect(vercelStegaSplit(next.Post.body).cleaned).toBe('<p>New</p>');
+    expect(vercelStegaSplit(next.Post.body).encoded).toBe(
+      vercelStegaSplit(snapshot.Post.body).encoded,
+    );
+  });
+});
