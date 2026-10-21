@@ -2,6 +2,7 @@ import { readEditPayload } from '../stega/dom';
 import type { StegaEditPayload } from '../stega/overlay';
 import { createScopedLogger } from '../utils';
 import { fieldLabel, findFieldElement, type FieldLookup } from './field-path';
+import { t, type Locale } from '../i18n';
 import type { EditorReference } from '../iframe-bridge';
 import { VisualEditorOverlay, type ItemKind } from './overlay';
 
@@ -11,8 +12,6 @@ const ENCODED_SELECTOR = '[data-prepr-encoded]';
 const CURSOR_STYLE_MARKER = 'data-prepr-visual-editor';
 const CURSOR_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}html[data-prepr-ve-suspended] ${ENCODED_SELECTOR}{cursor:auto}`;
 const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
-const OTHER_ITEM_SUFFIX = ' · other item';
-const LINKED_ITEM_SUFFIX = ' · linked item';
 
 // Content can be tagged a moment after the editor asks for it: the field sits
 // in a section that renders late, or hydration re-renders it first.
@@ -22,6 +21,8 @@ const FIND_RETRIES = 6;
 export interface VisualEditorOptions {
   /** Called when a field is clicked, with the clicked element's payload. */
   onEdit: (payload: StegaEditPayload) => void;
+  /** Language of the outline labels. Defaults to English. */
+  locale?: Locale;
 }
 
 export interface VisualEditor {
@@ -41,6 +42,12 @@ export interface VisualEditor {
    * Until a list is given, other items are all treated alike (muted).
    */
   setReferences(references: EditorReference[]): void;
+  /**
+   * Language of the outline labels, such as the editor's interface language
+   * once the handshake names it. Labels already on screen keep their text
+   * until the pointer moves to another element or the selection changes.
+   */
+  setLocale(locale: Locale): void;
   /**
    * Scroll the element rendering `field` into view and mark it selected.
    * Retries briefly while the content may still be tagging; resolves to
@@ -78,6 +85,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const overlay = new VisualEditorOverlay();
   let running = false;
   let currentItemId: string | null = null;
+  let locale: Locale = opts.locale ?? 'en';
   let suspended = false;
   let pointerFrame: number | null = null;
   let lastPointerTarget: Element | null = null;
@@ -92,7 +100,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       : null;
 
   const labelFor = (el: HTMLElement): string =>
-    fieldLabel(el.getAttribute('data-prepr-field'));
+    fieldLabel(el.getAttribute('data-prepr-field'), locale);
 
   // Referencing field per linked item id; null until the editor sends one.
   let references: Map<string, string> | null = null;
@@ -118,10 +126,13 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     references?.get(el.getAttribute('data-prepr-id') ?? '');
 
   const hoverLabel = (el: HTMLElement, kind: ItemKind): string => {
-    if (kind === 'other') return labelFor(el) + OTHER_ITEM_SUFFIX;
+    if (kind === 'other') {
+      return `${labelFor(el)} · ${t('visualEditor.otherItem', locale)}`;
+    }
     if (kind === 'referenced') {
       const via = referenceFieldOf(el);
-      return `${via ? `${fieldLabel(via)} › ` : ''}${labelFor(el)}${LINKED_ITEM_SUFFIX}`;
+      const prefix = via ? `${fieldLabel(via, locale)} › ` : '';
+      return `${prefix}${labelFor(el)} · ${t('visualEditor.linkedItem', locale)}`;
     }
     return labelFor(el);
   };
@@ -377,5 +388,9 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     }
   }
 
-  return { start, stop, setCurrentItem, setReferences, focusField };
+  function setLocale(value: Locale): void {
+    locale = value;
+  }
+
+  return { start, stop, setCurrentItem, setReferences, setLocale, focusField };
 }

@@ -1,0 +1,32 @@
+{
+  "common": {
+    "viewingAs": "Ansicht als:",
+    "user": "Benutzer",
+    "off": "Aus",
+    "on": "An",
+    "reset": "Zurücksetzen",
+    "toolbar": "Symbolleiste"
+  },
+  "adaptiveContent": {
+    "adaptiveContent": "Adaptive Inhalte",
+    "enablePreview": "Vorschaumodus",
+    "segment": "Segment",
+    "ABVariant": "A/B-Variante",
+    "chooseSegment": "Segment wählen",
+    "searchSegments": "Segmente suchen",
+    "none": "Keine Segmente",
+    "allOtherUsers": "Alle anderen Benutzer",
+    "offDescription": "Die Website als echter Benutzer ansehen (Cookies verwenden)",
+    "onDescription": "Mit der Symbolleiste Segmente und A/B-Varianten simulieren"
+  },
+  "editingTools": {
+    "editingTools": "Bearbeitungswerkzeuge",
+    "editMode": "Bearbeitungsmodus",
+    "ariaCloseEditMode": "Bearbeitungsmodus schließen"
+  },
+  "visualEditor": {
+    "edit": "Bearbeiten",
+    "otherItem": "anderes Element",
+    "linkedItem": "verknüpftes Element"
+  }
+}

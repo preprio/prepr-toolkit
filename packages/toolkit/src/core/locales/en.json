@@ -23,5 +23,10 @@
     "editingTools": "Editing tools",
     "editMode": "Edit mode",
     "ariaCloseEditMode": "Close edit mode"
+  },
+  "visualEditor": {
+    "edit": "Edit",
+    "otherItem": "other item",
+    "linkedItem": "linked item"
   }
 }

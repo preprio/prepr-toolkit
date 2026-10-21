@@ -768,14 +768,14 @@ createPreprMiddleware(request, response, { preview });
 createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 ```
 
-| Option                 | Type            | Default       | Description                                                                                                                                                 |
-| ---------------------- | --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `debug`                | `boolean`       | `false`       | Enable debug logging.                                                                                                                                       |
-| `locale`               | `'en' \| 'nl'`  | auto-detected | UI language. Falls back to the first supported browser language, then `en`.                                                                                 |
-| `features`             | `PreprFeatures` | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                                                                    |
-| `ui`                   | `boolean`       | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                                                                         |
-| `allowedEditorOrigins` | `string[]`      | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted or local editors. Replaces the wildcard. `['*']` accepts any origin — development only. |
-| `autoClean`            | `boolean`       | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning).                                                    |
+| Option                 | Type                           | Default       | Description                                                                                                                                                 |
+| ---------------------- | ------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `debug`                | `boolean`                      | `false`       | Enable debug logging.                                                                                                                                       |
+| `locale`               | `'en' \| 'nl' \| 'fr' \| 'de'` | auto-detected | UI language. Falls back to the first supported browser language, then `en`. Inside the Prepr editor, the editor's interface language wins.                  |
+| `features`             | `PreprFeatures`                | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                                                                    |
+| `ui`                   | `boolean`                      | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                                                                         |
+| `allowedEditorOrigins` | `string[]`                     | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted or local editors. Replaces the wildcard. `['*']` accepts any origin — development only. |
+| `autoClean`            | `boolean`                      | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning).                                                    |
 
 `features` and `ui` are independent: `features` decides _what runs_, `ui` decides _whether the toolbar is visible_.
 
@@ -883,7 +883,7 @@ Because the toolbar renders inside a shadow root, none of your own page CSS — 
 
 ### Internationalization
 
-The toolbar UI ships with English and Dutch. Pass `locale` explicitly, or omit it to auto-detect from the browser and fall back to `en`:
+The toolbar UI ships with English, Dutch, French and German. Pass `locale` explicitly, or omit it to auto-detect from the browser and fall back to `en`. Inside the Prepr editor's preview, the visual editor's labels follow the language the editor user has set for the CMS, falling back to `locale` when the editor sends a language the toolkit does not support:
 
 ```typescript
 createPreprPreview({ props, options: { locale: 'nl' } });

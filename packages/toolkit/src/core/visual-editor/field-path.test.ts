@@ -45,6 +45,9 @@ describe('fieldLabel', () => {
   it('falls back to a generic label without a path', () => {
     expect(fieldLabel(null)).toBe('Edit');
     expect(fieldLabel('')).toBe('Edit');
+    expect(fieldLabel(null, 'fr')).toBe('Modifier');
+    expect(fieldLabel('items.000', 'nl')).toBe('Bewerken');
+    expect(fieldLabel('meta_title', 'de')).toBe('Meta title');
   });
 });
 

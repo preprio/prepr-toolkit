@@ -503,4 +503,54 @@ describe('createVisualEditor', () => {
     expect(click.defaultPrevented).toBe(false);
     expect(box('selected').hasAttribute('data-visible')).toBe(false);
   });
+
+  describe('label language', () => {
+    function item(field: string, id: string): HTMLElement {
+      const el = tagged(field, 'p');
+      el.setAttribute('data-prepr-id', id);
+      rect(el);
+      return el;
+    }
+
+    async function hover(el: HTMLElement): Promise<string | null> {
+      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+      return box('hover').textContent;
+    }
+
+    it('labels linked and other items in English by default', async () => {
+      const linked = item('name', 'person-1');
+      const other = item('title', 'author-9');
+      editor.start();
+      editor.setCurrentItem('item-1');
+
+      expect(await hover(other)).toBe('Title · other item');
+      editor.setReferences([{ id: 'person-1', field: 'author' }]);
+      expect(await hover(linked)).toBe('Author › Name · linked item');
+    });
+
+    it('labels in the language set with setLocale, keeping field names as they are', async () => {
+      const linked = item('name', 'person-1');
+      const other = item('title', 'author-9');
+      const fallback = item('', 'item-1');
+      editor.start();
+      editor.setLocale('de');
+      editor.setCurrentItem('item-1');
+
+      expect(await hover(other)).toBe('Title · anderes Element');
+      expect(await hover(fallback)).toBe('Bearbeiten');
+      editor.setReferences([{ id: 'person-1', field: 'author' }]);
+      expect(await hover(linked)).toBe('Author › Name · verknüpftes Element');
+    });
+
+    it('starts in the locale it was created with', async () => {
+      editor.stop();
+      editor = createVisualEditor({ onEdit, locale: 'nl' });
+      const other = item('title', 'author-9');
+      editor.start();
+      editor.setCurrentItem('item-1');
+
+      expect(await hover(other)).toBe('Title · ander item');
+    });
+  });
 });

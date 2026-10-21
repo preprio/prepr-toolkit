@@ -1,3 +1,4 @@
+import { isLocale, type Locale } from './i18n';
 import type { ToolbarStore } from './store';
 import {
   createScopedLogger,
@@ -18,6 +19,7 @@ interface EditorMessage {
   entryId?: unknown;
   itemId?: unknown;
   referencedIds?: unknown;
+  uiLocale?: unknown;
 }
 
 /** Which field the editor asked the preview to bring on screen. */
@@ -48,6 +50,11 @@ export interface EditorHandshake {
    * them, in which case other items are not split into linked and unrelated.
    */
   referencedIds?: EditorReference[];
+  /**
+   * The language of the editor's own interface. Absent when the editor does
+   * not send one or sends a language the toolkit has no translations for.
+   */
+  uiLocale?: Locale;
 }
 
 const MAX_REFERENCES = 500;
@@ -165,8 +172,9 @@ export interface IframeBridgeOptions {
  *   exact origin in `allowedEditorOrigins` when that option is set. Restores
  *   the editor-saved scroll position and seeds preview + edit mode. `editMode`
  *   defaults to true; the editor may send false for preview-only. An
- *   optional `itemId` names the content item open in the editor and is
- *   passed to `onHandshake`.
+ *   optional `itemId` names the content item open in the editor and an
+ *   optional `uiLocale` the editor's interface language; both are passed to
+ *   `onHandshake`.
  * - `prepr:getScrollPosition`: replies with the current scroll offset.
  * - `prepr:scrollToField`: brings the element rendering a given field on
  *   screen, via the `onScrollToField` option.
@@ -223,10 +231,12 @@ export function createIframeBridge(
           ? data.itemId
           : undefined;
       const referencedIds = parseReferences(data.referencedIds);
+      const uiLocale = isLocale(data.uiLocale) ? data.uiLocale : undefined;
       try {
         onHandshake?.({
           ...(itemId && { itemId }),
           ...(referencedIds && { referencedIds }),
+          ...(uiLocale && { uiLocale }),
         });
       } catch (error) {
         debug.warn('handshake handler failed', error as object);

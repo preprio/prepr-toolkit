@@ -1,3 +1,4 @@
+import { t, type Locale } from '../i18n';
 const INDEX_SEGMENT = /^\d+$/;
 const WORD_SEPARATORS = /[_-]+/g;
 
@@ -29,17 +30,21 @@ function humanize(name: string): string {
 /**
  * Human label for a field path: the last named segment, title-cased.
  * `stack.items.000.meta_title` → `Meta title`; a generic leaf is prefixed
- * with its parent, `ctas.items.000.value` → `Ctas › Value`.
+ * with its parent, `ctas.items.000.value` → `Ctas › Value`. Field names are
+ * used as they are; only the fallback for a path without one is translated.
  */
-export function fieldLabel(path: string | null | undefined): string {
-  if (!path) return 'Edit';
+export function fieldLabel(
+  path: string | null | undefined,
+  locale: Locale = 'en',
+): string {
+  if (!path) return t('visualEditor.edit', locale);
   // `items` is the list container in stack and component paths, never a name
   // an editor would recognise.
   const segments = path
     .split('.')
     .filter((s) => s && s !== 'items' && !INDEX_SEGMENT.test(s));
   const name = segments[segments.length - 1];
-  if (!name) return 'Edit';
+  if (!name) return t('visualEditor.edit', locale);
   const parent = segments[segments.length - 2];
   if (parent && GENERIC_LEAVES.has(name)) {
     return `${humanize(parent)} › ${humanize(name)}`;

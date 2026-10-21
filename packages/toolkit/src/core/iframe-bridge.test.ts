@@ -353,6 +353,30 @@ describe('createIframeBridge — handshake item id', () => {
   });
 });
 
+describe('createIframeBridge — editor interface language', () => {
+  it('passes a supported uiLocale to the handshake handler', () => {
+    for (const uiLocale of ['en', 'nl', 'fr', 'de']) {
+      const onHandshake = vi.fn();
+      const bridge = createIframeBridge(null, { onHandshake });
+      bridge.start();
+      postFrom(EDITOR, { event: 'prepr:initVE', uiLocale });
+      expect(onHandshake).toHaveBeenCalledWith({ uiLocale });
+      bridge.stop();
+    }
+  });
+
+  it('drops a uiLocale the toolkit has no translations for', () => {
+    for (const uiLocale of ['es', 'EN', 'en-GB', '', 42, null, { en: true }]) {
+      const onHandshake = vi.fn();
+      const bridge = createIframeBridge(null, { onHandshake });
+      bridge.start();
+      postFrom(EDITOR, { event: 'prepr:initVE', itemId: 'item-1', uiLocale });
+      expect(onHandshake).toHaveBeenCalledWith({ itemId: 'item-1' });
+      bridge.stop();
+    }
+  });
+});
+
 describe('createIframeBridge — references', () => {
   it('passes the editor reference list on the handshake, dropping malformed entries', () => {
     const onHandshake = vi.fn();

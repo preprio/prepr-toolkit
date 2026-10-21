@@ -198,6 +198,62 @@ describe('createPreprPreview', () => {
     controller.destroy();
   });
 
+  describe('visual editor label language', () => {
+    async function hoverLabelAfterHandshake(
+      handshake: Record<string, unknown>,
+      locale?: 'en' | 'nl' | 'fr' | 'de',
+    ): Promise<string | null | undefined> {
+      const controller = createPreprPreview({
+        props: PROPS,
+        options: locale ? { locale } : undefined,
+      });
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { event: 'prepr:initVE', itemId: 'item-1', ...handshake },
+          origin: 'https://acme.prepr.io',
+        }),
+      );
+      const el = document.createElement('p');
+      el.setAttribute('data-prepr-encoded', '');
+      el.setAttribute('data-prepr-id', 'author-9');
+      el.setAttribute('data-prepr-field', 'name');
+      document.body.appendChild(el);
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(
+        new DOMRect(10, 10, 100, 20),
+      );
+      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const label = document
+        .querySelector('prepr-visual-editor')
+        ?.shadowRoot?.querySelector('.box.hover')?.textContent;
+      controller.destroy();
+      return label;
+    }
+
+    it('follows the editor interface language over the site locale', async () => {
+      expect(await hoverLabelAfterHandshake({ uiLocale: 'fr' }, 'nl')).toBe(
+        'Name · autre élément',
+      );
+    });
+
+    it('falls back to the site locale when the editor sends none', async () => {
+      expect(await hoverLabelAfterHandshake({}, 'nl')).toBe(
+        'Name · ander item',
+      );
+    });
+
+    it('falls back to the site locale when the editor language is unsupported', async () => {
+      expect(await hoverLabelAfterHandshake({ uiLocale: 'es' }, 'de')).toBe(
+        'Name · anderes Element',
+      );
+    });
+
+    it('uses English when neither the editor nor the site names a language', async () => {
+      vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['es-ES']);
+      expect(await hoverLabelAfterHandshake({})).toBe('Name · other item');
+    });
+  });
+
   it('mounts a <prepr-toolbar> element on the document body (top level)', () => {
     stubTopLevel();
     const controller = createPreprPreview({ props: PROPS });

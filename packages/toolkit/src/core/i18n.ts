@@ -1,4 +1,6 @@
+import de from './locales/de.json';
 import en from './locales/en.json';
+import fr from './locales/fr.json';
 import nl from './locales/nl.json';
 
 type Dictionary = Record<string, unknown>;
@@ -8,6 +10,8 @@ type Dictionary = Record<string, unknown>;
 const dictionaries = {
   en: en as Dictionary,
   nl: nl as Dictionary,
+  fr: fr as Dictionary,
+  de: de as Dictionary,
 };
 
 export type Locale = keyof typeof dictionaries;

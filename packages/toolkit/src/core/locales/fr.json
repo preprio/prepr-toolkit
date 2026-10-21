@@ -1,0 +1,32 @@
+{
+  "common": {
+    "viewingAs": "Affichage en tant que :",
+    "user": "Utilisateur",
+    "off": "Désactivé",
+    "on": "Activé",
+    "reset": "Réinitialiser",
+    "toolbar": "Barre d'outils"
+  },
+  "adaptiveContent": {
+    "adaptiveContent": "Contenu adaptatif",
+    "enablePreview": "Mode aperçu",
+    "segment": "Segment",
+    "ABVariant": "Variante A/B",
+    "chooseSegment": "Choisir un segment",
+    "searchSegments": "Rechercher des segments",
+    "none": "Aucun segment",
+    "allOtherUsers": "Tous les autres utilisateurs",
+    "offDescription": "Voir le site comme un vrai utilisateur (utiliser les cookies)",
+    "onDescription": "Utilisez la barre d'outils pour simuler des segments et des variantes A/B"
+  },
+  "editingTools": {
+    "editingTools": "Outils d'édition",
+    "editMode": "Mode édition",
+    "ariaCloseEditMode": "Fermer le mode édition"
+  },
+  "visualEditor": {
+    "edit": "Modifier",
+    "otherItem": "autre élément",
+    "linkedItem": "élément lié"
+  }
+}
