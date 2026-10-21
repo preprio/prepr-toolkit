@@ -553,4 +553,26 @@ describe('createVisualEditor', () => {
       expect(await hover(other)).toBe('Title · ander item');
     });
   });
+
+  it('moves a label inside its box when it would cover the neighbouring outline', async () => {
+    const first = tagged('content.0', 'p');
+    const second = tagged('content.1', 'p');
+    vi.spyOn(first, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(40, 100, 600, 32),
+    );
+    vi.spyOn(second, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(40, 140, 600, 60),
+    );
+    editor.start();
+
+    second.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    first.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    await nextFrame();
+    await nextFrame();
+
+    expect(box('hover').hasAttribute('data-visible')).toBe(true);
+    expect(box('selected').hasAttribute('data-label-inside')).toBe(true);
+  });
 });

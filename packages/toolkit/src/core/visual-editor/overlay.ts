@@ -24,6 +24,16 @@ const LABEL_MARGIN_PX = 4;
 
 // Where to hit-test a target for something drawn over it, as fractions of
 // its box: the centre and four points inset from the corners.
+/** Whether `area` overlaps `rect` grown by the box padding. */
+function overlapsBox(area: Area, rect: DOMRect): boolean {
+  return (
+    area.left < rect.right + BOX_PADDING_PX &&
+    area.right > rect.left - BOX_PADDING_PX &&
+    area.top < rect.bottom + BOX_PADDING_PX &&
+    area.bottom > rect.top - BOX_PADDING_PX
+  );
+}
+
 const PROBE_POINTS: Array<[number, number]> = [
   [0.5, 0.5],
   [0.15, 0.2],
@@ -393,8 +403,10 @@ export class VisualEditorOverlay {
     // Both reads before any write, so one frame costs one layout.
     const hover = this.hoverBox ? this.measure(this.hoverBox) : null;
     const selected = this.selectedBox ? this.measure(this.selectedBox) : null;
-    if (this.hoverBox) this.paint(this.hoverBox, hover);
-    if (this.selectedBox) this.paint(this.selectedBox, selected);
+    // Each box knows the other, so a label never lands on the neighbouring
+    // outline (two adjacent paragraphs, one hovered and one selected).
+    if (this.hoverBox) this.paint(this.hoverBox, hover, selected);
+    if (this.selectedBox) this.paint(this.selectedBox, selected, hover);
   }
 
   private measure(box: Box): Measurement | null {
@@ -416,7 +428,11 @@ export class VisualEditorOverlay {
     };
   }
 
-  private paint(box: Box, measurement: Measurement | null): void {
+  private paint(
+    box: Box,
+    measurement: Measurement | null,
+    other: Measurement | null = null,
+  ): void {
     const root = box.root;
     if (!measurement) {
       root.removeAttribute('data-visible');
@@ -425,7 +441,19 @@ export class VisualEditorOverlay {
     const { rect, covers } = measurement;
     const x = rect.left - BOX_PADDING_PX;
     const y = rect.top - BOX_PADDING_PX;
-    const labelInside = y < LABEL_SPACE_PX;
+    // Label size is only measured when something covers the element; the
+    // label never exceeds 240px, so that bounds the check otherwise.
+    const labelAbove: Area = {
+      left: x - 2,
+      top: y - LABEL_SPACE_PX,
+      right: x - 2 + (measurement.labelWidth || Math.min(240, rect.width)),
+      bottom: y,
+    };
+    const labelInside =
+      y < LABEL_SPACE_PX ||
+      (other !== null &&
+        other.rect !== rect &&
+        overlapsBox(labelAbove, other.rect));
     root.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     root.style.width = `${rect.width + BOX_PADDING_PX * 2}px`;
     root.style.height = `${rect.height + BOX_PADDING_PX * 2}px`;
