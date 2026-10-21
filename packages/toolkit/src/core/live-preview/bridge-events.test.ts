@@ -8,6 +8,7 @@ function mockStore(): LiveStore {
   return {
     register: vi.fn(),
     pushPatch: vi.fn(),
+    pushList: vi.fn(),
     invalidate: vi.fn(),
     setFetcher: vi.fn(),
     onInvalidate: vi.fn(),
@@ -127,5 +128,35 @@ describe('createLiveBridge', () => {
     );
     another.stop();
     window.removeEventListener('prepr_preview_bar', seen);
+  });
+
+  it('routes a valid listChange and drops malformed ones', () => {
+    post({ event: 'prepr:initVE' });
+    post({
+      event: 'prepr:listChange',
+      itemId: 'p',
+      field: 'content',
+      entries: [
+        { _id: 'a' },
+        { _id: 'tmp:1', __typename: 'Text', body: '<p>x</p>', format: null },
+      ],
+    });
+    post({
+      event: 'prepr:listChange',
+      itemId: 'p',
+      field: 'content',
+      entries: [{ body: 'no id' }],
+    });
+    post({
+      event: 'prepr:listChange',
+      itemId: 'p',
+      field: 'content',
+      entries: 'nope',
+    });
+    expect(store.pushList).toHaveBeenCalledTimes(1);
+    expect(store.pushList).toHaveBeenCalledWith('p', 'content', [
+      { _id: 'a' },
+      { _id: 'tmp:1', __typename: 'Text', body: '<p>x</p>', format: null },
+    ]);
   });
 });

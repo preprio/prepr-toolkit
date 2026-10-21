@@ -1,6 +1,11 @@
 import { createScopedLogger } from '../utils';
 import { indexSnapshot, type SnapshotIndex } from './index-snapshot';
-import { patchSnapshot, type LiveValue } from './patch';
+import {
+  patchSnapshot,
+  syncListSnapshot,
+  type LiveListEntry,
+  type LiveValue,
+} from './patch';
 
 const debug = createScopedLogger('live-preview');
 
@@ -24,6 +29,8 @@ export interface LiveRegistration {
 export interface LiveStore {
   register(data: unknown, opts?: LiveRegistrationOptions): LiveRegistration;
   pushPatch(itemId: string, field: string, value: LiveValue): void;
+  /** Reorder, remove and add entries of a list field (`prepr:listChange`). */
+  pushList(itemId: string, field: string, list: LiveListEntry[]): void;
   invalidate(itemId: string): void;
   setFetcher(fetcher: LiveFetcher): void;
   /** Fires on every accepted `invalidate`, before refetches settle. */
@@ -113,6 +120,25 @@ export function createLiveStore(): LiveStore {
         );
         if (next !== entry.snapshot) {
           entry.snapshot = next;
+          notify(entry);
+        }
+      }
+    },
+
+    pushList(itemId, field, list) {
+      for (const entry of entries) {
+        const next = syncListSnapshot(
+          entry.snapshot,
+          entry.index,
+          itemId,
+          field,
+          list,
+        );
+        if (next !== entry.snapshot) {
+          entry.snapshot = next;
+          // Entries moved and new ids appeared: positions in the old index
+          // no longer point at the same objects.
+          entry.index = indexSnapshot(next);
           notify(entry);
         }
       }

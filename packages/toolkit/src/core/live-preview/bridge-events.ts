@@ -4,7 +4,7 @@ import {
   sendPreprEvent,
 } from '../utils';
 import type { LiveStore } from './live-store';
-import type { LiveValue } from './patch';
+import type { LiveListEntry, LiveValue } from './patch';
 
 const debug = createScopedLogger('live-preview:bridge');
 
@@ -14,6 +14,7 @@ interface LiveEditorMessage {
   itemId?: unknown;
   field?: unknown;
   value?: unknown;
+  entries?: unknown;
 }
 
 export interface LiveBridge {
@@ -61,6 +62,31 @@ function isLiveValue(v: unknown, depth = 0): v is LiveValue {
   });
 }
 
+const MAX_LIST_ENTRIES = 200;
+
+/**
+ * A `prepr:listChange` entry list, or null when it is not one. Entries are
+ * flat: an id, a type, and for Text the HTML and heading level, which the
+ * site renders exactly like a pushed `body`.
+ */
+function parseListEntries(value: unknown): LiveListEntry[] | null {
+  if (!Array.isArray(value) || value.length > MAX_LIST_ENTRIES) return null;
+  const list: LiveListEntry[] = [];
+  for (const raw of value) {
+    if (!isPlainRecord(raw) || typeof raw._id !== 'string' || !raw._id) {
+      return null;
+    }
+    const entry: LiveListEntry = { _id: raw._id };
+    if (typeof raw.__typename === 'string') entry.__typename = raw.__typename;
+    if (typeof raw.body === 'string') entry.body = raw.body;
+    if (typeof raw.format === 'string' || raw.format === null) {
+      entry.format = raw.format as string | null;
+    }
+    list.push(entry);
+  }
+  return list;
+}
+
 function isPlainRecord(v: unknown): v is Record<string, unknown> {
   return (
     v !== null &&
@@ -99,6 +125,21 @@ export function createLiveBridge(store: LiveStore): LiveBridge {
         store.pushPatch(data.itemId, data.field, data.value);
       } else {
         debug.log('dropped malformed fieldChange', data as object);
+      }
+      return;
+    }
+
+    if (data?.event === 'prepr:listChange') {
+      const list = parseListEntries(data.entries);
+      if (
+        typeof data.itemId === 'string' &&
+        typeof data.field === 'string' &&
+        data.field &&
+        list
+      ) {
+        store.pushList(data.itemId, data.field, list);
+      } else {
+        debug.log('dropped malformed listChange', data as object);
       }
       return;
     }
