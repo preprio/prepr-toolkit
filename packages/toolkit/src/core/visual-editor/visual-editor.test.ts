@@ -262,6 +262,52 @@ describe('createVisualEditor', () => {
     await nextFrame();
     expect(box('selected').hasAttribute('data-visible')).toBe(false);
   });
+
+  it('cuts a layer covering part of the element out of its outline', async () => {
+    const heading = tagged('title');
+    rect(heading);
+    // A dropdown panel over the left half of the heading (40..340 x 100..132),
+    // overflowing the header it opens from.
+    const header = document.createElement('header');
+    const menu = document.createElement('div');
+    const item = document.createElement('a');
+    menu.appendChild(item);
+    header.appendChild(menu);
+    document.body.appendChild(header);
+    vi.spyOn(header, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 1000, 60),
+    );
+    vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(20, 40, 160, 200),
+    );
+    vi.spyOn(item, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(30, 100, 140, 20),
+    );
+    vi.spyOn(document, 'elementFromPoint').mockImplementation((x) =>
+      x < 180 ? item : heading,
+    );
+    editor.start();
+    heading.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await nextFrame();
+
+    const selected = box('selected');
+    expect(selected.hasAttribute('data-visible')).toBe(true);
+    // The box sits at (37, 97); the menu panel is cut out in its coordinates.
+    expect(selected.style.clipPath).toContain(
+      '-17px -57px, 143px -57px, 143px 143px, -17px 143px',
+    );
+    expect(selected.hasAttribute('data-label-covered')).toBe(true);
+
+    // The menu closes: the full outline and its label come back.
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(heading);
+    window.dispatchEvent(new Event('resize'));
+    await nextFrame();
+    expect(selected.style.clipPath).toBe('');
+    expect(selected.hasAttribute('data-label-covered')).toBe(false);
+  });
+
   describe('content of other items', () => {
     function otherItem(field: string): HTMLElement {
       const el = tagged(field);

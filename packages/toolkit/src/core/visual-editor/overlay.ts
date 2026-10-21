@@ -19,6 +19,9 @@ const LABEL_SPACE_PX = 22;
 
 const BOX_PADDING_PX = 3;
 
+// Gap between a box and the label above it; matches `.label` margin-bottom.
+const LABEL_MARGIN_PX = 4;
+
 // Where to hit-test a target for something drawn over it, as fractions of
 // its box: the centre and four points inset from the corners.
 const PROBE_POINTS: Array<[number, number]> = [
@@ -29,17 +32,82 @@ const PROBE_POINTS: Array<[number, number]> = [
   [0.85, 0.8],
 ];
 
+interface Area {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function overlaps(a: Area, b: Area): boolean {
+  return (
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+  );
+}
+
 /**
- * Whether any probe point of `rect` that lies in the viewport hits `target`
- * (or something inside it). False when an open menu, modal or sticky bar
- * covers it, so its outline is not drawn on top of that layer. The overlay
- * itself has `pointer-events: none`, so hit-testing looks straight through
- * it.
+ * The layer that `hit` belongs to, as seen from `target`: the outermost
+ * ancestor of `hit` that does not contain `target` and still lies under the
+ * probed point. For an open dropdown that is the menu panel, not the header
+ * it overflows from.
  */
-function isUncovered(target: HTMLElement, rect: DOMRect): boolean {
+function coverOf(
+  hit: Element,
+  target: HTMLElement,
+  x: number,
+  y: number,
+): Area {
+  let cover: Area = hit.getBoundingClientRect();
+  for (
+    let el = hit.parentElement;
+    el && !el.contains(target) && el !== document.body;
+    el = el.parentElement
+  ) {
+    const r = el.getBoundingClientRect();
+    if (x < r.left || x >= r.right || y < r.top || y >= r.bottom) break;
+    cover = r;
+  }
+  return cover;
+}
+
+/**
+ * Merges overlapping areas into their bounding area, so they can be cut out
+ * of a clip path with the even-odd rule without two cut-outs cancelling out.
+ */
+function mergeAreas(areas: Area[]): Area[] {
+  const merged = areas.slice();
+  for (let i = 0; i < merged.length; i++) {
+    for (let j = i + 1; j < merged.length; j++) {
+      if (!overlaps(merged[i], merged[j])) continue;
+      merged[i] = {
+        left: Math.min(merged[i].left, merged[j].left),
+        top: Math.min(merged[i].top, merged[j].top),
+        right: Math.max(merged[i].right, merged[j].right),
+        bottom: Math.max(merged[i].bottom, merged[j].bottom),
+      };
+      merged.splice(j, 1);
+      // The grown area may now overlap ones already passed.
+      j = i;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Hit-tests the probe points of `rect` that lie in the viewport and returns
+ * the areas of whatever is drawn over `target` at those points (an open menu,
+ * modal or sticky bar), so its outline can leave them uncovered. Returns
+ * `null` when no probe point reaches `target` at all: it is hidden entirely.
+ * The overlay itself has `pointer-events: none`, so hit-testing looks
+ * straight through it.
+ */
+function findCovers(target: HTMLElement, rect: DOMRect): Area[] | null {
   const width = window.innerWidth;
   const height = window.innerHeight;
+  const covers: Area[] = [];
+  const seen = new Set<Element>();
   let probed = false;
+  let reached = false;
   for (const [fx, fy] of PROBE_POINTS) {
     const x = rect.left + rect.width * fx;
     const y = rect.top + rect.height * fy;
@@ -47,10 +115,64 @@ function isUncovered(target: HTMLElement, rect: DOMRect): boolean {
     probed = true;
     const hit = document.elementFromPoint(x, y);
     // No answer (no layout engine) is not evidence of a cover.
-    if (!hit || hit === target || target.contains(hit)) return true;
+    if (!hit || hit === target || target.contains(hit)) {
+      reached = true;
+      continue;
+    }
+    if (seen.has(hit)) continue;
+    seen.add(hit);
+    // A cover already found may contain this point too.
+    if (
+      covers.some(
+        (c) => x >= c.left && x < c.right && y >= c.top && y < c.bottom,
+      )
+    ) {
+      continue;
+    }
+    covers.push(coverOf(hit, target, x, y));
   }
   // Entirely off screen: nothing to hide it behind.
-  return !probed;
+  if (!probed) return [];
+  return reached ? mergeAreas(covers) : null;
+}
+
+/**
+ * A `clip-path` for a box at (`x`, `y`) in the viewport that keeps
+ * everything, label and shadow included, except the `covers`.
+ */
+function clipPath(x: number, y: number, covers: Area[]): string {
+  const far = 1e5;
+  const points = [
+    `${-far}px ${-far}px`,
+    `${far}px ${-far}px`,
+    `${far}px ${far}px`,
+    `${-far}px ${far}px`,
+    `${-far}px ${-far}px`,
+  ];
+  for (const c of covers) {
+    const l = c.left - x;
+    const t = c.top - y;
+    const r = c.right - x;
+    const b = c.bottom - y;
+    // Each cut-out starts and ends at the outer path's first corner; the
+    // connecting edges are walked twice and enclose nothing.
+    points.push(
+      `${l}px ${t}px`,
+      `${r}px ${t}px`,
+      `${r}px ${b}px`,
+      `${l}px ${b}px`,
+      `${l}px ${t}px`,
+      `${-far}px ${-far}px`,
+    );
+  }
+  return `polygon(evenodd, ${points.join(', ')})`;
+}
+
+interface Measurement {
+  rect: DOMRect;
+  covers: Area[];
+  labelWidth: number;
+  labelHeight: number;
 }
 
 const STYLES = `
@@ -113,6 +235,7 @@ const STYLES = `
   background: rgba(100, 116, 139, 0.05);
 }
 .hover[data-other-item] .label { background: #64748b; }
+.box[data-label-covered] .label { visibility: hidden; }
 .box[data-label-inside] .label {
   bottom: auto;
   top: 2px;
@@ -263,7 +386,7 @@ export class VisualEditorOverlay {
     if (this.selectedBox) this.paint(this.selectedBox, selected);
   }
 
-  private measure(box: Box): DOMRect | null {
+  private measure(box: Box): Measurement | null {
     const target = box.target;
     if (!target) return null;
     if (!target.isConnected) {
@@ -272,22 +395,47 @@ export class VisualEditorOverlay {
     }
     const rect = target.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return null;
-    if (!isUncovered(target, rect)) return null;
-    return rect;
+    const covers = findCovers(target, rect);
+    if (!covers) return null;
+    return {
+      rect,
+      covers,
+      labelWidth: covers.length ? box.label.offsetWidth : 0,
+      labelHeight: covers.length ? box.label.offsetHeight : 0,
+    };
   }
 
-  private paint(box: Box, rect: DOMRect | null): void {
+  private paint(box: Box, measurement: Measurement | null): void {
     const root = box.root;
-    if (!rect) {
+    if (!measurement) {
       root.removeAttribute('data-visible');
       return;
     }
+    const { rect, covers } = measurement;
     const x = rect.left - BOX_PADDING_PX;
     const y = rect.top - BOX_PADDING_PX;
+    const labelInside = y < LABEL_SPACE_PX;
     root.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     root.style.width = `${rect.width + BOX_PADDING_PX * 2}px`;
     root.style.height = `${rect.height + BOX_PADDING_PX * 2}px`;
-    root.toggleAttribute('data-label-inside', y < LABEL_SPACE_PX);
+    root.toggleAttribute('data-label-inside', labelInside);
+    // Leave whatever is drawn over the element on top of the outline, and
+    // drop the label rather than show a clipped piece of it.
+    root.style.clipPath = covers.length ? clipPath(x, y, covers) : '';
+    const labelLeft = labelInside ? x + 2 : x - 2;
+    const labelTop = labelInside
+      ? y + 2
+      : y - LABEL_MARGIN_PX - measurement.labelHeight;
+    const label: Area = {
+      left: labelLeft,
+      top: labelTop,
+      right: labelLeft + measurement.labelWidth,
+      bottom: labelTop + measurement.labelHeight,
+    };
+    root.toggleAttribute(
+      'data-label-covered',
+      covers.some((c) => overlaps(c, label)),
+    );
 
     if (root.hasAttribute('data-instant')) {
       root.setAttribute('data-visible', '');
