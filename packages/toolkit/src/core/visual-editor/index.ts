@@ -185,6 +185,29 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     overlay.setHover(null, '');
   };
 
+  /**
+   * Whether following the clicked link would load another page in this
+   * frame. In-page anchors, new-tab links and downloads stay allowed.
+   */
+  const leavesPage = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    const link = target.closest<HTMLAnchorElement>('a[href]');
+    if (!link || link.hasAttribute('download')) return false;
+    if (link.target && link.target !== '_self') return false;
+    const href = link.getAttribute('href') ?? '';
+    if (href.startsWith('#')) return false;
+    try {
+      const url = new URL(link.href, window.location.href);
+      return !(
+        url.origin === window.location.origin &&
+        url.pathname === window.location.pathname &&
+        url.search === window.location.search
+      );
+    } catch {
+      return false;
+    }
+  };
+
   const handleClick = (e: MouseEvent): void => {
     if (e.altKey) return;
     const encoded = encodedFrom(e.target);
@@ -192,8 +215,11 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     if (!encoded || !kind) {
       // A click on nothing editable, or on content unrelated to the open
       // item (site navigation, footer), ends the selection like clicking
-      // beside a focused field. The page still handles the click itself.
+      // beside a focused field. The page still handles the click (menus,
+      // tabs, buttons keep working), but a link does not navigate: leaving
+      // the page would leave the item being edited. Alt+click follows it.
       overlay.setSelected(null, '');
+      if (leavesPage(e.target)) e.preventDefault();
       return;
     }
     // Capture phase, so the page's own handlers and link navigation never see

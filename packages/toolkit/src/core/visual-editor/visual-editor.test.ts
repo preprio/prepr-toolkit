@@ -591,4 +591,35 @@ describe('createVisualEditor', () => {
     expect(box('hover').getAttribute('data-item-kind')).toBe('current');
     expect(box('hover').textContent).toBe('Screenshot');
   });
+
+  it('keeps links on unrelated content from navigating the preview away', () => {
+    const link = document.createElement('a');
+    link.href = '/other-page';
+    link.textContent = 'Pricing';
+    document.body.appendChild(link);
+    const pageHandler = vi.fn();
+    link.addEventListener('click', pageHandler);
+    editor.start();
+
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    // The page's own handlers still run (menus, tracking).
+    expect(pageHandler).toHaveBeenCalled();
+
+    const anchor = document.createElement('a');
+    anchor.href = '#faq';
+    document.body.appendChild(anchor);
+    const inPage = new MouseEvent('click', { bubbles: true, cancelable: true });
+    anchor.dispatchEvent(inPage);
+    expect(inPage.defaultPrevented).toBe(false);
+
+    const alt = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      altKey: true,
+    });
+    link.dispatchEvent(alt);
+    expect(alt.defaultPrevented).toBe(false);
+  });
 });
