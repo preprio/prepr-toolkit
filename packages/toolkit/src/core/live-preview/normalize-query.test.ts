@@ -828,3 +828,65 @@ describe('normalizeQuery lists inside a new entry', () => {
     ]);
   });
 });
+
+describe('normalizeQuery edit links on new entries', () => {
+  it('makes built text click-to-edit, pointing at the entry in the editor', async () => {
+    const { vercelStegaCombine, vercelStegaDecode, vercelStegaSplit } =
+      await import('@vercel/stega');
+    const result = pageResult();
+    result.Page.sections[0].content!.headline = vercelStegaCombine(
+      'Headless CMS',
+      {
+        origin: 'prepr.io',
+        href: 'https://acme.prepr.io/content/edit/page-1?utm_campaign=vec&locale=en-GB&field=sections.items.000.items.content.items.headline',
+      },
+    );
+    const next = normalizeQuery(PAGE_QUERY, result, {
+      log: [
+        {
+          type: 'list',
+          itemId: 'page-1',
+          field: 'sections',
+          entries: [
+            { _id: 'sbs-1' },
+            { _id: 'content-1' },
+            {
+              _id: 'new-1',
+              __typename: 'SideBySide',
+              fields: {
+                __edit: {
+                  item: 'page-1',
+                  path: 'sections.items.new-1',
+                  apiIds: {},
+                  text: [],
+                },
+                background: 'DARK',
+                content: {
+                  __edit: {
+                    path: 'sections.items.new-1.items.content',
+                    apiIds: { headline_style: 'headlineStyle' },
+                    text: ['headline'],
+                  },
+                  headline: 'Fresh',
+                  headline_style: 'H1',
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const added = (
+      next.Page.sections as unknown as Array<Record<string, any>>
+    )[2];
+    const headline = added.content.headline as string;
+    expect(vercelStegaSplit(headline).cleaned).toBe('Fresh');
+    expect(vercelStegaDecode(headline)).toEqual({
+      origin: 'prepr.io',
+      href: 'https://acme.prepr.io/content/edit/page-1?utm_campaign=vec&locale=en-GB&field=sections.items.new-1.items.content.items.headline',
+    });
+    // Enums never get links, as in the API.
+    expect(added.background).toBe('DARK');
+    expect(added.content.headline_style).toBe('H1');
+  });
+});

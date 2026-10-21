@@ -1,4 +1,8 @@
-import { vercelStegaSplit } from '@vercel/stega';
+import {
+  vercelStegaCombine,
+  vercelStegaDecode,
+  vercelStegaSplit,
+} from '@vercel/stega';
 
 import { createScopedLogger } from '../utils';
 import { indexSnapshot, type LivePath } from './index-snapshot';
@@ -168,7 +172,8 @@ export function normalizeQuery<T>(
         const selections = doc ? selectionsAt(root, doc, target) : null;
         const build: LiveEntryBuilder | undefined =
           doc && selections
-            ? (entry) => buildEntry(doc, selections, entry)
+            ? (entry) =>
+                buildEntry(doc, selections, entry, editLinks(result, entry))
             : undefined;
         root = syncListAtPath(root, target, patch.entries, build);
       }
@@ -319,7 +324,14 @@ function resolveTargets(
           undefined,
         );
         if (typename !== undefined) {
-          value = fillObject(doc, field.selections, typename, {}, undefined);
+          value = fillObject(
+            doc,
+            field.selections,
+            typename,
+            {},
+            undefined,
+            null,
+          );
           current = writeAtPath(current, fieldPath, value as LiveValue);
         }
       }
@@ -369,6 +381,7 @@ function buildEntry(
   doc: QueryDocument,
   selections: QuerySelection[],
   entry: LiveListEntry,
+  links: EditLinks | null,
 ): Record<string, unknown> | undefined {
   const typename = resolveTypename(
     doc,
@@ -377,7 +390,14 @@ function buildEntry(
     entry.typeName,
   );
   if (typename === undefined) return undefined;
-  return fillObject(doc, selections, typename, entry.fields ?? {}, entry._id);
+  return fillObject(
+    doc,
+    selections,
+    typename,
+    entry.fields ?? {},
+    entry._id,
+    links,
+  );
 }
 
 function fillObject(
@@ -386,8 +406,25 @@ function fillObject(
   typename: string | null,
   values: Record<string, unknown>,
   id: unknown,
+  links: EditLinks | null,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  const edit = isPlainRecord(values.__edit) ? values.__edit : null;
+  const apiIds = edit && isPlainRecord(edit.apiIds) ? edit.apiIds : {};
+  // Where a click on this value leads in the editor: a field below this
+  // entry (`<path>.items.<field>`), or one fixed field (a dynamic content
+  // block's text lives in its dynamic content field).
+  const editField = (name: string): string | null => {
+    if (!edit) return null;
+    if (typeof edit.field === 'string')
+      return name === 'body' ? edit.field : null;
+    if (typeof edit.path !== 'string') return null;
+    // Only text fields carry edit links in the API; an enum or a color with
+    // a hidden link would no longer match the values the site compares.
+    if (!Array.isArray(edit.text) || !edit.text.includes(name)) return null;
+    const apiId = typeof apiIds[name] === 'string' ? apiIds[name] : name;
+    return `${edit.path}.items.${apiId}`;
+  };
   const fields = collectFields(selections, typename ?? undefined, doc, {
     strict: true,
   });
@@ -397,13 +434,21 @@ function fillObject(
     } else if (field.name === '_id') {
       out[field.key] = typeof id === 'string' ? id : (values._id ?? null);
     } else if (field.selections.length) {
-      out[field.key] = fillNested(doc, field.selections, values[field.name]);
+      out[field.key] = fillNested(
+        doc,
+        field.selections,
+        values[field.name],
+        links,
+      );
     } else {
       const value = values[field.name];
-      out[field.key] =
+      const scalar =
         value === undefined || (value !== null && typeof value === 'object')
           ? null
           : value;
+      const target = typeof scalar === 'string' ? editField(field.name) : null;
+      out[field.key] =
+        target && links ? links.encode(scalar as string, target) : scalar;
     }
   }
   return out;
@@ -413,6 +458,7 @@ function fillNested(
   doc: QueryDocument,
   selections: QuerySelection[],
   value: unknown,
+  links: EditLinks | null,
 ): unknown {
   const one = (item: unknown): unknown => {
     if (!isPlainRecord(item)) return null;
@@ -423,8 +469,86 @@ function fillNested(
       item.typeName,
     );
     if (typename === undefined) return null;
-    return fillObject(doc, selections, typename, item, item._id);
+    return fillObject(doc, selections, typename, item, item._id, links);
   };
   if (Array.isArray(value)) return value.map(one).filter((v) => v !== null);
   return value === undefined ? null : one(value);
+}
+
+/** Adds the hidden edit link the API gives saved text to built text. */
+interface EditLinks {
+  encode(text: string, field: string): string;
+}
+
+const EDIT_PATH = /\/content\/edit\/[^/?#]+/;
+
+/**
+ * Edit links for the values of a new entry, so they are click-to-edit like
+ * saved content before the save. Prepr's edit links point at the item open
+ * in the editor plus a field path; the path of a stack entry may name it by
+ * its id (`sections.items.<id>.items.headline`), which the editor resolves
+ * for unsaved entries too. The host and locale are taken from an edit link
+ * the result already carries, so nothing is invented: without one (edit mode
+ * off) or without the editor's `__edit` hints, values stay plain.
+ */
+function editLinks(result: unknown, entry: LiveListEntry): EditLinks | null {
+  const edit = entry.fields?.__edit;
+  if (!isPlainRecord(edit) || typeof edit.item !== 'string') return null;
+  const template = findEditLink(result);
+  if (!template) return null;
+  const item = edit.item;
+  return {
+    encode(text, field) {
+      if (vercelStegaSplit(text).encoded) return text;
+      let href: URL;
+      try {
+        href = new URL(template.href);
+      } catch {
+        return text;
+      }
+      href.pathname = href.pathname.replace(EDIT_PATH, `/content/edit/${item}`);
+      href.searchParams.set('field', field);
+      // The editor reads the path with dots and slashes as written.
+      const link = href.toString().replace(/%2E/gi, '.').replace(/%2F/gi, '/');
+      return vercelStegaCombine(text, { origin: template.origin, href: link });
+    },
+  };
+}
+
+const linkCache = new WeakMap<
+  object,
+  { origin: string; href: string } | null
+>();
+
+function findEditLink(root: unknown): { origin: string; href: string } | null {
+  if (root === null || typeof root !== 'object') return null;
+  if (linkCache.has(root)) return linkCache.get(root) ?? null;
+  let found: { origin: string; href: string } | null = null;
+  const seen = new WeakSet<object>();
+  const walk = (node: unknown): void => {
+    if (found) return;
+    if (typeof node === 'string') {
+      if (!vercelStegaSplit(node).encoded) return;
+      try {
+        const decoded = vercelStegaDecode(node) as
+          { origin?: unknown; href?: unknown } | undefined;
+        if (
+          typeof decoded?.origin === 'string' &&
+          typeof decoded.href === 'string' &&
+          EDIT_PATH.test(decoded.href)
+        ) {
+          found = { origin: decoded.origin, href: decoded.href };
+        }
+      } catch {
+        // Not a Prepr edit link.
+      }
+      return;
+    }
+    if (node === null || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk(root);
+  linkCache.set(root, found);
+  return found;
 }

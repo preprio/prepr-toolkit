@@ -100,7 +100,11 @@ function isFieldValue(v: unknown, depth: number): boolean {
   if (Array.isArray(v)) {
     return (
       v.length <= MAX_ENTRIES &&
-      v.every((entry) => isPlainRecord(entry) && isFieldValue(entry, depth + 1))
+      v.every(
+        (entry) =>
+          isScalar(entry) ||
+          (isPlainRecord(entry) && isFieldValue(entry, depth + 1)),
+      )
     );
   }
   if (!isPlainRecord(v)) return false;
