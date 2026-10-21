@@ -119,3 +119,24 @@ function isFieldValue(v: unknown, depth: number): boolean {
     return isFieldValue(value, depth + 1);
   });
 }
+
+/** The open item and a field path in the editor's id-based convention. */
+export interface LiveEditTarget {
+  item: string;
+  field: string;
+}
+
+const MAX_EDIT_LENGTH = 1000;
+
+/** A valid edit target from an untrusted source, or undefined. */
+export function parseEditTarget(raw: unknown): LiveEditTarget | undefined {
+  if (!isPlainRecord(raw)) return undefined;
+  const { item, field } = raw;
+  if (typeof item !== 'string' || !item || item.length > MAX_EDIT_LENGTH) {
+    return undefined;
+  }
+  if (typeof field !== 'string' || !field || field.length > MAX_EDIT_LENGTH) {
+    return undefined;
+  }
+  return { item, field };
+}

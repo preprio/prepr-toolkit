@@ -5,7 +5,7 @@ import {
 } from '../utils';
 import { isAllowedEditorOrigin } from '../iframe-bridge';
 import type { LiveStore } from './live-store';
-import { isLiveValue, parseListEntries } from './validate';
+import { isLiveValue, parseEditTarget, parseListEntries } from './validate';
 
 const debug = createScopedLogger('live-preview:bridge');
 
@@ -16,6 +16,7 @@ interface LiveEditorMessage {
   field?: unknown;
   value?: unknown;
   entries?: unknown;
+  edit?: unknown;
 }
 
 export interface LiveBridge {
@@ -69,7 +70,9 @@ export function createLiveBridge(
         typeof data.field === 'string' &&
         isLiveValue(data.value)
       ) {
-        store.pushPatch(data.itemId, data.field, data.value);
+        const edit = parseEditTarget(data.edit);
+        if (edit) store.pushPatch(data.itemId, data.field, data.value, edit);
+        else store.pushPatch(data.itemId, data.field, data.value);
       } else {
         debug.log('dropped malformed fieldChange', data as object);
       }

@@ -1,6 +1,7 @@
 import { createScopedLogger } from '../utils';
 import { indexSnapshot, type SnapshotIndex } from './index-snapshot';
 import type { LivePatch } from './normalize-query';
+import type { LiveEditTarget } from './validate';
 import {
   patchSnapshot,
   syncListSnapshot,
@@ -29,7 +30,12 @@ export interface LiveRegistration {
 
 export interface LiveStore {
   register(data: unknown, opts?: LiveRegistrationOptions): LiveRegistration;
-  pushPatch(itemId: string, field: string, value: LiveValue): void;
+  pushPatch(
+    itemId: string,
+    field: string,
+    value: LiveValue,
+    edit?: LiveEditTarget,
+  ): void;
   /** Reorder, remove and add entries of a list field (`prepr:listChange`). */
   pushList(itemId: string, field: string, list: LiveListEntry[]): void;
   invalidate(itemId: string): void;
@@ -161,10 +167,14 @@ export function createLiveStore(): LiveStore {
       };
     },
 
-    pushPatch(itemId, field, value) {
+    pushPatch(itemId, field, value, edit) {
       // Recorded even when no registration holds the item: a server render
       // may still show it.
-      record({ type: 'field', itemId, field, value });
+      record(
+        edit
+          ? { type: 'field', itemId, field, value, edit }
+          : { type: 'field', itemId, field, value },
+      );
       for (const entry of entries) {
         const next = patchSnapshot(
           entry.snapshot,

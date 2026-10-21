@@ -21,7 +21,15 @@ import {
   type QueryInput,
   type QuerySelection,
 } from './query-document';
-import { isLiveValue, isPlainRecord, parseListEntries } from './validate';
+import {
+  isLiveValue,
+  isPlainRecord,
+  parseEditTarget,
+  parseListEntries,
+  type LiveEditTarget,
+} from './validate';
+
+export type { LiveEditTarget } from './validate';
 
 const debug = createScopedLogger('live-preview:normalize');
 
@@ -32,7 +40,17 @@ const debug = createScopedLogger('live-preview:normalize');
  * (`content.headline_style`, `content.3.body`).
  */
 export type LivePatch =
-  | { type: 'field'; itemId: string; field: string; value: LiveValue }
+  | {
+      type: 'field';
+      itemId: string;
+      field: string;
+      value: LiveValue;
+      /**
+       * Where a click on this text leads in the editor, for text that has no
+       * edit link yet (typed into an entry added before save).
+       */
+      edit?: LiveEditTarget;
+    }
   | { type: 'list'; itemId: string; field: string; entries: LiveListEntry[] };
 
 export interface NormalizeQueryOptions {
@@ -77,7 +95,12 @@ export function parsePatchLog(raw: unknown): LivePatch[] {
     if (typeof itemId !== 'string' || !itemId) continue;
     if (typeof field !== 'string' || !field) continue;
     if (type === 'field' && isLiveValue(entry.value)) {
-      log.push({ type, itemId, field, value: entry.value });
+      const edit = parseEditTarget(entry.edit);
+      log.push(
+        edit
+          ? { type, itemId, field, value: entry.value, edit }
+          : { type, itemId, field, value: entry.value },
+      );
     } else if (type === 'list') {
       const entries = parseListEntries(entry.entries);
       if (entries) log.push({ type, itemId, field, entries });
@@ -163,7 +186,18 @@ export function normalizeQuery<T>(
 
     if (patch.type === 'field') {
       for (const target of targets) {
-        const value = keepEditLink(readAtPath(root, target), patch.value);
+        let value = keepEditLink(readAtPath(root, target), patch.value);
+        if (
+          patch.edit &&
+          typeof value === 'string' &&
+          !vercelStegaSplit(value).encoded
+        ) {
+          value =
+            editLinksFor(result, patch.edit.item)?.encode(
+              value,
+              patch.edit.field,
+            ) ?? value;
+        }
         root = writeAtPath(root, target, value);
       }
     } else {
@@ -494,9 +528,12 @@ const EDIT_PATH = /\/content\/edit\/[^/?#]+/;
 function editLinks(result: unknown, entry: LiveListEntry): EditLinks | null {
   const edit = entry.fields?.__edit;
   if (!isPlainRecord(edit) || typeof edit.item !== 'string') return null;
+  return editLinksFor(result, edit.item);
+}
+
+function editLinksFor(result: unknown, item: string): EditLinks | null {
   const template = findEditLink(result);
   if (!template) return null;
-  const item = edit.item;
   return {
     encode(text, field) {
       if (vercelStegaSplit(text).encoded) return text;

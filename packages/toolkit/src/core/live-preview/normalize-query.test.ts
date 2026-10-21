@@ -890,3 +890,49 @@ describe('normalizeQuery edit links on new entries', () => {
     expect(added.content.headline_style).toBe('H1');
   });
 });
+
+describe('normalizeQuery edit targets on pushes', () => {
+  it('links text typed into an entry that had no text yet', async () => {
+    const { vercelStegaCombine, vercelStegaDecode } =
+      await import('@vercel/stega');
+    const result = pageResult();
+    result.Page.sections[0].content!.headline = vercelStegaCombine(
+      'Headless CMS',
+      {
+        origin: 'prepr.io',
+        href: 'https://acme.prepr.io/content/edit/page-1?utm_campaign=vec&locale=en-GB&field=x',
+      },
+    );
+    const next = normalizeQuery(PAGE_QUERY, result, {
+      log: [
+        {
+          type: 'list',
+          itemId: 'page-1',
+          field: 'sections',
+          entries: [
+            { _id: 'sbs-1' },
+            { _id: 'content-1' },
+            { _id: 'new-1', __typename: 'SideBySide', fields: {} },
+          ],
+        },
+        {
+          type: 'field',
+          itemId: 'new-1',
+          field: 'content.headline',
+          value: 'rge',
+          edit: {
+            item: 'page-1',
+            field: 'sections.items.new-1.items.content.items.headline',
+          },
+        },
+      ],
+    });
+    const added = (
+      next.Page.sections as unknown as Array<Record<string, any>>
+    )[2];
+    expect(vercelStegaDecode(added.content.headline)).toEqual({
+      origin: 'prepr.io',
+      href: 'https://acme.prepr.io/content/edit/page-1?utm_campaign=vec&locale=en-GB&field=sections.items.new-1.items.content.items.headline',
+    });
+  });
+});
