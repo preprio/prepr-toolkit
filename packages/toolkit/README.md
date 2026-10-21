@@ -255,9 +255,22 @@ See the runnable example at `examples/nextjs` for the full source of truth.
 True live preview inside the Prepr editor iframe: keystrokes patch your query
 results instantly by item `_id`; saves refetch the affected queries.
 
-**Requirement:** select `_id` (and ideally `__typename`) on every model and
-component level that should live-update — items without `_id` silently stay
-static.
+**Requirements.** Live updates and click-to-edit find content by id, never by
+position, so they stay correct while an editor adds, removes or reorders
+blocks before saving:
+
+- Select `_id` (and ideally `__typename`) on every model and component level
+  that should live-update. Items without `_id` silently stay static.
+- In dynamic content fields, select `_id` on every entry type (`Text`,
+  `Quote`, …). `Assets` entries have no `_id` of their own: select
+  `items { _id }` instead.
+- Render each dynamic content entry inside an element marked with
+  `data-prepr-edit-target="<field>.<index>"` and
+  `data-prepr-entry-id="<entry _id>"` (for `Assets`, the first asset's
+  `_id`). The index is the fallback when no id matches.
+- Values without a hidden edit link (images, videos, other URLs) are made
+  click-to-edit with `previewAttrs({ id, field }, { enabled: isPreview })`
+  on the element that renders them.
 
 Configure once in a small client component mounted in your root layout:
 
