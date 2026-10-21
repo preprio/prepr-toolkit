@@ -275,9 +275,9 @@ blocks before saving:
 Configure once in a small client component mounted in your root layout:
 
 ```tsx
-'use client'
-import { useEffect } from 'react'
-import { initLivePreview } from '@preprio/toolkit/nextjs/live'
+'use client';
+import { useEffect } from 'react';
+import { initLivePreview } from '@preprio/toolkit/nextjs/live';
 
 export default function LivePreviewInit() {
   useEffect(() => {
@@ -287,23 +287,23 @@ export default function LivePreviewInit() {
       fetcher: async (query, variables) => {
         /* POST to your Prepr GraphQL endpoint, return json.data */
       },
-    })
-  }, [])
-  return null
+    });
+  }, []);
+  return null;
 }
 ```
 
 Register query results in client components with `useLive`:
 
 ```tsx
-'use client'
-import { useLive } from '@preprio/toolkit/nextjs/live'
+'use client';
+import { useLive } from '@preprio/toolkit/nextjs/live';
 
 export default function PageContent({ data, slug }) {
   const liveData = useLive(data, {
     query: GetPageBySlugDocument,
     variables: { slug },
-  })
+  });
   // render from liveData — it re-renders on editor keystrokes and saves
 }
 ```
