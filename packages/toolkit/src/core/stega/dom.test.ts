@@ -83,4 +83,41 @@ describe('tagEncodedElement', () => {
 
     expect(el.hasAttribute('data-prepr-id')).toBe(false);
   });
+
+  it('takes the field from data-prepr-edit-target when the href names none', () => {
+    const el = document.createElement('div');
+    el.setAttribute('data-prepr-edit-target', 'content');
+    document.body.appendChild(el);
+    tagEncodedElement(el, {
+      href: `${ORIGIN}/content/edit/item-1?locale=en-GB`,
+      origin: ORIGIN,
+    });
+
+    expect(el.getAttribute('data-prepr-field')).toBe('content');
+    expect(el.getAttribute('data-prepr-id')).toBe('item-1');
+  });
+
+  it('prefers the field in the href over the edit-target hint', () => {
+    const el = document.createElement('div');
+    el.setAttribute('data-prepr-edit-target', 'content');
+    document.body.appendChild(el);
+    tagEncodedElement(el, {
+      href: `${ORIGIN}/content/edit/item-1?field=content.items.3`,
+      origin: ORIGIN,
+    });
+
+    expect(el.getAttribute('data-prepr-field')).toBe('content.items.3');
+  });
+
+  it('ignores a bare data-prepr-edit-target with no value', () => {
+    const el = document.createElement('div');
+    el.setAttribute('data-prepr-edit-target', '');
+    document.body.appendChild(el);
+    tagEncodedElement(el, {
+      href: `${ORIGIN}/content/edit/item-1`,
+      origin: ORIGIN,
+    });
+
+    expect(el.hasAttribute('data-prepr-field')).toBe(false);
+  });
 });

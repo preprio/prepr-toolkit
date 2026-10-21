@@ -110,6 +110,12 @@ function setOrRemove(
  * carry — a re-clean after the href changed must not leave a stale field path
  * pointing the editor at the wrong field. Callers that must not re-tag check
  * `hasAttribute('data-prepr-encoded')` themselves.
+ *
+ * When the href names no field, a value on the element's own
+ * `data-prepr-edit-target` attribute (`data-prepr-edit-target="content"`) is
+ * used as the field path. Some field types — rich text inside a dynamic
+ * content field — are encoded without one, and only the site knows which
+ * field it rendered them from.
  */
 export function tagEncodedElement(
   element: Element,
@@ -121,7 +127,9 @@ export function tagEncodedElement(
 
   const { id, field, locale } = parseEditHref(decoded.href);
   setOrRemove(element, 'data-prepr-id', id);
-  setOrRemove(element, 'data-prepr-field', field);
+  const fieldHint =
+    element.getAttribute('data-prepr-edit-target')?.trim() || undefined;
+  setOrRemove(element, 'data-prepr-field', field ?? fieldHint);
   setOrRemove(element, 'data-prepr-locale', locale);
 }
 
