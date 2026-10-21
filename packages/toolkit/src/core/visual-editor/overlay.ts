@@ -413,6 +413,7 @@ export class VisualEditorOverlay {
     const target = box.target;
     if (!target) return null;
     if (!target.isConnected) {
+      this.resizeObserver?.unobserve(target);
       box.target = null;
       return null;
     }

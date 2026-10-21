@@ -22,6 +22,24 @@ const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
 const FIND_RETRY_MS = 150;
 const FIND_RETRIES = 6;
 
+// Content changes that can move or resize an outlined element without
+// resizing it (a block added above it) or replace it outright (a heading
+// re-rendered as another tag). The stega pass tagging the replacement shows
+// up as a `data-prepr-encoded` change.
+const LAYOUT_MUTATIONS: MutationObserverInit = {
+  childList: true,
+  subtree: true,
+  characterData: true,
+  attributes: true,
+  attributeFilter: ['class', 'style', 'hidden', 'open', 'data-prepr-encoded'],
+};
+
+/** What a selection points at, so it can be found again after a re-render. */
+interface Selection {
+  lookup: FieldLookup;
+  label: HTMLElement;
+}
+
 export interface VisualEditorOptions {
   /** Called when a field is clicked, with the clicked element's payload. */
   onEdit: (payload: StegaEditPayload) => void;
@@ -116,6 +134,13 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   let suspended = false;
   let pointerFrame: number | null = null;
   let lastPointerTarget: Element | null = null;
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+  let mutationFrame: number | null = null;
+  let mutationObserver: MutationObserver | null = null;
+  // What the selected box outlines; kept while its element is detached, so a
+  // re-rendered element takes the selection back.
+  let selection: Selection | null = null;
   let findTimeout: ReturnType<typeof setTimeout> | null = null;
   // Settles a superseded focusField promise as not found, so a caller that
   // awaits it is never left hanging.
@@ -224,6 +249,8 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const handlePointerMove = (e: PointerEvent): void => {
     setSuspended(e.altKey);
     lastPointerTarget = e.target as Element | null;
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
     if (pointerFrame === null) {
       pointerFrame = requestAnimationFrame(updateHover);
     }
@@ -250,7 +277,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       // tabs, buttons keep working), but a link does not navigate: leaving
       // the page would leave the item being edited. Alt+click follows it,
       // and so do Ctrl/Cmd/Shift-clicks, which open a new tab or window.
-      overlay.setSelected(null, '');
+      clearSelection();
       if (e.ctrlKey || e.metaKey || e.shiftKey) return;
       const href = leavingLinkHref(e.target);
       if (!href) return;
@@ -265,7 +292,8 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     const item = listItemIn(encoded, e.target);
     // Another item's field is edited from the field that references it, so it
     // is reported to the editor but not marked as this item's selection.
-    if (kind === 'current') select(item?.element ?? encoded, encoded);
+    if (kind === 'current')
+      select(item?.element ?? encoded, encoded, item?.index);
     const referenceField =
       kind === 'referenced' ? referenceFieldOf(encoded) : undefined;
     // Nested content is reported as the linked item the open item knows.
@@ -281,7 +309,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const handleKey = (e: KeyboardEvent): void => {
     if (e.key === 'Alt') setSuspended(e.type === 'keydown');
     if (e.type === 'keydown' && e.key === 'Escape') {
-      overlay.setSelected(null, '');
+      clearSelection();
     }
   };
 
@@ -322,11 +350,68 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     return (items[block] as HTMLElement | undefined) ?? null;
   }
 
-  /** `labelSource` names the field when `el` is a part of it, a list item. */
-  function select(el: HTMLElement, labelSource: HTMLElement = el): void {
-    overlay.setSelected(el, labelFor(labelSource));
+  /**
+   * `field` is the tagged element; `el` is a part of it, the list item at
+   * `block`, when only that is selected.
+   */
+  function select(el: HTMLElement, field: HTMLElement, block?: number): void {
+    const entryId = field.getAttribute('data-prepr-entry-id');
+    selection = {
+      lookup: {
+        field: field.getAttribute('data-prepr-field') ?? '',
+        id: field.getAttribute('data-prepr-id') ?? undefined,
+        ...(entryId && { entryId }),
+        ...(block !== undefined && { block }),
+      },
+      label: field,
+    };
+    overlay.setSelected(el, labelFor(field));
     if (overlay.getHoverTarget() === el) overlay.setHover(null, '');
   }
+
+  function clearSelection(): void {
+    selection = null;
+    overlay.setSelected(null, '');
+  }
+
+  /**
+   * Finds the selected field again once a re-render replaced its element;
+   * until the replacement is tagged the box stays hidden.
+   */
+  function reselect(): void {
+    if (!selection) return;
+    const current = overlay.getSelectedTarget();
+    if (current?.isConnected && selection.label.isConnected) return;
+    const found = findFieldElement(selection.lookup);
+    if (!found || !isCurrentItem(found)) {
+      overlay.setSelected(null, '');
+      return;
+    }
+    const { block } = selection.lookup;
+    const el =
+      block !== undefined ? (nthListItem(found, block) ?? found) : found;
+    select(el, found, block);
+  }
+
+  // Runs once per frame at most, after any content change on the page.
+  const handleLayoutFrame = (): void => {
+    mutationFrame = null;
+    reselect();
+    const hovered = overlay.getHoverTarget();
+    if (hovered && !hovered.isConnected) {
+      // The pointer has not moved, so nothing else re-targets the hover box.
+      lastPointerTarget = document.elementFromPoint(lastPointerX, lastPointerY);
+      updateHover();
+      return;
+    }
+    overlay.schedule();
+  };
+
+  const handleMutations = (): void => {
+    if (mutationFrame !== null) return;
+    if (!selection && !overlay.getHoverTarget()) return;
+    mutationFrame = requestAnimationFrame(handleLayoutFrame);
+  };
 
   function injectCursorStyles(): void {
     if (document.querySelector(`style[${CURSOR_STYLE_MARKER}]`)) return;
@@ -365,6 +450,8 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       capture: true,
       passive: true,
     });
+    mutationObserver = new MutationObserver(handleMutations);
+    mutationObserver.observe(document.body, LAYOUT_MUTATIONS);
     syncGuard();
     debug.log('visual editor started');
   }
@@ -373,8 +460,13 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     if (!running) return;
     running = false;
     if (pointerFrame !== null) cancelAnimationFrame(pointerFrame);
+    if (mutationFrame !== null) cancelAnimationFrame(mutationFrame);
+    mutationObserver?.disconnect();
+    mutationObserver = null;
     cancelFind();
     pointerFrame = null;
+    mutationFrame = null;
+    selection = null;
     lastPointerTarget = null;
     setSuspended(false);
     document.removeEventListener('pointermove', handlePointerMove);
@@ -427,7 +519,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
               ? (nthListItem(found, lookup.block) ?? found)
               : found;
           scrollIntoFrame(el);
-          if (running && isCurrentItem(found)) select(el, found);
+          if (running && isCurrentItem(found)) select(el, found, lookup.block);
           finish(true);
           return;
         }
@@ -452,7 +544,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     else if (componentIds) ownComponents = new Set(componentIds);
     const selected = overlay.getSelectedTarget();
     const owner = selected ? encodedFrom(selected) : null;
-    if (owner && !isCurrentItem(owner)) overlay.setSelected(null, '');
+    if (owner && !isCurrentItem(owner)) clearSelection();
   }
 
   function setReferences(

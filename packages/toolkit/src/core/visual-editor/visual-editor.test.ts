@@ -667,4 +667,143 @@ describe('createVisualEditor', () => {
     link.dispatchEvent(alt);
     expect(alt.defaultPrevented).toBe(false);
   });
+
+  describe('when content changes under an outline', () => {
+    // A mutation is delivered as a microtask; the outline follows within two
+    // frames (one to react, one to measure).
+    const settle = async (): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextFrame();
+      await nextFrame();
+    };
+
+    const placeAt = (el: HTMLElement, top: number, height = 32): void => {
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(
+        new DOMRect(40, top, 300, height),
+      );
+    };
+
+    const click = (el: HTMLElement): void => {
+      el.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    };
+
+    it('moves the selected outline when content added above shifts its field', async () => {
+      const heading = tagged('title');
+      placeAt(heading, 100);
+      editor.start();
+      click(heading);
+      await settle();
+      expect(box('selected').style.transform).toBe(
+        'translate3d(37px, 97px, 0)',
+      );
+
+      placeAt(heading, 260);
+      document.body.insertBefore(document.createElement('section'), heading);
+      await settle();
+
+      expect(box('selected').style.transform).toBe(
+        'translate3d(37px, 257px, 0)',
+      );
+    });
+
+    it('resizes the selected outline when its text grows', async () => {
+      const heading = tagged('title');
+      placeAt(heading, 100);
+      editor.start();
+      click(heading);
+      await settle();
+
+      placeAt(heading, 100, 96);
+      heading.firstChild!.textContent = 'A much longer headline over lines';
+      await settle();
+
+      expect(box('selected').style.height).toBe('102px');
+    });
+
+    it('keeps the selection on a field whose element is re-rendered as another tag', async () => {
+      const heading = tagged('content.headline');
+      placeAt(heading, 100);
+      editor.start();
+      click(heading);
+      await settle();
+
+      heading.remove();
+      const replacement = tagged('content.headline', 'h3');
+      placeAt(replacement, 140, 24);
+      await settle();
+
+      const selected = box('selected');
+      expect(selected.hasAttribute('data-visible')).toBe(true);
+      expect(selected.style.transform).toBe('translate3d(37px, 137px, 0)');
+      expect(selected.style.height).toBe('30px');
+      expect(selected.textContent).toBe('Headline');
+    });
+
+    it('hides the selection until the re-rendered element is tagged, then shows it again', async () => {
+      const heading = tagged('content.headline');
+      placeAt(heading, 100);
+      editor.start();
+      click(heading);
+      await settle();
+
+      heading.remove();
+      const replacement = document.createElement('h3');
+      replacement.textContent = 'Editable';
+      document.body.appendChild(replacement);
+      await settle();
+      expect(box('selected').hasAttribute('data-visible')).toBe(false);
+
+      placeAt(replacement, 140);
+      replacement.setAttribute('data-prepr-id', 'item-1');
+      replacement.setAttribute('data-prepr-field', 'content.headline');
+      replacement.setAttribute('data-prepr-encoded', '');
+      await settle();
+
+      expect(box('selected').hasAttribute('data-visible')).toBe(true);
+      expect(box('selected').style.transform).toBe(
+        'translate3d(37px, 137px, 0)',
+      );
+    });
+
+    it('does not bring back a selection that was cleared before the re-render', async () => {
+      const heading = tagged('content.headline');
+      placeAt(heading, 100);
+      editor.start();
+      click(heading);
+      await settle();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+      heading.remove();
+      placeAt(tagged('content.headline', 'h3'), 140);
+      await settle();
+
+      expect(box('selected').hasAttribute('data-visible')).toBe(false);
+    });
+
+    it('moves the hover outline onto the element that replaced the hovered one', async () => {
+      const heading = tagged('content.headline');
+      placeAt(heading, 100);
+      editor.start();
+      heading.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 60,
+          clientY: 110,
+        }),
+      );
+      await settle();
+      expect(box('hover').hasAttribute('data-visible')).toBe(true);
+
+      heading.remove();
+      const replacement = tagged('content.headline', 'h3');
+      placeAt(replacement, 90, 40);
+      vi.spyOn(document, 'elementFromPoint').mockReturnValue(replacement);
+      await settle();
+
+      expect(box('hover').hasAttribute('data-visible')).toBe(true);
+      expect(box('hover').style.transform).toBe('translate3d(37px, 87px, 0)');
+    });
+  });
 });
