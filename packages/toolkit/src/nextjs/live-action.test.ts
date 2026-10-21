@@ -16,6 +16,14 @@ vi.mock('next/headers', () => ({
   headers: async () => new Headers(),
 }));
 
+vi.mock('next/navigation', () => ({
+  unstable_rethrow: (error: unknown) => {
+    if ((error as { digest?: string })?.digest === 'DYNAMIC_SERVER_USAGE') {
+      throw error;
+    }
+  },
+}));
+
 const { syncPreprLiveLog } = await import('./live-action');
 const { normalizeQuery, getPreprLiveLog } = await import('./server');
 
@@ -70,5 +78,30 @@ describe('syncPreprLiveLog + normalizeQuery', () => {
     ]);
     expect(refresh).not.toHaveBeenCalled();
     expect(jar.size).toBe(0);
+  });
+
+  it('applies nothing when there is no request to read', async () => {
+    const headersModule = await import('next/headers');
+    const spy = vi
+      .spyOn(headersModule, 'cookies')
+      .mockRejectedValueOnce(
+        new Error('`cookies` was called outside a request scope'),
+      );
+    expect(await normalizeQuery(QUERY, data, { enabled: true })).toBe(data);
+    spy.mockRestore();
+  });
+
+  it("lets Next's own control-flow errors through", async () => {
+    const headersModule = await import('next/headers');
+    const dynamic = Object.assign(new Error('dynamic'), {
+      digest: 'DYNAMIC_SERVER_USAGE',
+    });
+    const spy = vi
+      .spyOn(headersModule, 'cookies')
+      .mockRejectedValueOnce(dynamic);
+    await expect(normalizeQuery(QUERY, data, { enabled: true })).rejects.toBe(
+      dynamic,
+    );
+    spy.mockRestore();
   });
 });

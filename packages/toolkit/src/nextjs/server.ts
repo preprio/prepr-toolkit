@@ -1,4 +1,5 @@
 import { cookies, headers } from 'next/headers';
+import * as navigation from 'next/navigation';
 
 import {
   normalizeQuery as applyPatchLog,
@@ -101,9 +102,21 @@ const cacheForRender =
   (React as { cache?: <F extends (...args: never[]) => unknown>(fn: F) => F })
     .cache ?? (<F>(fn: F): F => fn);
 
-const readLogOnce = cacheForRender(async (): Promise<LivePatch[]> =>
-  takeLiveLog((await cookies()).get(LIVE_LOG_COOKIE)?.value),
-);
+const readLogOnce = cacheForRender(async (): Promise<LivePatch[]> => {
+  let token: string | undefined;
+  try {
+    token = (await cookies()).get(LIVE_LOG_COOKIE)?.value;
+  } catch (error) {
+    // Next signals dynamic rendering and similar control flow by throwing;
+    // those must reach Next. Anything else means there is no request to read
+    // (a build-time call such as `generateStaticParams`): no changes apply.
+    (
+      navigation as { unstable_rethrow?: (error: unknown) => void }
+    ).unstable_rethrow?.(error);
+    return [];
+  }
+  return takeLiveLog(token);
+});
 
 /**
  * Show the Prepr editor's unsaved changes in server components: pass the
