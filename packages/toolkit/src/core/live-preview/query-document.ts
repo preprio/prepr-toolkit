@@ -394,6 +394,7 @@ export function collectFields(
   selections: QuerySelection[],
   typename: string | undefined,
   doc: QueryDocument,
+  options: { strict?: boolean } = {},
 ): Map<string, ResolvedField> {
   const exact = new Map<string, ResolvedField>();
   const loose = new Map<string, ResolvedField>();
@@ -439,8 +440,13 @@ export function collectFields(
   };
   walk(selections, true);
 
-  for (const [key, field] of loose) {
-    if (!exact.has(key)) exact.set(key, field);
+  // Building a new object (`strict`) must not borrow fields from other
+  // types' branches; reading an existing one may, since only keys present on
+  // it are used.
+  if (!options.strict) {
+    for (const [key, field] of loose) {
+      if (!exact.has(key)) exact.set(key, field);
+    }
   }
   return exact;
 }
@@ -450,4 +456,33 @@ function conditionMatches(
   typename: string | undefined,
 ): boolean {
   return on === null || typename === undefined || on === typename;
+}
+
+/**
+ * The type names a selection set distinguishes with fragments, such as the
+ * member types of a union field: `SideBySide`, `CTA`, … Empty for a set that
+ * applies to one type only.
+ */
+export function typeConditions(
+  selections: QuerySelection[],
+  doc: QueryDocument,
+): string[] {
+  const names = new Set<string>();
+  const seen = new Set<QueryFragment>();
+  const walk = (list: QuerySelection[]): void => {
+    for (const s of list) {
+      if (s.kind === 'inline') {
+        if (s.on) names.add(s.on);
+        walk(s.selections);
+      } else if (s.kind === 'spread') {
+        const fragment = doc.fragments.get(s.name);
+        if (!fragment || seen.has(fragment)) continue;
+        seen.add(fragment);
+        names.add(fragment.on);
+        walk(fragment.selections);
+      }
+    }
+  };
+  walk(selections);
+  return [...names];
 }

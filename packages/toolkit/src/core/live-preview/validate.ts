@@ -64,6 +64,15 @@ export function parseListEntries(value: unknown): LiveListEntry[] | null {
     if (typeof raw.format === 'string' || raw.format === null) {
       entry.format = raw.format as string | null;
     }
+    if (typeof raw.typeName === 'string' && raw.typeName.length <= 200) {
+      entry.typeName = raw.typeName;
+    }
+    if (raw.fields !== undefined) {
+      if (!isPlainRecord(raw.fields) || !isFieldValue(raw.fields, 0)) {
+        return null;
+      }
+      entry.fields = raw.fields;
+    }
     list.push(entry);
   }
   return list;
@@ -75,4 +84,34 @@ export function isPlainRecord(v: unknown): v is Record<string, unknown> {
     typeof v === 'object' &&
     Object.getPrototypeOf(v) === Object.prototype
   );
+}
+
+const MAX_FIELD_DEPTH = 6;
+const MAX_FIELD_KEYS = 100;
+
+/**
+ * The field values of a new list entry: nested records and lists of records
+ * (components, assets, dynamic content), bounded in depth and size, with the
+ * same key and URL rules as `isLiveValue`.
+ */
+function isFieldValue(v: unknown, depth: number): boolean {
+  if (v === null || isScalar(v)) return true;
+  if (depth >= MAX_FIELD_DEPTH) return false;
+  if (Array.isArray(v)) {
+    return (
+      v.length <= MAX_ENTRIES &&
+      v.every((entry) => isPlainRecord(entry) && isFieldValue(entry, depth + 1))
+    );
+  }
+  if (!isPlainRecord(v)) return false;
+  const keys = Object.keys(v);
+  if (keys.length > MAX_FIELD_KEYS) return false;
+  return keys.every((key) => {
+    if (FORBIDDEN_KEYS.has(key)) return false;
+    const value = v[key];
+    if (key === 'url' && typeof value === 'string' && !SAFE_URL.test(value)) {
+      return false;
+    }
+    return isFieldValue(value, depth + 1);
+  });
 }

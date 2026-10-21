@@ -5,12 +5,14 @@ import { indexSnapshot, type LivePath } from './index-snapshot';
 import {
   syncListAtPath,
   writeAtPath,
+  type LiveEntryBuilder,
   type LiveListEntry,
   type LiveValue,
 } from './patch';
 import {
   collectFields,
   readQueryDocument,
+  typeConditions,
   type QueryDocument,
   type QueryInput,
   type QuerySelection,
@@ -161,7 +163,12 @@ export function normalizeQuery<T>(
     } else {
       const before = root;
       for (const target of targets) {
-        root = syncListAtPath(root, target, patch.entries);
+        const selections = doc ? selectionsAt(root, doc, target) : null;
+        const build: LiveEntryBuilder | undefined =
+          doc && selections
+            ? (entry) => buildEntry(doc, selections, entry)
+            : undefined;
+        root = syncListAtPath(root, target, patch.entries, build);
       }
       // Entries moved: paths recorded before the change no longer point at
       // the same objects.
@@ -295,4 +302,102 @@ function resolveTargets(
   };
   walk(owner, selections, 0, ownerPath);
   return out;
+}
+
+const NON_ALPHANUMERIC = /[^a-z0-9]/gi;
+const typeKey = (name: string): string =>
+  name.replace(NON_ALPHANUMERIC, '').toLowerCase();
+
+/**
+ * The type a new entry is built as: one the query names for this list. The
+ * editor's `__typename` wins when the query knows it; otherwise its type
+ * name is matched loosely (`Side by side` ↔ `SideBySide`); a field the query
+ * selects for a single type takes that type. Undefined when nothing fits,
+ * so the entry waits for the save.
+ */
+function resolveTypename(
+  doc: QueryDocument,
+  selections: QuerySelection[],
+  typename: unknown,
+  typeName: unknown,
+): string | null | undefined {
+  const known = typeConditions(selections, doc);
+  const explicit = typeof typename === 'string' ? typename : undefined;
+  if (!known.length) return explicit ?? null;
+  if (explicit && known.includes(explicit)) return explicit;
+  for (const candidate of [explicit, typeName]) {
+    if (typeof candidate !== 'string' || !candidate) continue;
+    const match = known.find((name) => typeKey(name) === typeKey(candidate));
+    if (match) return match;
+  }
+  return known.length === 1 ? known[0] : undefined;
+}
+
+/**
+ * A new list entry in exactly the shape the query selects for its type, with
+ * the editor's values where it sent them and null elsewhere (references and
+ * other values only the server can resolve appear after save).
+ */
+function buildEntry(
+  doc: QueryDocument,
+  selections: QuerySelection[],
+  entry: LiveListEntry,
+): Record<string, unknown> | undefined {
+  const typename = resolveTypename(
+    doc,
+    selections,
+    entry.__typename,
+    entry.typeName,
+  );
+  if (typename === undefined) return undefined;
+  return fillObject(doc, selections, typename, entry.fields ?? {}, entry._id);
+}
+
+function fillObject(
+  doc: QueryDocument,
+  selections: QuerySelection[],
+  typename: string | null,
+  values: Record<string, unknown>,
+  id: unknown,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const fields = collectFields(selections, typename ?? undefined, doc, {
+    strict: true,
+  });
+  for (const field of fields.values()) {
+    if (field.name === '__typename') {
+      out[field.key] = typename;
+    } else if (field.name === '_id') {
+      out[field.key] = typeof id === 'string' ? id : (values._id ?? null);
+    } else if (field.selections.length) {
+      out[field.key] = fillNested(doc, field.selections, values[field.name]);
+    } else {
+      const value = values[field.name];
+      out[field.key] =
+        value === undefined || (value !== null && typeof value === 'object')
+          ? null
+          : value;
+    }
+  }
+  return out;
+}
+
+function fillNested(
+  doc: QueryDocument,
+  selections: QuerySelection[],
+  value: unknown,
+): unknown {
+  const one = (item: unknown): unknown => {
+    if (!isPlainRecord(item)) return null;
+    const typename = resolveTypename(
+      doc,
+      selections,
+      item.__typename,
+      item.typeName,
+    );
+    if (typename === undefined) return null;
+    return fillObject(doc, selections, typename, item, item._id);
+  };
+  if (Array.isArray(value)) return value.map(one).filter((v) => v !== null);
+  return value === undefined ? null : one(value);
 }

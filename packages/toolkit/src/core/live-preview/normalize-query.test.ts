@@ -569,3 +569,131 @@ describe('normalizeQuery edit links', () => {
     expect(split.encoded).toBe(vercelStegaSplit(result.Post.title).encoded);
   });
 });
+
+describe('normalizeQuery new list entries', () => {
+  const add = (entries: unknown[]) =>
+    normalizeQuery(PAGE_QUERY, pageResult(), {
+      log: [{ type: 'list', itemId: 'page-1', field: 'sections', entries }],
+    });
+
+  it('builds a new section in the shape the query selects for its type', () => {
+    const next = add([
+      { _id: 'sbs-1' },
+      {
+        _id: 'new-1',
+        typeName: 'Side by side',
+        fields: {
+          background: 'DARK',
+          content: {
+            headline: 'Fresh',
+            headline_style: 'H1',
+            content: [
+              {
+                __typename: 'Text',
+                _id: 't9',
+                body: '<p>Hi</p>',
+                format: null,
+                text: 'Hi',
+              },
+            ],
+          },
+          image_position: 'LEFT',
+        },
+      },
+      { _id: 'content-1' },
+    ]);
+    const sections = next.Page.sections as unknown as Array<
+      Record<string, unknown>
+    >;
+    expect(sections.map((s) => s._id)).toEqual(['sbs-1', 'new-1', 'content-1']);
+    expect(sections[1]).toEqual({
+      __typename: 'SideBySide',
+      _id: 'new-1',
+      background: 'DARK',
+      image: null,
+      content: {
+        __typename: 'TextGroup',
+        _id: null,
+        headline: 'Fresh',
+        headline_style: 'H1',
+        content: [
+          {
+            __typename: 'Text',
+            _id: 't9',
+            body: '<p>Hi</p>',
+            format: null,
+            text: 'Hi',
+          },
+        ],
+        ctas: null,
+      },
+    });
+  });
+
+  it('builds nested list entries by their own type', () => {
+    const next = add([
+      { _id: 'sbs-1' },
+      { _id: 'content-1' },
+      {
+        _id: 'content-2',
+        __typename: 'Content',
+        fields: {
+          background: 'WHITE',
+          blocks: [
+            {
+              __typename: 'LogoGroup',
+              _id: 'lg-2',
+              internal_title: 'New',
+              style: 'GRAY',
+            },
+          ],
+          content_width: 'NARROW',
+        },
+      },
+    ]);
+    const added = (
+      next.Page.sections as unknown as Array<Record<string, unknown>>
+    )[2];
+    expect(added).toEqual({
+      __typename: 'Content',
+      _id: 'content-2',
+      background: 'WHITE',
+      blocks: [
+        {
+          __typename: 'LogoGroup',
+          _id: 'lg-2',
+          internal_title: 'New',
+          logoStyle: 'GRAY',
+          logos: null,
+        },
+      ],
+      content_width: 'NARROW',
+    });
+  });
+
+  it('leaves a new entry of a type the query does not know to the save', () => {
+    const next = add([
+      { _id: 'sbs-1' },
+      { _id: 'x', typeName: 'Pricing table', fields: { title: 'x' } },
+      { _id: 'content-1' },
+    ]);
+    expect(
+      (next.Page.sections as Array<{ _id: string }>).map((s) => s._id),
+    ).toEqual(['sbs-1', 'content-1']);
+  });
+
+  it('rejects hostile field values', () => {
+    expect(
+      parsePatchLog([
+        {
+          type: 'list',
+          itemId: 'p',
+          field: 'sections',
+          entries: [
+            { _id: 'n', fields: { image: { url: 'javascript:alert(1)' } } },
+          ],
+        },
+      ]),
+    ).toEqual([]);
+  });
+});

@@ -213,7 +213,23 @@ export interface LiveListEntry {
   /** Text entries only: the HTML and heading level the editor holds. */
   body?: string;
   format?: string | null;
+  /**
+   * A new entry's type as the editor names it (`Side by side`), used when
+   * `__typename` is unknown; the query's own type names decide.
+   */
+  typeName?: string;
+  /**
+   * A new entry's field values, keyed by GraphQL field name and shaped as
+   * the API returns them. With them, `normalizeQuery` builds the entry in
+   * the shape the query selects.
+   */
+  fields?: Record<string, unknown>;
 }
+
+/** Builds a new list entry in the queried shape, or returns undefined. */
+export type LiveEntryBuilder = (
+  entry: LiveListEntry,
+) => Record<string, unknown> | undefined;
 
 function listKeysOf(entry: unknown): string[] {
   if (!isPlainObject(entry)) return [];
@@ -263,7 +279,11 @@ function buildText(
  * ids on these entries, or when none of the editor's ids match: ids that no
  * longer line up (for example right after a save) must not empty the list.
  */
-function syncList(current: unknown, entries: LiveListEntry[]): unknown {
+function syncList(
+  current: unknown,
+  entries: LiveListEntry[],
+  build?: LiveEntryBuilder,
+): unknown {
   if (!Array.isArray(current)) return current;
   const byKey = new Map<string, unknown>();
   const templates = new Map<string, Record<string, unknown>>();
@@ -283,8 +303,12 @@ function syncList(current: unknown, entries: LiveListEntry[]): unknown {
   const next: unknown[] = [];
   for (const entry of entries) {
     const existing = byKey.get(entry._id);
+    const built =
+      existing === undefined && entry.fields ? build?.(entry) : undefined;
     if (existing !== undefined) {
       next.push(existing);
+    } else if (built) {
+      next.push(built);
     } else if (entry.__typename === 'Text') {
       next.push(buildText(entry, templates.get('Text')));
     }
@@ -325,6 +349,7 @@ export function syncListAtPath(
   root: unknown,
   fullPath: LivePath,
   entries: LiveListEntry[],
+  build?: LiveEntryBuilder,
 ): unknown {
   if (!fullPath.length) return root;
   if (fullPath.some((s) => FORBIDDEN_SEGMENTS.has(String(s)))) return root;
@@ -335,7 +360,7 @@ export function syncListAtPath(
         ? (node as Record<string | number, unknown>)[key]
         : undefined;
   }
-  const next = syncList(node, entries);
+  const next = syncList(node, entries, build);
   if (next === node) return root;
   const newRoot = cloneNode(root);
   let cursor = newRoot;
