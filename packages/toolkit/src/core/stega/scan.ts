@@ -1,4 +1,5 @@
 import { createScopedLogger, throttle, type ThrottledFunction } from '../utils';
+import { readEditPayload } from './dom';
 import { StegaElements } from './elements';
 import { StegaOverlay, type StegaEditPayload } from './overlay';
 import { StegaProximity } from './proximity';
@@ -59,13 +60,7 @@ export function createStegaController(
     if (!encoded) return;
     e.preventDefault();
     e.stopPropagation();
-    opts.onEdit({
-      href: encoded.getAttribute('data-prepr-href') ?? '',
-      origin: encoded.getAttribute('data-prepr-origin') ?? '',
-      id: encoded.getAttribute('data-prepr-id') ?? undefined,
-      field: encoded.getAttribute('data-prepr-field') ?? undefined,
-      locale: encoded.getAttribute('data-prepr-locale') ?? undefined,
-    });
+    opts.onEdit(readEditPayload(encoded));
   };
 
   const start = (): void => {

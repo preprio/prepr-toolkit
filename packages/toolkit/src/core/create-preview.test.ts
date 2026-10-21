@@ -117,6 +117,8 @@ describe('createPreprPreview', () => {
     // The stega stylesheet lands in <head> and is reused if left behind, which
     // would make a later "did it start?" assertion pass vacuously.
     stegaStyle()?.remove();
+    // Mounted on <html>, so clearing <body> does not reach it.
+    document.querySelector('prepr-visual-editor')?.remove();
     clearCookies();
     vi.restoreAllMocks();
   });
@@ -463,6 +465,40 @@ describe('createPreprPreview', () => {
     const state = storeOf(controller).get();
     expect(state.previewMode).toBe(true);
     expect(state.editMode).toBe(false);
+    controller.destroy();
+  });
+
+  it('mounts the visual editor once the editor hands over edit mode, and removes it on destroy', () => {
+    const controller = createPreprPreview({ props: PROPS });
+    expect(document.querySelector('prepr-visual-editor')).toBeNull();
+
+    handshake();
+    expect(document.querySelector('prepr-visual-editor')).not.toBeNull();
+
+    controller.destroy();
+    expect(document.querySelector('prepr-visual-editor')).toBeNull();
+  });
+
+  it('prepr:scrollToField selects the field in the visual editor', async () => {
+    const heading = document.createElement('h1');
+    heading.setAttribute('data-prepr-encoded', '');
+    heading.setAttribute('data-prepr-field', 'stack.items.0.title');
+    heading.scrollIntoView = vi.fn();
+    document.body.appendChild(heading);
+
+    const controller = createPreprPreview({ props: PROPS });
+    handshake();
+    postFromParent({
+      event: 'prepr:scrollToField',
+      field: 'stack.items.000.title',
+    });
+
+    expect(heading.scrollIntoView).toHaveBeenCalled();
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    const selected = document
+      .querySelector('prepr-visual-editor')
+      ?.shadowRoot?.querySelector('.box.selected');
+    expect(selected?.textContent).toBe('Title');
     controller.destroy();
   });
 

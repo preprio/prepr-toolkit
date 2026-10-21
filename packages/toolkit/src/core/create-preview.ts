@@ -10,7 +10,12 @@ import { resolveFeatures } from './features';
 import { isLocale, t as translate, type Locale } from './i18n';
 import { createIframeBridge } from './iframe-bridge';
 import { createStegaAutoClean, type StegaAutoClean } from './stega/auto-clean';
-import { createStegaController, scrollToField, stegaClean } from './stega';
+import {
+  createStegaController,
+  scrollToField,
+  stegaClean,
+  type StegaEditPayload,
+} from './stega';
 import {
   createToolbarStore,
   type ToolbarState,
@@ -28,6 +33,7 @@ import {
   type PreprToolbarElement,
 } from './ui/toolbar-element';
 import { createScopedLogger, initDebugLogger, sendPreprEvent } from './utils';
+import { createVisualEditor, type VisualEditor } from './visual-editor';
 
 const debug = createScopedLogger('create-preview');
 
@@ -214,37 +220,52 @@ export function createPreprPreview(
   // wired there regardless of config — see the JSDoc on PreprFeatures.editMode.
   const editingEnabled = features.editMode || isIframe;
 
-  const stega = createStegaController({
-    // The CMS deep-link tooltip is chrome, so it follows the same decision as
-    // the bar: noise inside the editor (clicking the element itself requests
-    // the edit there), and unwanted in a headless preview that asked for no UI.
-    tooltip: mountUi,
-    // In the editor, ask the parent to focus the field instead of opening a new
-    // tab. Standalone previews keep the window.open behaviour.
-    onEdit: ({ href, id, field, locale: contentLocale }) => {
-      // Validated even though only the standalone branch opens the URL: a
-      // href the browser would refuse is a malformed payload, and must not
-      // become a field-focus request either.
-      const safeHref = href ? safeEditUrl(href) : null;
-      if (href && !safeHref) {
-        debug.warn('ignored edit request with unsupported href scheme');
-        return;
-      }
-      if (isIframe) {
-        // The editor resolves the content item itself, so only the focus
-        // target crosses the bridge — no href or origin.
-        sendPreprEvent('field_edit_requested', {
-          id,
-          field,
-          locale: contentLocale,
-        });
-      } else if (safeHref) {
-        // `noopener` — without it the opened tab keeps a live `window.opener`
-        // handle back to this page.
-        window.open(safeHref, '_blank', 'noopener,noreferrer');
-      }
-    },
-  });
+  // Shared by both editing surfaces below.
+  const onEdit = ({
+    href,
+    id,
+    field,
+    locale: contentLocale,
+  }: StegaEditPayload) => {
+    // Validated even though only the standalone branch opens the URL: a
+    // href the browser would refuse is a malformed payload, and must not
+    // become a field-focus request either.
+    const safeHref = href ? safeEditUrl(href) : null;
+    if (href && !safeHref) {
+      debug.warn('ignored edit request with unsupported href scheme');
+      return;
+    }
+    if (isIframe) {
+      // The editor resolves the content item itself, so only the focus
+      // target crosses the bridge — no href or origin.
+      sendPreprEvent('field_edit_requested', {
+        id,
+        field,
+        locale: contentLocale,
+      });
+    } else if (safeHref) {
+      // `noopener` — without it the opened tab keeps a live `window.opener`
+      // handle back to this page.
+      window.open(safeHref, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // Inside the editor iframe the page becomes the editing surface: hover
+  // outlines, click-to-select and selection driven by the editor's field
+  // focus. Standalone previews keep the CMS deep-link tooltip, or bare
+  // click-to-edit when no UI is mounted.
+  const visualEditor: VisualEditor | null = isIframe
+    ? createVisualEditor({ onEdit })
+    : null;
+
+  const stega =
+    visualEditor ??
+    createStegaController({
+      // The CMS deep-link tooltip is chrome, so it follows the same decision
+      // as the bar: unwanted in a headless preview that asked for no UI.
+      tooltip: mountUi,
+      onEdit,
+    });
 
   // Unconditional: stega characters only exist when the server already
   // fetched preview (encoded) content, so their presence — not the preview
@@ -286,6 +307,10 @@ export function createPreprPreview(
     // lookup relies on the attributes the stega scan writes, so it finds
     // nothing until encoded content has been tagged.
     onScrollToField: ({ field, id }) => {
+      if (visualEditor) {
+        void visualEditor.focusField({ field, id });
+        return;
+      }
       if (!scrollToField({ field, id })) {
         debug.log('no element on this page renders field', field);
       }

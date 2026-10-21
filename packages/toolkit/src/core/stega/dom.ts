@@ -1,4 +1,5 @@
 import type { StegaDecodedData } from './clean';
+import type { StegaEditPayload } from './overlay';
 
 // Single owner of the text-node walk + attribute-tagging contract shared by
 // elements.ts and auto-clean.ts.
@@ -122,4 +123,18 @@ export function tagEncodedElement(
   setOrRemove(element, 'data-prepr-id', id);
   setOrRemove(element, 'data-prepr-field', field);
   setOrRemove(element, 'data-prepr-locale', locale);
+}
+
+/**
+ * The edit payload stored on an element by {@link tagEncodedElement}, read
+ * back for a click or a field-focus request.
+ */
+export function readEditPayload(element: Element): StegaEditPayload {
+  return {
+    href: element.getAttribute('data-prepr-href') ?? '',
+    origin: element.getAttribute('data-prepr-origin') ?? '',
+    id: element.getAttribute('data-prepr-id') ?? undefined,
+    field: element.getAttribute('data-prepr-field') ?? undefined,
+    locale: element.getAttribute('data-prepr-locale') ?? undefined,
+  };
 }
