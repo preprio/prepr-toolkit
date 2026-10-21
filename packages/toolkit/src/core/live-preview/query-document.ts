@@ -418,12 +418,21 @@ export function collectFields(
     });
   };
 
+  // A fragment on a union or interface (`fragment DCF on _prepr_types`)
+  // usually branches by type inside; it applies, and its inner conditions
+  // decide. Without a schema, branching inside is what marks it abstract.
+  const applies = (on: string | null, list: QuerySelection[]): boolean =>
+    conditionMatches(on, typename) ||
+    list.some(
+      (s) => (s.kind === 'inline' && s.on !== null) || s.kind === 'spread',
+    );
+
   const walk = (list: QuerySelection[], matched: boolean): void => {
     for (const s of list) {
       if (s.kind === 'field') {
         add(matched ? exact : loose, s);
       } else if (s.kind === 'inline') {
-        walk(s.selections, matched && conditionMatches(s.on, typename));
+        walk(s.selections, matched && applies(s.on, s.selections));
       } else {
         const fragment = doc.fragments.get(s.name);
         // A fragment spread twice in one set is walked once; a fragment
@@ -432,7 +441,7 @@ export function collectFields(
         seen.add(fragment);
         walk(
           fragment.selections,
-          matched && conditionMatches(fragment.on, typename),
+          matched && applies(fragment.on, fragment.selections),
         );
         seen.delete(fragment);
       }

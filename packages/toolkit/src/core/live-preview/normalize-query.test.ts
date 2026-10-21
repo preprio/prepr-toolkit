@@ -936,3 +936,45 @@ describe('normalizeQuery edit targets on pushes', () => {
     });
   });
 });
+
+describe('normalizeQuery new entries through a union fragment', () => {
+  it('builds an entry whose fields sit in a fragment on the union', () => {
+    const query = `
+      { Post { _id content { ...DCF } } }
+      fragment DCF on _prepr_types {
+        __typename
+        ... on Text { _id body }
+        ... on CopyCommand { ...CopyCommandBlock }
+      }
+      fragment CopyCommandBlock on CopyCommand { _id command }
+    `;
+    const data = {
+      Post: {
+        _id: 'p',
+        content: [{ __typename: 'Text', _id: 't1', body: 'x' }],
+      },
+    };
+    const next = normalizeQuery(query, data, {
+      log: [
+        {
+          type: 'list',
+          itemId: 'p',
+          field: 'content',
+          entries: [
+            { _id: 't1' },
+            {
+              _id: 'tmp:1',
+              typeName: 'Copy command',
+              fields: { command: 'npx prepr init' },
+            },
+          ],
+        },
+      ],
+    });
+    expect(next.Post.content[1]).toEqual({
+      __typename: 'CopyCommand',
+      _id: 'tmp:1',
+      command: 'npx prepr init',
+    });
+  });
+});
