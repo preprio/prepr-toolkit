@@ -16,6 +16,7 @@ interface EditorMessage {
   id?: unknown;
   block?: unknown;
   entryId?: unknown;
+  itemId?: unknown;
 }
 
 /** Which field the editor asked the preview to bring on screen. */
@@ -26,6 +27,15 @@ export interface ScrollToFieldMessage {
   block?: number;
   /** The entry's `data-prepr-entry-id`, preferred over `field` when present. */
   entryId?: string;
+}
+
+/** What the editor told the preview when the handshake completed. */
+export interface EditorHandshake {
+  /**
+   * The content item open in the editor. Absent when the editor does not
+   * send one, in which case every tagged element counts as part of it.
+   */
+  itemId?: string;
 }
 
 export interface IframeBridge {
@@ -100,6 +110,13 @@ export interface IframeBridgeOptions {
    * stays free of DOM lookups: the preview runtime supplies `scrollToField`.
    */
   onScrollToField?: (message: ScrollToFieldMessage) => void;
+  /**
+   * Called once the editor handshake is accepted, with the id of the content
+   * item open in the editor when the editor sends one. Lets the preview tell
+   * that item's fields apart from other items rendered on the same page
+   * (navigation, an author card, related posts).
+   */
+  onHandshake?: (handshake: EditorHandshake) => void;
 }
 
 /**
@@ -114,7 +131,9 @@ export interface IframeBridgeOptions {
  * - `prepr:initVE`: accepted only from `https://<tenant>.prepr.io`, or from an
  *   exact origin in `allowedEditorOrigins` when that option is set. Restores
  *   the editor-saved scroll position and seeds preview + edit mode. `editMode`
- *   defaults to true; the editor may send false for preview-only.
+ *   defaults to true; the editor may send false for preview-only. An
+ *   optional `itemId` names the content item open in the editor and is
+ *   passed to `onHandshake`.
  * - `prepr:getScrollPosition`: replies with the current scroll offset.
  * - `prepr:scrollToField`: brings the element rendering a given field on
  *   screen, via the `onScrollToField` option.
@@ -129,6 +148,7 @@ export function createIframeBridge(
 ): IframeBridge {
   const allowedOrigins = options.allowedEditorOrigins;
   const onScrollToField = options.onScrollToField;
+  const onHandshake = options.onHandshake;
   let parentOrigin: string | null = null;
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -161,6 +181,18 @@ export function createIframeBridge(
       // iframe. A consumer who disabled edit mode still gets a working visual
       // editor. See the JSDoc on PreprFeatures.editMode.
       store?.set({ previewMode: true, editMode: data.editMode ?? true });
+      // Compared against `data-prepr-id` later, so anything but a non-empty
+      // string is dropped and the preview falls back to treating every
+      // element as part of the open item.
+      const itemId =
+        typeof data.itemId === 'string' && data.itemId
+          ? data.itemId
+          : undefined;
+      try {
+        onHandshake?.(itemId ? { itemId } : {});
+      } catch (error) {
+        debug.warn('handshake handler failed', error as object);
+      }
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;
     if (data?.event === 'prepr:getScrollPosition') {

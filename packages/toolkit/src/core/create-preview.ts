@@ -307,6 +307,7 @@ export function createPreprPreview(
   // --- Iframe messaging -----------------------------------------------------
   const bridge = createIframeBridge(store, {
     allowedEditorOrigins: options?.allowedEditorOrigins,
+    onHandshake: ({ itemId }) => visualEditor?.setCurrentItem(itemId ?? null),
     // The editor selecting a field scrolls the matching element into view. The
     // lookup relies on the attributes the stega scan writes, so it finds
     // nothing until encoded content has been tagged.

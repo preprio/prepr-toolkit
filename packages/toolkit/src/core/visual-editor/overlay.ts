@@ -106,6 +106,13 @@ const STYLES = `
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
 }
 .hover .label { background: rgba(79, 70, 229, 0.92); }
+/* Content of another item than the one open in the editor: still clickable,
+   but visibly not part of the item being edited. */
+.hover[data-other-item] {
+  border: 1.5px dashed #a5b4fc;
+  background: rgba(100, 116, 139, 0.05);
+}
+.hover[data-other-item] .label { background: #64748b; }
 .box[data-label-inside] .label {
   bottom: auto;
   top: 2px;
@@ -116,6 +123,11 @@ const STYLES = `
   .box { transition: opacity 80ms linear; }
 }
 `;
+
+export interface HoverOptions {
+  /** Draw the muted style for content of another item than the open one. */
+  otherItem?: boolean;
+}
 
 interface Box {
   root: HTMLDivElement;
@@ -171,7 +183,19 @@ export class VisualEditorOverlay {
     return this.selectedBox?.target ?? null;
   }
 
-  setHover(target: HTMLElement | null, label: string): void {
+  setHover(
+    target: HTMLElement | null,
+    label: string,
+    options: HoverOptions = {},
+  ): void {
+    // Set before retargeting, so the box never paints one frame in the style
+    // of the element it is leaving.
+    if (target) {
+      this.hoverBox?.root.toggleAttribute(
+        'data-other-item',
+        options.otherItem ?? false,
+      );
+    }
     this.retarget(this.hoverBox, target, label);
   }
 

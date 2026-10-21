@@ -298,3 +298,57 @@ describe('createIframeBridge — loaded payload', () => {
     expect(loaded).not.toHaveProperty('features');
   });
 });
+
+describe('createIframeBridge — handshake item id', () => {
+  it('passes the content item open in the editor to the handshake handler', () => {
+    const onHandshake = vi.fn();
+    const bridge = createIframeBridge(null, { onHandshake });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE', itemId: 'item-1' });
+
+    expect(onHandshake).toHaveBeenCalledWith({ itemId: 'item-1' });
+    bridge.stop();
+  });
+
+  it('reports no item for an editor that sends none or sends a non-string', () => {
+    for (const itemId of [undefined, '', 42, { id: 'x' }]) {
+      const onHandshake = vi.fn();
+      const bridge = createIframeBridge(null, { onHandshake });
+      bridge.start();
+      postFrom(EDITOR, { event: 'prepr:initVE', itemId });
+      expect(onHandshake).toHaveBeenCalledWith({});
+      bridge.stop();
+    }
+  });
+
+  it('ignores the item id from an untrusted origin', () => {
+    const onHandshake = vi.fn();
+    const bridge = createIframeBridge(null, { onHandshake });
+    bridge.start();
+
+    postFrom(ATTACKER, { event: 'prepr:initVE', itemId: 'item-1' });
+
+    expect(onHandshake).not.toHaveBeenCalled();
+    bridge.stop();
+  });
+
+  it('survives a handshake handler that throws', () => {
+    const store = createToolbarStore();
+    const onScrollToField = vi.fn();
+    const bridge = createIframeBridge(store, {
+      onScrollToField,
+      onHandshake: () => {
+        throw new Error('boom');
+      },
+    });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE', itemId: 'item-1' });
+    postFrom(EDITOR, { event: 'prepr:scrollToField', field: 'title' });
+
+    expect(store.get().editMode).toBe(true);
+    expect(onScrollToField).toHaveBeenCalled();
+    bridge.stop();
+  });
+});

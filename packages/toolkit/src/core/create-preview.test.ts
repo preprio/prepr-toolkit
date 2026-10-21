@@ -164,6 +164,40 @@ describe('createPreprPreview', () => {
     controller.destroy();
   });
 
+  it('reports a click on another item without selecting it, once the editor names the open item', async () => {
+    const controller = createPreprPreview({ props: PROPS });
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { event: 'prepr:initVE', itemId: 'item-1' },
+        origin: 'https://acme.prepr.io',
+      }),
+    );
+
+    const el = document.createElement('p');
+    el.setAttribute('data-prepr-encoded', '');
+    el.setAttribute('data-prepr-id', 'author-9');
+    el.setAttribute('data-prepr-field', 'name');
+    el.setAttribute('data-prepr-locale', 'en-GB');
+    document.body.appendChild(el);
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(10, 10, 100, 20),
+    );
+
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const posted = postMessageSpy.mock.calls
+      .map(([message]) => message as Record<string, unknown>)
+      .find((message) => message?.event === 'field_edit_requested');
+    expect(posted).toMatchObject({ id: 'author-9', field: 'name' });
+    const selected = document
+      .querySelector('prepr-visual-editor')
+      ?.shadowRoot?.querySelector('.box.selected');
+    expect(selected?.hasAttribute('data-visible')).toBe(false);
+
+    controller.destroy();
+  });
+
   it('mounts a <prepr-toolbar> element on the document body (top level)', () => {
     stubTopLevel();
     const controller = createPreprPreview({ props: PROPS });

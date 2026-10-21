@@ -262,4 +262,90 @@ describe('createVisualEditor', () => {
     await nextFrame();
     expect(box('selected').hasAttribute('data-visible')).toBe(false);
   });
+  describe('content of other items', () => {
+    function otherItem(field: string): HTMLElement {
+      const el = tagged(field);
+      el.setAttribute('data-prepr-id', 'author-9');
+      return el;
+    }
+
+    it('outlines another item muted and says so in the label', async () => {
+      const name = otherItem('name');
+      rect(name);
+      editor.start();
+      editor.setCurrentItem('item-1');
+
+      name.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+
+      expect(box('hover').hasAttribute('data-other-item')).toBe(true);
+      expect(box('hover').textContent).toBe('Name · other item');
+    });
+
+    it('keeps the regular outline for the open item', async () => {
+      const heading = tagged('title');
+      rect(heading);
+      editor.start();
+      editor.setCurrentItem('item-1');
+
+      heading.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+
+      expect(box('hover').hasAttribute('data-other-item')).toBe(false);
+      expect(box('hover').textContent).toBe('Title');
+    });
+
+    it('treats everything as the open item until the editor names one', async () => {
+      const name = otherItem('name');
+      rect(name);
+      editor.start();
+
+      name.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+
+      expect(box('hover').hasAttribute('data-other-item')).toBe(false);
+      name.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+      await nextFrame();
+      expect(box('selected').hasAttribute('data-visible')).toBe(true);
+    });
+
+    it('requests the edit on click without selecting the other item', async () => {
+      const name = otherItem('name');
+      rect(name);
+      editor.start();
+      editor.setCurrentItem('item-1');
+
+      const click = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      });
+      name.dispatchEvent(click);
+      await nextFrame();
+
+      expect(click.defaultPrevented).toBe(true);
+      expect(onEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'author-9', field: 'name' }),
+      );
+      expect(box('selected').hasAttribute('data-visible')).toBe(false);
+    });
+
+    it('focusField scrolls to another item but does not select it', async () => {
+      const name = otherItem('name');
+      rect(name);
+      const scroll = vi.fn();
+      name.scrollIntoView = scroll;
+      editor.start();
+      editor.setCurrentItem('item-1');
+
+      await expect(
+        editor.focusField({ field: 'name', id: 'author-9' }),
+      ).resolves.toBe(true);
+      await nextFrame();
+
+      expect(scroll).toHaveBeenCalled();
+      expect(box('selected').hasAttribute('data-visible')).toBe(false);
+    });
+  });
 });

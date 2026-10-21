@@ -10,6 +10,7 @@ const ENCODED_SELECTOR = '[data-prepr-encoded]';
 const CURSOR_STYLE_MARKER = 'data-prepr-visual-editor';
 const CURSOR_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}html[data-prepr-ve-suspended] ${ENCODED_SELECTOR}{cursor:auto}`;
 const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
+const OTHER_ITEM_SUFFIX = ' · other item';
 
 // Content can be tagged a moment after the editor asks for it: the field sits
 // in a section that renders late, or hydration re-renders it first.
@@ -25,6 +26,13 @@ export interface VisualEditor {
   start(): void;
   stop(): void;
   /**
+   * The content item open in the editor. Elements whose `data-prepr-id`
+   * differs are drawn muted and are never selected; clicking one still
+   * requests the edit, so the editor can lead to the field that references
+   * that item. `null` (the default) treats every element as the open item's.
+   */
+  setCurrentItem(itemId: string | null): void;
+  /**
    * Scroll the element rendering `field` into view and mark it selected.
    * Retries briefly while the content may still be tagging; resolves to
    * whether an element was found.
@@ -37,12 +45,16 @@ export interface VisualEditor {
  * framed by the Prepr editor. Works on the elements the stega pass tagged
  * (`data-prepr-encoded`), so it adds no DOM scan of its own.
  *
+ * Content of other items on the page (navigation, an author card, related
+ * posts) is told apart from the open item once `setCurrentItem` is called.
+ *
  * Holding Alt suspends it, so links and buttons on the page can be used
  * without leaving the editor.
  */
 export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const overlay = new VisualEditorOverlay();
   let running = false;
+  let currentItemId: string | null = null;
   let suspended = false;
   let pointerFrame: number | null = null;
   let lastPointerTarget: Element | null = null;
@@ -58,6 +70,14 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
 
   const labelFor = (el: HTMLElement): string =>
     fieldLabel(el.getAttribute('data-prepr-field'));
+
+  // An element without an id cannot be attributed to another item, so it
+  // keeps the open item's behaviour.
+  const isCurrentItem = (el: HTMLElement): boolean => {
+    if (currentItemId === null) return true;
+    const id = el.getAttribute('data-prepr-id');
+    return !id || id === currentItemId;
+  };
 
   const setSuspended = (value: boolean): void => {
     if (suspended === value) return;
@@ -76,7 +96,16 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     // The selected box already outlines its element; a second box on top of
     // it is noise.
     const target = encoded === overlay.getSelectedTarget() ? null : encoded;
-    overlay.setHover(target, target ? labelFor(target) : '');
+    if (!target) {
+      overlay.setHover(null, '');
+      return;
+    }
+    const otherItem = !isCurrentItem(target);
+    overlay.setHover(
+      target,
+      otherItem ? labelFor(target) + OTHER_ITEM_SUFFIX : labelFor(target),
+      { otherItem },
+    );
   };
 
   const handlePointerMove = (e: PointerEvent): void => {
@@ -101,7 +130,9 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     e.preventDefault();
     e.stopPropagation();
     const item = listItemIn(encoded, e.target);
-    select(item?.element ?? encoded, encoded);
+    // Another item's field is edited from the field that references it, so it
+    // is reported to the editor but not marked as this item's selection.
+    if (isCurrentItem(encoded)) select(item?.element ?? encoded, encoded);
     opts.onEdit({
       ...readEditPayload(encoded),
       ...(item && { block: item.index }),
@@ -255,7 +286,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
               ? (nthListItem(found, lookup.block) ?? found)
               : found;
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          if (running) select(el, found);
+          if (running && isCurrentItem(found)) select(el, found);
           finish(true);
           return;
         }
@@ -270,5 +301,12 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     });
   }
 
-  return { start, stop, focusField };
+  function setCurrentItem(itemId: string | null): void {
+    currentItemId = itemId;
+    const selected = overlay.getSelectedTarget();
+    const owner = selected ? encodedFrom(selected) : null;
+    if (owner && !isCurrentItem(owner)) overlay.setSelected(null, '');
+  }
+
+  return { start, stop, setCurrentItem, focusField };
 }
