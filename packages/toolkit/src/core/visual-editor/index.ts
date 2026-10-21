@@ -282,7 +282,13 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       const href = leavingLinkHref(e.target);
       if (!href) return;
       e.preventDefault();
-      if (guard.isActive()) guard.block(href);
+      if (guard.isActive()) {
+        // The editor now asks whether to leave. Page handlers must not act on
+        // a navigation that may never happen: route progress bars start on
+        // any link click, ignore defaultPrevented, and would wait forever.
+        e.stopPropagation();
+        guard.block(href);
+      }
       return;
     }
     // Capture phase, so the page's own handlers and link navigation never see

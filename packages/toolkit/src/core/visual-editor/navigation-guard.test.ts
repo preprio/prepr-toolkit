@@ -129,14 +129,14 @@ describe('navigation guard', () => {
       const a = link('https://other.example/page');
       const span = document.createElement('span');
       a.appendChild(span);
-      // A router's own click handler (registered on the page) sees the
-      // prevented default and skips its navigation.
-      const routerHandler = vi.fn((e: Event) => e.defaultPrevented);
-      document.body.addEventListener('click', routerHandler);
+      // Page handlers (a router's link handler, a route progress bar) never
+      // see a click whose navigation now waits for the editor.
+      const pageHandler = vi.fn();
+      document.addEventListener('click', pageHandler);
       click(span);
-      expect(routerHandler).toHaveReturnedWith(true);
+      expect(pageHandler).not.toHaveBeenCalled();
       expect(onBlocked).toHaveBeenCalledWith('https://other.example/page');
-      document.body.removeEventListener('click', routerHandler);
+      document.removeEventListener('click', pageHandler);
     });
 
     it('lets in-page anchors, query-only links, new-tab links, downloads and non-HTTP links through', () => {
