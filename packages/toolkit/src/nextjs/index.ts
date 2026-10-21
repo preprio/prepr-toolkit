@@ -9,7 +9,6 @@ export {
   getPreprHeaders,
   getPreprUUID,
   getToolbarProps,
-  getPreprLiveLog,
   normalizeQuery,
   type NextNormalizeQueryOptions,
 } from './server';
@@ -27,12 +26,12 @@ export {
   type PreprTrackingPixelProps,
 } from './components';
 
-// 'use client' live preview
-export {
-  initLivePreview,
-  PreprRefresh,
-  useLive,
-  type LivePreviewConfig,
-  type UseLiveOptions,
+// Live preview's client side lives only in `@preprio/toolkit/nextjs/live`:
+// re-exporting it here would put its server action into every build that
+// imports this entry point, live preview or not.
+export type {
+  LivePreviewConfig,
+  PreprRefreshProps,
+  UseLiveOptions,
 } from './live';
 export type { LiveFetcher } from '../core/live-preview';

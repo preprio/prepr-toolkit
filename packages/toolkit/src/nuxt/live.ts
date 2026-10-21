@@ -24,6 +24,12 @@ import type { QueryInput } from '../core/live-preview/query-document';
 
 export interface UseNormalizedQueryOptions {
   /**
+   * Whether live preview runs. Pass your preview flag, and never `true` on a
+   * production deployment. When false (the default) the data is returned
+   * unchanged and the page does not listen to the editor.
+   */
+  enabled?: boolean;
+  /**
    * Called when the editor saves, for example `refresh` from `useAsyncData`,
    * so the page shows the stored content again.
    */
@@ -64,13 +70,16 @@ function liveStore(): LiveStore {
  *
  * ```ts
  * const { data, refresh } = await useAsyncData('page', () => fetchPage(slug));
- * const page = useNormalizedQuery(GetPageDocument, data, { onSave: refresh });
+ * const page = useNormalizedQuery(GetPageDocument, data, {
+ *   enabled: isPreview,
+ *   onSave: refresh,
+ * });
  * ```
  *
  * Nuxt hydrates the whole page, so applying the changes in the browser
  * updates every component that renders them, while the editor types, with
- * no server round trip. On the server and outside the Prepr editor's preview
- * iframe it returns the data unchanged. Select `_id` on every item and
+ * no server round trip. Without `enabled`, on the server and outside the
+ * Prepr editor's preview iframe it returns the data unchanged. Select `_id` on every item and
  * component that should update.
  */
 export function useNormalizedQuery<T>(
@@ -78,7 +87,9 @@ export function useNormalizedQuery<T>(
   data: Ref<T> | T,
   options: UseNormalizedQueryOptions = {},
 ): ComputedRef<T> {
-  if (!isFramed()) return computed(() => unref(data) as T);
+  if (!options.enabled || !isFramed()) {
+    return computed(() => unref(data) as T);
+  }
   if (options.allowedEditorOrigins) {
     allowedEditorOrigins = [...options.allowedEditorOrigins];
   }

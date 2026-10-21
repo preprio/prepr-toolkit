@@ -9,6 +9,9 @@ import type { QueryInput } from '../core/live-preview/query-document';
 import * as React from 'react';
 
 import { LIVE_LOG_COOKIE, takeLiveLog } from './live-log';
+
+// The request header Next.js sets on every server action call.
+const HEADER_NEXT_ACTION = 'next-action';
 import {
   getActiveSegmentFromHeaders,
   getActiveVariantFromHeaders,
@@ -87,9 +90,9 @@ export interface NextNormalizeQueryOptions {
 
 /**
  * Unsaved changes the Prepr editor sent for this render, or an empty list.
- * Only the re-render triggered by the editor's own server action has any.
- * Server-only. Reads the request's cookies, which makes the route dynamic,
- * so call it only for preview renders.
+ * Only the re-render of the editor's own server action has any. Reads the
+ * request, which makes the route dynamic. Internal: `normalizeQuery` calls it
+ * only when enabled.
  */
 export async function getPreprLiveLog(): Promise<LivePatch[]> {
   return readLogOnce();
@@ -105,6 +108,10 @@ const cacheForRender =
 const readLogOnce = cacheForRender(async (): Promise<LivePatch[]> => {
   let token: string | undefined;
   try {
+    // Only the re-render of a server action call may see a log. Any other
+    // request carrying the cookie, such as a plain GET that replays a token
+    // no render consumed, must not.
+    if (!(await headers()).has(HEADER_NEXT_ACTION)) return [];
     token = (await cookies()).get(LIVE_LOG_COOKIE)?.value;
   } catch (error) {
     // Next signals dynamic rendering and similar control flow by throwing;

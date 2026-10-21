@@ -250,14 +250,21 @@ The loader rewrites `w_` to the width Next asks for and scales `h_` alongside it
 
 See the runnable example at `examples/nextjs` for the full source of truth.
 
-### Live preview (beta, Next.js only)
+### Live preview (beta)
 
 True live preview inside the Prepr editor iframe: keystrokes patch your query
 results instantly by item `_id`; saves refetch the affected queries.
 
-**Requirements.** Live updates and click-to-edit find content by id, never by
-position, so they stay correct while an editor adds, removes or reorders
-blocks before saving:
+**Requirements.** Live preview runs only where the Prepr middleware handles
+the request with `preview: true` (`createPreprMiddleware(request, { preview })`
+in `proxy.ts`). Make sure your middleware `matcher` covers every page you
+preview: on a page it skips, live preview does nothing and shows no error.
+Pass your preview flag as `enabled` to every live preview entry point below;
+each one does nothing without it.
+
+Live updates and click-to-edit find content by id, never by position, so
+they stay correct while an editor adds, removes or reorders blocks before
+saving:
 
 - Select `_id` (and ideally `__typename`) on every model and component level
   that should live-update. Items without `_id` silently stay static.
@@ -285,16 +292,18 @@ Configure once in a small client component mounted in your root layout:
 import { useEffect } from 'react';
 import { initLivePreview } from '@preprio/toolkit/nextjs/live';
 
-export default function LivePreviewInit() {
+export default function LivePreviewInit({ preview }: { preview: boolean }) {
   useEffect(() => {
     initLivePreview({
+      // Your preview flag. Without it nothing starts.
+      enabled: preview,
       // Runs a registered query against Prepr GraphQL. `query` is whatever
       // you registered (string or DocumentNode) — you own the transport.
       fetcher: async (query, variables) => {
         /* POST to your Prepr GraphQL endpoint, return json.data */
       },
     });
-  }, []);
+  }, [preview]);
   return null;
 }
 ```
@@ -319,12 +328,13 @@ the `/nextjs` barrel also exports server-only helpers (`next/headers`), which
 a client module graph must not include.
 
 Omitting `query`/`variables` degrades that registration to keystroke pushes
-only. For server-component pages, mount `<PreprRefresh />` instead — it calls
-`router.refresh()` on every save. Use `useLive` **or** `PreprRefresh` per
-page, not both.
+only. For server-component pages, mount `<PreprRefresh enabled={preview} />`
+instead — it calls `router.refresh()` on every save. Don't combine
+`PreprRefresh` with `useLive` registrations that pass a `query`: a save would
+both refetch and refresh. `useLive` without a `query` works alongside it.
 
-Outside the Prepr editor iframe all of this is a passthrough with zero
-overhead. The CMS editor must emit `prepr:fieldChange` (per keystroke) and
+Without `enabled`, and outside the Prepr editor iframe, all of this is a
+passthrough with zero overhead. The CMS editor must emit `prepr:fieldChange` (per keystroke) and
 `prepr:itemChanged` (on save, with the root content item id) into the preview
 iframe — `examples/editor-emulator` emulates this for local development.
 Unsaved structural changes (adding/reordering components) appear after save;
@@ -344,7 +354,7 @@ const data = await fetchFromPrepr(GetPageDocument, { slug }); // any client
 const page = await normalizeQuery(GetPageDocument, data, { enabled: preview });
 ```
 
-Mount `<PreprRefresh />` in the root layout, inside your preview gate. While an
+Mount `<PreprRefresh enabled={preview} />` in the root layout. While an
 editor types, it sends the unsaved changes to the server and the route
 re-renders with them; on save it refreshes with the stored content.
 
@@ -361,14 +371,26 @@ middleware, and never `true` on a production deployment:
 
 - With `enabled: false` (the default) the result is returned untouched and
   the request is never read, so static and ISR pages stay static.
-- Changes only reach the response to the editor's own server action. The
-  action stores them in the server process under a random, single-use token
-  and sets only that token as a cookie that expires immediately. A request
-  carrying a forged or replayed cookie, such as a cacheable GET, sees
-  nothing. Next.js rejects the action from other origins.
+  `PreprRefresh`, `initLivePreview` and `useLive` don't listen to the editor
+  at all.
+- Next.js registers the toolkit's server action in every build that imports
+  `@preprio/toolkit/nextjs/live`, so anyone can call it, browsers and scripts
+  alike. It does nothing (no parsing, no storage, no re-render) unless the
+  Prepr middleware handled the request with `preview: true`. The middleware
+  drops `Prepr-*` headers a client sends, so this can't be forged on a page
+  the middleware runs for. On a page its `matcher` skips, a forged header can
+  at most trigger an extra render, never change content, because
+  `normalizeQuery` there still needs `enabled`.
+- Changes only reach the re-render of the editor's own server action call.
+  The action stores them in the server process under a random, single-use
+  token and sets only that token as a cookie that expires immediately. Any
+  other request carrying the cookie, such as a plain or cacheable GET that
+  replays a token, sees nothing.
 - Changes are only accepted from the Prepr editor (`https://*.prepr.io`, or
   your `allowedEditorOrigins` via `initLivePreview`), never from another page
-  that frames your site, and they are validated as hostile input.
+  that frames your site. They are validated as hostile input: link fields
+  never take `javascript:`, `vbscript:` or `data:` URLs. HTML text is passed
+  on as typed, like rich text from the API.
 
 On Next.js 15 and older the action does nothing and pages update on save.
 
@@ -575,12 +597,15 @@ Show the editor's unsaved changes while they type, with no server round trip:
 import { useNormalizedQuery } from '@preprio/toolkit/nuxt/live';
 
 const { data, refresh } = await useAsyncData('page', () => fetchPage(slug));
-const page = useNormalizedQuery(GetPageDocument, data, { onSave: refresh });
+const page = useNormalizedQuery(GetPageDocument, data, {
+  enabled: preview, // your preview flag; nothing starts without it
+  onSave: refresh,
+});
 ```
 
 Render from `page`. Nuxt hydrates the whole page, so every component that
-shows a changed field updates. On the server and outside the Prepr editor's
-preview iframe it returns the data unchanged. Changes are accepted only from
+shows a changed field updates. Without `enabled`, on the server and outside
+the Prepr editor's preview iframe it returns the data unchanged. Changes are accepted only from
 the Prepr editor.
 
 ## React (no framework)

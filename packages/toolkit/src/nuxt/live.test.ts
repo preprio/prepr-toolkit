@@ -23,7 +23,9 @@ describe('useNormalizedQuery', () => {
     vi.stubGlobal('top', {} as Window);
     const data = ref({ Post: { _id: 'p', title: 'Old' } });
     const scope = effectScope();
-    const page = scope.run(() => useNormalizedQuery(QUERY, data))!;
+    const page = scope.run(() =>
+      useNormalizedQuery(QUERY, data, { enabled: true }),
+    )!;
     expect(page.value.Post.title).toBe('Old');
 
     post({ event: 'prepr:initVE' });
@@ -43,12 +45,31 @@ describe('useNormalizedQuery', () => {
     scope.stop();
   });
 
+  it('takes no changes inside an iframe unless enabled', async () => {
+    vi.stubGlobal('top', {} as Window);
+    const data = ref({ Post: { _id: 'p', title: 'Old' } });
+    const scope = effectScope();
+    const page = scope.run(() => useNormalizedQuery(QUERY, data))!;
+    post({ event: 'prepr:initVE' });
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'p',
+      field: 'title',
+      value: 'New',
+    });
+    await nextTick();
+    expect(page.value).toBe(data.value);
+    scope.stop();
+  });
+
   it('calls onSave when the editor saves', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('top', {} as Window);
     const onSave = vi.fn();
     const scope = effectScope();
-    scope.run(() => useNormalizedQuery(QUERY, ref({}), { onSave }));
+    scope.run(() =>
+      useNormalizedQuery(QUERY, ref({}), { enabled: true, onSave }),
+    );
     post({ event: 'prepr:initVE' });
     post({ event: 'prepr:itemChanged', itemId: 'p' });
     await vi.advanceTimersByTimeAsync(200);

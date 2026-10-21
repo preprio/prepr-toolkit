@@ -6,7 +6,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         {children}
-        <PreprRefresh />
+        <PreprRefresh enabled />
       </body>
     </html>
   );

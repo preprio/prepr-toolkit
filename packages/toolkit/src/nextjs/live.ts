@@ -20,6 +20,12 @@ const debug = createScopedLogger('live-preview:next');
 const LOG_SYNC_DEBOUNCE_MS = 150;
 
 export interface LivePreviewConfig {
+  /**
+   * Whether live preview runs. Pass your preview flag, and never `true` on a
+   * production deployment. When false (the default) nothing starts: the page
+   * does not listen to the editor and `useLive` stays a passthrough.
+   */
+  enabled?: boolean;
   /** Runs registered queries against Prepr GraphQL (preview/draft mode). */
   fetcher?: LiveFetcher;
   /**
@@ -28,6 +34,14 @@ export interface LivePreviewConfig {
    * changes into the page.
    */
   allowedEditorOrigins?: string[];
+}
+
+export interface PreprRefreshProps {
+  /**
+   * Whether live preview runs. Pass your preview flag, and never `true` on a
+   * production deployment. Defaults to false: nothing starts.
+   */
+  enabled?: boolean;
 }
 
 export interface UseLiveOptions {
@@ -45,34 +59,47 @@ function isFramed(): boolean {
 }
 
 function getLiveStore(): LiveStore {
-  if (!store) {
-    store = createLiveStore();
-    bridge = createLiveBridge(store, {
-      allowedEditorOrigins: () => allowedEditorOrigins,
-    });
-    bridge.start();
-  }
+  if (!store) store = createLiveStore();
   return store;
 }
 
 /**
- * Configure the live-preview singleton (call once on the client, e.g. from a
- * small component in the root layout). Without a fetcher the refetch leg is
- * disabled and only keystroke pushes apply.
+ * Starts listening to the editor. Only preview-only code calls this
+ * (`initLivePreview` or `PreprRefresh` with `enabled`), so a
+ * production page in an iframe never takes changes from anyone.
+ */
+function startBridge(): LiveStore {
+  const s = getLiveStore();
+  if (!bridge) {
+    bridge = createLiveBridge(s, {
+      allowedEditorOrigins: () => allowedEditorOrigins,
+    });
+    bridge.start();
+  }
+  return s;
+}
+
+/**
+ * Turn live preview on for `useLive` (call once on the client, e.g. from a
+ * small component in the root layout) with your preview flag as `enabled`.
+ * Without a fetcher the refetch leg is disabled and only keystroke pushes
+ * apply. Not needed when `PreprRefresh` is enabled, which turns it on too.
  */
 export function initLivePreview(config: LivePreviewConfig = {}): void {
-  if (!isFramed()) return;
+  if (!config.enabled || !isFramed()) return;
   if (config.allowedEditorOrigins) {
     allowedEditorOrigins = [...config.allowedEditorOrigins];
   }
-  const s = getLiveStore();
+  const s = startBridge();
   if (config.fetcher) s.setFetcher(config.fetcher);
 }
 
 /**
- * Register a query result for live preview. Outside the Prepr editor iframe
- * this is a passthrough. Inside it, pushed field changes re-render instantly
- * and saves refetch `{ query, variables }` when provided.
+ * Register a query result for live preview. It only ever changes once live
+ * preview is turned on, by `initLivePreview` or `PreprRefresh` with
+ * `enabled`; until then, and outside the Prepr editor iframe, it is a
+ * passthrough. Pushed field changes re-render instantly and saves refetch
+ * `{ query, variables }` when provided.
  *
  * Requirement: the data must select `_id` on every level that should update.
  */
@@ -104,17 +131,18 @@ export function useLive<T>(data: T, opts?: UseLiveOptions): T {
  * change is sent to the server, which re-renders the route; server components
  * show it when they pass their query results through `normalizeQuery` from
  * `@preprio/toolkit/nextjs`. On save the route refreshes with the stored
- * content. Mount it once, in the root layout, inside your preview gate.
+ * content. Mount it once, in the root layout, with your preview flag as
+ * `enabled`; without it, it does nothing.
  *
  * Use this OR a `useLive` registration with a `query` per page — with both, a
  * save triggers a refetch and a refresh.
  */
-export function PreprRefresh(): null {
+export function PreprRefresh({ enabled = false }: PreprRefreshProps): null {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isFramed()) return;
-    const store = getLiveStore();
+    if (!enabled || !isFramed()) return;
+    const store = startBridge();
     const sync = createLogSync();
     const offLog = store.onLogChange((log) => {
       if (log.length) sync.schedule(log);
@@ -126,7 +154,7 @@ export function PreprRefresh(): null {
       offInvalidate();
       sync.cancel();
     };
-  }, [router]);
+  }, [enabled, router]);
 
   return null;
 }

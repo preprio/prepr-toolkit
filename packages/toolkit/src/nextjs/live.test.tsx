@@ -76,9 +76,27 @@ describe('useLive', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Hi');
   });
 
-  it('re-renders with pushed field values inside the editor iframe', async () => {
+  it('takes no changes inside an iframe until live preview is enabled', async () => {
     stubFramed();
     initLivePreview();
+    const { container } = await render(
+      <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
+    );
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({
+        event: 'prepr:fieldChange',
+        itemId: 'hero-1',
+        field: 'heading',
+        value: 'Hello',
+      });
+    });
+    expect(container.querySelector('h1')?.textContent).toBe('Hi');
+  });
+
+  it('re-renders with pushed field values inside the editor iframe', async () => {
+    stubFramed();
+    initLivePreview({ enabled: true });
     const { container } = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
@@ -102,7 +120,7 @@ describe('useLive', () => {
     const fetcher = vi
       .fn()
       .mockResolvedValue({ _id: 'hero-1', heading: 'Saved' });
-    initLivePreview({ fetcher });
+    initLivePreview({ enabled: true, fetcher });
     const { container } = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
@@ -120,7 +138,7 @@ describe('useLive', () => {
 
   it('stops updating after unmount', async () => {
     stubFramed();
-    initLivePreview();
+    initLivePreview({ enabled: true });
     const { unmount } = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Hi' }} />,
     );
@@ -142,6 +160,7 @@ describe('useLive after a server re-render', () => {
 
   it('keeps typed text when the server sends the stored content again', async () => {
     stubFramed();
+    initLivePreview({ enabled: true });
     const first = await render(
       <Heading page={{ _id: 'hero-1', heading: 'Stored' }} />,
     );
@@ -176,8 +195,8 @@ describe('PreprRefresh', () => {
   it('calls router.refresh on itemChanged inside the iframe', async () => {
     vi.useFakeTimers();
     stubFramed();
-    initLivePreview();
-    await render(<PreprRefresh />);
+    initLivePreview({ enabled: true });
+    await render(<PreprRefresh enabled />);
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' });
@@ -189,8 +208,21 @@ describe('PreprRefresh', () => {
     vi.useRealTimers();
   });
 
-  it('does nothing outside the iframe', async () => {
+  it('does nothing unless enabled', async () => {
+    vi.useFakeTimers();
+    stubFramed();
     await render(<PreprRefresh />);
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({ event: 'prepr:itemChanged', itemId: 'any' });
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(refresh).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('does nothing outside the iframe', async () => {
+    await render(<PreprRefresh enabled />);
     post({ event: 'prepr:initVE' });
     post({ event: 'prepr:itemChanged', itemId: 'any' });
     await React.act(async () => {});
@@ -201,7 +233,7 @@ describe('PreprRefresh', () => {
     vi.useFakeTimers();
     stubFramed();
     syncPreprLiveLog.mockClear();
-    await render(<PreprRefresh />);
+    await render(<PreprRefresh enabled />);
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' });
@@ -228,7 +260,7 @@ describe('PreprRefresh', () => {
     vi.useFakeTimers();
     stubFramed();
     syncPreprLiveLog.mockClear();
-    await render(<PreprRefresh />);
+    await render(<PreprRefresh enabled />);
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' });
@@ -251,7 +283,7 @@ describe('PreprRefresh', () => {
     vi.useFakeTimers();
     stubFramed();
     syncPreprLiveLog.mockClear();
-    await render(<PreprRefresh />);
+    await render(<PreprRefresh enabled />);
 
     await React.act(async () => {
       post({ event: 'prepr:initVE' }, 'https://attacker.example');

@@ -36,6 +36,18 @@ export function getActiveVariantFromHeaders(headers: Headers): string | null {
   return headers.get('Prepr-ABtesting');
 }
 
+const PREVIEW_PACKAGE_PART = /(?:^|;)\s*preview=true\s*(?:;|$)/;
+
+/**
+ * Whether the Prepr middleware handled this request with `preview: true`.
+ * The middleware drops every `Prepr-*` header a client sends before it sets
+ * `Prepr-Package`, so a visitor cannot forge it on a route the middleware
+ * runs for. False when the middleware did not run.
+ */
+export function isPreviewFromHeaders(headers: Headers): boolean {
+  return PREVIEW_PACKAGE_PART.test(headers.get('Prepr-Package') ?? '');
+}
+
 // Mirrors `PreprHeaders` in types.ts, casing included — consumers index the
 // result by the declared casing (e.g. `result['Prepr-Segments']`).
 const PREPR_HEADER_KEYS: readonly (keyof PreprHeaders)[] = [

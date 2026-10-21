@@ -13,8 +13,16 @@ vi.mock('next/headers', () => ({
     set: (name: string, value: string, options: unknown) =>
       jar.set(name, { value, options }),
   }),
-  headers: async () => new Headers(),
+  headers: async () => requestHeaders,
 }));
+
+// A preview server action call: the Prepr middleware marked the request as
+// preview, and Next.js sets `Next-Action` on every action call.
+const PREVIEW_ACTION = {
+  'Next-Action': 'abc',
+  'Prepr-Package': '@preprio/toolkit@1.0.0; framework=nextjs; preview=true',
+};
+let requestHeaders = new Headers(PREVIEW_ACTION);
 
 vi.mock('next/navigation', () => ({
   unstable_rethrow: (error: unknown) => {
@@ -34,6 +42,7 @@ describe('syncPreprLiveLog + normalizeQuery', () => {
   beforeEach(() => {
     jar.clear();
     refresh.mockClear();
+    requestHeaders = new Headers(PREVIEW_ACTION);
   });
 
   it('hands the log to the re-render through a token cookie that expires at once', async () => {
@@ -68,6 +77,30 @@ describe('syncPreprLiveLog + normalizeQuery', () => {
       options: {},
     });
     expect(await getPreprLiveLog()).toEqual([]);
+    expect(await normalizeQuery(QUERY, data, { enabled: true })).toBe(data);
+  });
+
+  it('does nothing on a request the middleware did not mark as preview', async () => {
+    for (const pkg of [
+      null,
+      '@preprio/toolkit@1.0.0; framework=nextjs; preview=false',
+    ]) {
+      requestHeaders = new Headers({ 'Next-Action': 'abc' });
+      if (pkg) requestHeaders.set('Prepr-Package', pkg);
+      await syncPreprLiveLog([
+        { type: 'field', itemId: 'p', field: 'title', value: 'New' },
+      ]);
+    }
+    expect(refresh).not.toHaveBeenCalled();
+    expect(jar.size).toBe(0);
+  });
+
+  it('applies a stored log only to the re-render of a server action call', async () => {
+    await syncPreprLiveLog([
+      { type: 'field', itemId: 'p', field: 'title', value: 'New' },
+    ]);
+    // The token was issued but no render read it; a plain GET replays it.
+    requestHeaders = new Headers();
     expect(await normalizeQuery(QUERY, data, { enabled: true })).toBe(data);
   });
 

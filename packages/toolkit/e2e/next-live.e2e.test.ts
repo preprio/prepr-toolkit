@@ -62,8 +62,20 @@ async function waitUntilUp(url: string): Promise<void> {
   throw new Error(`next start did not answer on ${url}`);
 }
 
+/** The live-preview cookie a response sets, if any; the middleware sets others. */
+function liveCookie(res: Response): string | undefined {
+  return res.headers
+    .getSetCookie()
+    .find((cookie) => cookie.startsWith('__prepr_live='));
+}
+
 /** Call the toolkit's server action the way Next's client runtime does. */
-function callAction(path: string, log: unknown, origin = base) {
+function callAction(
+  path: string,
+  log: unknown,
+  origin = base,
+  extraHeaders: Record<string, string> = {},
+) {
   return fetch(`${base}${path}`, {
     method: 'POST',
     headers: {
@@ -71,6 +83,7 @@ function callAction(path: string, log: unknown, origin = base) {
       Accept: 'text/x-component',
       'Content-Type': 'text/plain;charset=UTF-8',
       Origin: origin,
+      ...extraHeaders,
     },
     body: JSON.stringify([log]),
   });
@@ -123,7 +136,7 @@ describe('live preview for server components (next build)', () => {
     expect(payload).toMatch(/"h1"/);
 
     // Only a token travels, and the browser is told to discard it.
-    const cookie = res.headers.get('set-cookie') ?? '';
+    const cookie = liveCookie(res) ?? '';
     expect(cookie).toMatch(/^__prepr_live=[0-9a-f]{32};/);
     expect(cookie).toMatch(/Max-Age=0/i);
     expect(cookie).toMatch(/HttpOnly/i);
@@ -132,7 +145,7 @@ describe('live preview for server components (next build)', () => {
   it('never applies changes to a plain request, even with a replayed token', async () => {
     const res = await callAction('/live', LOG);
     const token = /__prepr_live=([0-9a-f]{32})/.exec(
-      res.headers.get('set-cookie') ?? '',
+      liveCookie(res) ?? '',
     )?.[1];
     expect(token).toBeDefined();
 
@@ -153,6 +166,32 @@ describe('live preview for server components (next build)', () => {
     expect(await res.text()).not.toContain('Typed headline');
   });
 
+  it('never applies a token that no render consumed to a later request', async () => {
+    // The action runs for a preview route whose render never reads the log,
+    // so its token stays unused; replaying it on a plain GET shows nothing.
+    const res = await callAction('/unread', LOG);
+    const token = /__prepr_live=([0-9a-f]{32})/.exec(
+      liveCookie(res) ?? '',
+    )?.[1];
+    expect(token).toBeDefined();
+
+    const replayed = await fetch(`${base}/live`, {
+      headers: { Cookie: `__prepr_live=${token}` },
+    });
+    expect(await replayed.text()).not.toContain('Typed headline');
+  });
+
+  it('does nothing on a production request, even with a forged preview header', async () => {
+    for (const extra of [
+      {},
+      { 'Prepr-Package': '@preprio/toolkit@1.0.0; preview=true' },
+    ]) {
+      const res = await callAction('/static', LOG, base, extra);
+      expect(liveCookie(res)).toBeUndefined();
+      expect(await res.text()).not.toContain('Typed headline');
+    }
+  });
+
   it('leaves a page that does not enable it unchanged and static', async () => {
     const res = await callAction('/static', LOG);
     expect(await res.text()).not.toContain('Typed headline');
@@ -167,7 +206,7 @@ describe('live preview for server components (next build)', () => {
   it('rejects the action from another origin', async () => {
     const res = await callAction('/live', LOG, 'https://attacker.example');
     expect(res.status).not.toBe(200);
-    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(liveCookie(res)).toBeUndefined();
     expect(await res.text()).not.toContain('Typed headline');
   });
 });
