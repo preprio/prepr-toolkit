@@ -30,6 +30,8 @@ export interface LiveBridge {
 export interface LiveBridgeOptions {
   /** Same semantics as the toolbar's `allowedEditorOrigins`. */
   allowedEditorOrigins?: () => string[] | undefined;
+  /** Announced in `live_ready`; see the toolbar's `strictMode`. */
+  strictMode?: () => boolean | undefined;
 }
 
 /**
@@ -107,7 +109,11 @@ export function createLiveBridge(
       window.addEventListener('message', onMessage);
       // Lets the editor skip reloading the iframe after a save. Carries no
       // content, so it may go out before the handshake.
-      sendPreprEvent('live_ready', undefined, { allowUntrustedTarget: true });
+      sendPreprEvent(
+        'live_ready',
+        options.strictMode?.() ? { strictMode: true } : undefined,
+        { allowUntrustedTarget: true },
+      );
     },
     stop(): void {
       window.removeEventListener('message', onMessage);

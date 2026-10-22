@@ -73,6 +73,13 @@ export interface PreprPreviewOptions extends PreprToolbarOptions {
    */
   allowedEditorOrigins?: string[];
   /**
+   * Set when your preview token uses GraphQL strict mode, where required
+   * fields are never null. The editor then holds back new entries until
+   * their required fields are filled, and never sends a cleared required
+   * field as null.
+   */
+  strictMode?: boolean;
+  /**
    * Strip the invisible stega characters out of visible text at runtime.
    * Default `true`.
    *

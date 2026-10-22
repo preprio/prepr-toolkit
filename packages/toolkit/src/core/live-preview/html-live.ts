@@ -18,6 +18,8 @@ export interface HtmlLivePreviewOptions {
    * the toolbar's option of the same name.
    */
   allowedEditorOrigins?: string[];
+  /** See the toolbar's `strictMode`. */
+  strictMode?: boolean;
 }
 
 export interface HtmlLivePreview {
@@ -43,6 +45,7 @@ export function startHtmlLivePreview(
   const store: LiveStore = createLiveStore();
   const bridge = createLiveBridge(store, {
     allowedEditorOrigins: () => options.allowedEditorOrigins,
+    strictMode: () => options.strictMode,
   });
   bridge.start();
 

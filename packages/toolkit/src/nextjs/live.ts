@@ -22,11 +22,15 @@ export interface LivePreviewConfig {
   fetcher?: LiveFetcher;
   /** Exact editor origins, replacing the `*.prepr.io` default. */
   allowedEditorOrigins?: string[];
+  /** Your preview token uses GraphQL strict mode; see the toolbar option. */
+  strictMode?: boolean;
 }
 
 export interface PreprRefreshProps {
   /** Pass your preview flag; never `true` on a production deployment. */
   enabled?: boolean;
+  /** Your preview token uses GraphQL strict mode; see the toolbar option. */
+  strictMode?: boolean;
 }
 
 export interface UseLiveOptions {
@@ -39,6 +43,7 @@ let starting: Promise<LiveStore> | null = null;
 let store: LiveStore | null = null;
 let bridge: LiveBridge | null = null;
 let allowedEditorOrigins: string[] | undefined;
+let strictMode = false;
 const startListeners = new Set<(store: LiveStore) => void>();
 
 function isFramed(): boolean {
@@ -59,6 +64,7 @@ function startLive(): Promise<LiveStore> {
       watchClientRenders(started);
       bridge = createLiveBridge(started, {
         allowedEditorOrigins: () => allowedEditorOrigins,
+        strictMode: () => strictMode,
       });
       bridge.start();
       store = started;
@@ -86,6 +92,7 @@ function whenLive(listener: (store: LiveStore) => void): () => void {
  */
 export function initLivePreview(config: LivePreviewConfig = {}): void {
   if (!config.enabled || !isFramed()) return;
+  if (config.strictMode) strictMode = true;
   if (config.allowedEditorOrigins) {
     allowedEditorOrigins = [...config.allowedEditorOrigins];
   }
@@ -136,11 +143,15 @@ export function useLive<T>(data: T, opts?: UseLiveOptions): T {
  * Use this or `useLive` with a `query`, not both: a save would refetch and
  * refresh.
  */
-export function PreprRefresh({ enabled = false }: PreprRefreshProps): null {
+export function PreprRefresh({
+  enabled = false,
+  strictMode: strict = false,
+}: PreprRefreshProps): null {
   const router = useRouter();
 
   useEffect(() => {
     if (!enabled || !isFramed()) return;
+    if (strict) strictMode = true;
     const sync = createLogSync();
     let unsubscribe: (() => void) | null = null;
     let active = true;
@@ -161,7 +172,7 @@ export function PreprRefresh({ enabled = false }: PreprRefreshProps): null {
       unsubscribe?.();
       sync.cancel();
     };
-  }, [enabled, router]);
+  }, [enabled, strict, router]);
 
   return null;
 }
@@ -353,4 +364,5 @@ export function resetLivePreviewForTests(): void {
   recovering = false;
   startListeners.clear();
   allowedEditorOrigins = undefined;
+  strictMode = false;
 }

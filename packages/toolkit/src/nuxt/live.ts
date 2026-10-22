@@ -26,6 +26,8 @@ export interface UseNormalizedQueryOptions {
   onSave?: () => void;
   /** Exact editor origins, replacing the `*.prepr.io` default. */
   allowedEditorOrigins?: string[];
+  /** See the toolbar's `strictMode`. */
+  strictMode?: boolean;
 }
 
 let starting: Promise<void> | null = null;
@@ -34,6 +36,7 @@ let bridge: LiveBridge | null = null;
 let applyLog: typeof applyPatchLog | null = null;
 const log = shallowRef<LivePatch[]>([]);
 let allowedEditorOrigins: string[] | undefined;
+let strictMode: boolean | undefined;
 const startListeners = new Set<(store: LiveStore) => void>();
 
 function isFramed(): boolean {
@@ -48,6 +51,7 @@ function startLive(): void {
       const started = createLiveStore();
       bridge = createLiveBridge(started, {
         allowedEditorOrigins: () => allowedEditorOrigins,
+        strictMode: () => strictMode,
       });
       bridge.start();
       started.onLogChange((next) => {
@@ -91,6 +95,7 @@ export function useNormalizedQuery<T>(
   if (!options.enabled || !isFramed()) {
     return computed(() => unref(data) as T);
   }
+  if (options.strictMode) strictMode = true;
   if (options.allowedEditorOrigins) {
     allowedEditorOrigins = [...options.allowedEditorOrigins];
   }
@@ -125,4 +130,5 @@ export function resetNuxtLivePreviewForTests(): void {
   startListeners.clear();
   log.value = [];
   allowedEditorOrigins = undefined;
+  strictMode = undefined;
 }

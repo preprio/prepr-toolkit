@@ -170,6 +170,23 @@ describe('createLiveBridge', () => {
     window.removeEventListener('prepr_preview_bar', seen);
   });
 
+  it('announces strict mode in live_ready when the site sets it', () => {
+    const seen = vi.fn();
+    window.addEventListener('prepr_preview_bar', seen);
+    const strict = createLiveBridge(store, { strictMode: () => true });
+    strict.start();
+    expect(seen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          event: 'live_ready',
+          strictMode: true,
+        }),
+      }),
+    );
+    strict.stop();
+    window.removeEventListener('prepr_preview_bar', seen);
+  });
+
   it('routes a valid listChange and drops malformed ones', () => {
     post({ event: 'prepr:initVE' });
     post({
