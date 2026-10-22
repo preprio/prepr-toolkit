@@ -701,6 +701,7 @@ describe('createVisualEditor', () => {
   });
 
   it('keeps links on unrelated content from navigating the preview away', () => {
+    document.body.innerHTML = '<h1 data-prepr-encoded>Post</h1>';
     const link = document.createElement('a');
     link.href = '/other-page';
     link.textContent = 'Pricing';

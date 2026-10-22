@@ -82,6 +82,7 @@ describe('navigation guard', () => {
     vi.spyOn(window.location, 'reload').mockImplementation(reload);
     vi.spyOn(window.location, 'assign').mockImplementation(assign);
     onBlocked = vi.fn<(href: string) => void>();
+    document.body.innerHTML = '<h1 data-prepr-encoded>Post</h1>';
     editor = createVisualEditor({
       onEdit: vi.fn(),
       onNavigationBlocked: onBlocked,
@@ -115,6 +116,19 @@ describe('navigation guard', () => {
     beforeEach(() => {
       editor.start();
       editor.setNavigationGuard(true);
+    });
+
+    it('lets a page without Prepr content navigate, such as a password gate', () => {
+      document.body.innerHTML = '';
+      const form = document.createElement('form');
+      form.action = '/login';
+      form.method = 'post';
+      document.body.appendChild(form);
+      expect(submit(form).defaultPrevented).toBe(false);
+      expect(click(link('/pricing')).defaultPrevented).toBe(false);
+      history.pushState(null, '', '/after-login');
+      expect(window.location.pathname).toBe('/after-login');
+      expect(onBlocked).not.toHaveBeenCalled();
     });
 
     it('stops a link to another page and reports its absolute URL', () => {

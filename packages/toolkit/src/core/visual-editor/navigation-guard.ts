@@ -2,6 +2,16 @@ import { createScopedLogger } from '../utils';
 
 const debug = createScopedLogger('navigation-guard');
 
+const ENCODED_SELECTOR = '[data-prepr-encoded]';
+
+/**
+ * Whether the page shows Prepr content. Only such a page can lose an edit by
+ * being left; a page without any (a login or password gate in front of the
+ * site, an error page) navigates freely, so the editor can reach the content.
+ */
+export const showsPreprContent = (): boolean =>
+  document.querySelector(ENCODED_SELECTOR) !== null;
+
 /**
  * The parts of the Navigation API the guard reads. Typed structurally because
  * not every supported TypeScript `lib.dom` declares it, and not every browser
@@ -32,7 +42,7 @@ export interface NavigationGuardOptions {
 export interface NavigationGuard {
   start(): void;
   stop(): void;
-  /** Whether the guard is listening. */
+  /** Whether the guard is listening and the page shows Prepr content. */
   isActive(): boolean;
   /** Report a link click the caller already kept from navigating. */
   block(href: string): void;
@@ -164,6 +174,8 @@ export function createNavigationGuard(
 
   const isPermitted = (url: URL): boolean => permitted === url.href;
 
+  const guarding = (): boolean => active && showsPreprContent();
+
   const report = (href: string): void => {
     debug.log('blocked navigation to', href);
     opts.onBlocked(href);
@@ -173,6 +185,7 @@ export function createNavigationGuard(
   // form a script submits (`preventDefault` plus fetch) is never touched.
   const onSubmit = (e: Event): void => {
     if (e.defaultPrevented || !(e.target instanceof HTMLFormElement)) return;
+    if (!guarding()) return;
     const submitter = ((e as SubmitEvent).submitter ??
       null) as Submitter | null;
     const url = submissionUrl(e.target, submitter);
@@ -188,6 +201,7 @@ export function createNavigationGuard(
       return;
     }
     if (!e.cancelable || e.hashChange || e.downloadRequest !== null) return;
+    if (!guarding()) return;
     // Same-document replaces are a router normalising the URL.
     if (e.navigationType === 'replace' && e.destination.sameDocument) return;
     const url = resolve(e.destination.url);
@@ -208,7 +222,7 @@ export function createNavigationGuard(
       unused,
       url,
     ) {
-      if (active && guardedPush === guard && url != null) {
+      if (guarding() && guardedPush === guard && url != null) {
         const target = resolve(url);
         if (target && leavesPage(target) && !isPermitted(target)) {
           report(target.href);
@@ -251,7 +265,7 @@ export function createNavigationGuard(
       navigation()?.removeEventListener('navigate', onNavigate);
       pendingForm = null;
     },
-    isActive: () => active,
+    isActive: guarding,
     block(href: string): void {
       report(href);
     },
