@@ -651,7 +651,7 @@ describe('normalizeQuery new list entries', () => {
             text: 'Hi',
           },
         ],
-        ctas: null,
+        ctas: [],
       },
     });
   });
@@ -690,7 +690,7 @@ describe('normalizeQuery new list entries', () => {
           _id: 'lg-2',
           internal_title: 'New',
           logoStyle: 'GRAY',
-          logos: null,
+          logos: [],
         },
       ],
       content_width: 'NARROW',
@@ -799,8 +799,8 @@ describe('normalizeQuery edits inside a new entry', () => {
       _id: null,
       headline: 'Typed',
       headline_style: 'H1',
-      content: null,
-      ctas: null,
+      content: [],
+      ctas: [],
     });
   });
 
@@ -1094,6 +1094,57 @@ describe('normalizeQuery field names', () => {
       headline_style: 'H3',
       heroBlock: { __typename: 'Block', title: 'Fresh' },
     });
+  });
+});
+
+describe('normalizeQuery new entries a page can render', () => {
+  const query = `{
+    Page {
+      _id
+      sections {
+        __typename
+        ... on Hero { _id heading tags buttons { __typename text } }
+      }
+    }
+  }`;
+  const add = (fields: Record<string, unknown>) =>
+    normalizeQuery(
+      query,
+      {
+        Page: {
+          _id: 'p',
+          sections: [
+            {
+              __typename: 'Hero',
+              _id: 'h1',
+              heading: 'Stored',
+              tags: ['a'],
+              buttons: [{ __typename: 'Button', text: 'Go' }],
+            },
+          ],
+        },
+      },
+      {
+        log: [
+          {
+            type: 'list',
+            itemId: 'p',
+            field: 'sections',
+            entries: [{ _id: 'h1' }, { _id: 'h2', __typename: 'Hero', fields }],
+          },
+        ],
+      },
+    ).Page.sections[1] as Record<string, unknown>;
+
+  it('gives an empty list field the empty list the API would return', () => {
+    expect(add({ heading: 'New', buttons: null })).toMatchObject({
+      buttons: [],
+      tags: [],
+    });
+  });
+
+  it('keeps a list of plain values', () => {
+    expect(add({ heading: 'New', tags: ['x', 'y'] }).tags).toEqual(['x', 'y']);
   });
 });
 

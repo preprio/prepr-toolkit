@@ -56,6 +56,25 @@ describe('startHtmlLivePreview', () => {
     expect(document.body.innerHTML).toBe('<h1>Changed</h1>');
   });
 
+  it('keeps the page when the re-render arrives cut off', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<html><body><nav>Menu</nav><main><h1>Hal', {
+        status: 200,
+      }),
+    );
+    post({ event: 'prepr:initVE' });
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'p',
+      field: 'title',
+      value: 'C',
+    });
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(document.body.innerHTML).toBe('<h1>Stored</h1>');
+  });
+
   it('requests the stored page on save', async () => {
     post({ event: 'prepr:initVE' });
     post({ event: 'prepr:itemChanged', itemId: 'p' });

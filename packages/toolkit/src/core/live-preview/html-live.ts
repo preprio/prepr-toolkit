@@ -7,6 +7,8 @@ import type { LivePatch } from './normalize-query';
 
 const debug = createScopedLogger('live-preview:html');
 
+const COMPLETE_DOCUMENT = /<\/html>\s*$/i;
+
 /** Coalesces bursts of keystrokes into one server render. */
 const SYNC_DEBOUNCE_MS = 150;
 
@@ -64,6 +66,12 @@ export function startHtmlLivePreview(
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const html = await response.text();
       if (stopped) return;
+      // A render that throws midway still arrives as a 200 when the page
+      // streams, cut off where it failed. Applying it would blank the rest of
+      // the page, so the editor keeps the last complete render instead.
+      if (!COMPLETE_DOCUMENT.test(html)) {
+        throw new Error('incomplete page; a component failed to render');
+      }
       const next = new DOMParser().parseFromString(html, 'text/html');
       if (next.title && next.title !== document.title)
         document.title = next.title;

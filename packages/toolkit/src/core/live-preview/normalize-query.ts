@@ -242,7 +242,10 @@ function applyPatch(
       const build: LiveEntryBuilder | undefined =
         doc && selections
           ? (entry) =>
-              buildEntry(doc, selections, entry, editLinks(result, entry))
+              buildEntry(doc, selections, entry, {
+                links: editLinks(result, entry),
+                lists: listKeysIn(result),
+              })
           : undefined;
       root = syncListAtPath(root, target, patch.entries, build);
     }
@@ -366,14 +369,10 @@ function resolveTargets(
           undefined,
         );
         if (typename !== undefined) {
-          value = fillObject(
-            doc,
-            field.selections,
-            typename,
-            {},
-            undefined,
-            null,
-          );
+          value = fillObject(doc, field.selections, typename, {}, undefined, {
+            links: null,
+            lists: listKeysIn(root),
+          });
           current = writeAtPath(current, fieldPath, value as LiveValue);
         }
       }
@@ -423,7 +422,7 @@ function buildEntry(
   doc: QueryDocument,
   selections: QuerySelection[],
   entry: LiveListEntry,
-  links: EditLinks | null,
+  ctx: BuildContext,
 ): Record<string, unknown> | undefined {
   const typename = resolveTypename(
     doc,
@@ -438,7 +437,7 @@ function buildEntry(
     typename,
     entry.fields ?? {},
     entry._id,
-    links,
+    ctx,
   );
 }
 
@@ -448,9 +447,14 @@ function fillObject(
   typename: string | null,
   values: Record<string, unknown>,
   id: unknown,
-  links: EditLinks | null,
+  ctx: BuildContext,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  const { links } = ctx;
+  // Keys that hold a list on existing objects of this type. A value the
+  // editor left empty becomes `[]` there, as the API returns it: a page that
+  // maps over the list must not crash on a new entry.
+  const lists = ctx.lists(typename);
   const edit = isPlainRecord(values.__edit) ? values.__edit : null;
   // The editor keys values by API id; the query selects GraphQL names (the
   // API id or its snake_case form). Older editors send GraphQL names with an
@@ -493,14 +497,21 @@ function fillObject(
     } else if (field.name === '_id') {
       out[field.key] = typeof id === 'string' ? id : (values._id ?? null);
     } else if (field.selections.length) {
-      out[field.key] = fillNested(
-        doc,
-        field.selections,
-        valueOf(field.name),
-        links,
-      );
+      const value = valueOf(field.name);
+      out[field.key] =
+        value == null && lists.has(field.key)
+          ? []
+          : fillNested(doc, field.selections, value, ctx);
     } else {
       const value = valueOf(field.name);
+      if (Array.isArray(value) && value.every(isScalarItem)) {
+        out[field.key] = value;
+        continue;
+      }
+      if (value == null && lists.has(field.key)) {
+        out[field.key] = [];
+        continue;
+      }
       const scalar =
         value === undefined || (value !== null && typeof value === 'object')
           ? null
@@ -517,7 +528,7 @@ function fillNested(
   doc: QueryDocument,
   selections: QuerySelection[],
   value: unknown,
-  links: EditLinks | null,
+  ctx: BuildContext,
 ): unknown {
   const one = (item: unknown): unknown => {
     if (!isPlainRecord(item)) return null;
@@ -528,7 +539,7 @@ function fillNested(
       item.typeName,
     );
     if (typename === undefined) return null;
-    return fillObject(doc, selections, typename, item, item._id, links);
+    return fillObject(doc, selections, typename, item, item._id, ctx);
   };
   if (Array.isArray(value)) return value.map(one).filter((v) => v !== null);
   return value === undefined ? null : one(value);
@@ -536,6 +547,61 @@ function fillNested(
 
 interface EditLinks {
   encode(text: string, field: string): string;
+}
+
+/** What building a new entry needs besides the query and the values. */
+interface BuildContext {
+  links: EditLinks | null;
+  lists: (typename: string | null) => ReadonlySet<string>;
+}
+
+function isScalarItem(value: unknown): boolean {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
+}
+
+const NO_KEYS: ReadonlySet<string> = new Set();
+const listKeysCache = new WeakMap<object, Map<string, Set<string>>>();
+
+/** Per type, the keys that hold an array on some object of that type in `result`. */
+function listKeysIn(
+  result: unknown,
+): (typename: string | null) => ReadonlySet<string> {
+  return (typename) => {
+    if (!typename || result === null || typeof result !== 'object') {
+      return NO_KEYS;
+    }
+    let byType = listKeysCache.get(result);
+    if (!byType) {
+      byType = new Map();
+      const seen = new WeakSet<object>();
+      const walk = (node: unknown): void => {
+        if (node === null || typeof node !== 'object' || seen.has(node)) return;
+        seen.add(node);
+        if (Array.isArray(node)) {
+          node.forEach(walk);
+          return;
+        }
+        const record = node as Record<string, unknown>;
+        const type =
+          typeof record.__typename === 'string' ? record.__typename : null;
+        for (const [key, value] of Object.entries(record)) {
+          if (type && Array.isArray(value)) {
+            let keys = byType!.get(type);
+            if (!keys) byType!.set(type, (keys = new Set()));
+            keys.add(key);
+          }
+          walk(value);
+        }
+      };
+      walk(result);
+      listKeysCache.set(result, byType);
+    }
+    return byType.get(typename) ?? NO_KEYS;
+  };
 }
 
 const EDIT_PATH = /\/content\/edit\/[^/?#]+/;
