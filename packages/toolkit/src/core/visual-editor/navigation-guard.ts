@@ -2,16 +2,6 @@ import { createScopedLogger } from '../utils';
 
 const debug = createScopedLogger('navigation-guard');
 
-const ENCODED_SELECTOR = '[data-prepr-encoded]';
-
-/**
- * Whether the page shows Prepr content. Only such a page can lose an edit by
- * being left; a page without any (a login or password gate in front of the
- * site, an error page) navigates freely, so the editor can reach the content.
- */
-export const showsPreprContent = (): boolean =>
-  document.querySelector(ENCODED_SELECTOR) !== null;
-
 /**
  * The parts of the Navigation API the guard reads. Typed structurally because
  * not every supported TypeScript `lib.dom` declares it, and not every browser
@@ -37,12 +27,19 @@ type Submitter = HTMLButtonElement | HTMLInputElement;
 export interface NavigationGuardOptions {
   /** Called with the absolute URL of every navigation the guard stopped. */
   onBlocked: (href: string) => void;
+  /**
+   * Whether the page shows content of the item being edited. Only such a page
+   * is worth keeping on screen; any other (a login or password gate in front
+   * of the site, an error page) navigates freely, so the editor can reach
+   * the content.
+   */
+  showsEditedContent: () => boolean;
 }
 
 export interface NavigationGuard {
   start(): void;
   stop(): void;
-  /** Whether the guard is listening and the page shows Prepr content. */
+  /** Whether the guard is listening and the page shows the edited item. */
   isActive(): boolean;
   /** Report a link click the caller already kept from navigating. */
   block(href: string): void;
@@ -174,7 +171,7 @@ export function createNavigationGuard(
 
   const isPermitted = (url: URL): boolean => permitted === url.href;
 
-  const guarding = (): boolean => active && showsPreprContent();
+  const guarding = (): boolean => active && opts.showsEditedContent();
 
   const report = (href: string): void => {
     debug.log('blocked navigation to', href);

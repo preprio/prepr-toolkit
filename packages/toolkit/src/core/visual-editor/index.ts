@@ -11,11 +11,7 @@ import {
   untagAssetImages,
 } from './asset-images';
 import { VisualEditorOverlay, type ItemKind } from './overlay';
-import {
-  createNavigationGuard,
-  leavingLinkHref,
-  showsPreprContent,
-} from './navigation-guard';
+import { createNavigationGuard, leavingLinkHref } from './navigation-guard';
 
 const debug = createScopedLogger('visual-editor');
 
@@ -140,6 +136,13 @@ function scrollIntoFrame(el: HTMLElement): void {
   });
 }
 
+// Browsers without `checkVisibility` (Safari before 17.4) fall back to
+// layout boxes, which `display: none` removes.
+const isVisible = (el: HTMLElement): boolean =>
+  typeof el.checkVisibility === 'function'
+    ? el.checkVisibility()
+    : el.getClientRects().length > 0;
+
 /**
  * Hover outlines, click-to-select and editor-driven selection for a page
  * framed by the Prepr editor. Works on the elements the stega pass tagged
@@ -175,6 +178,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   const assetKeys = new Map<string, string | null>();
   const guard = createNavigationGuard({
     onBlocked: (href) => opts.onNavigationBlocked?.(href),
+    showsEditedContent: () => showsEditedContent(),
   });
 
   const encodedFrom = (node: EventTarget | null): HTMLElement | null =>
@@ -196,6 +200,19 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     if (currentItemId === null) return true;
     const id = el.getAttribute('data-prepr-id');
     return !id || id === currentItemId || ownComponents.has(id);
+  };
+
+  /**
+   * Whether any visible element shows the open item's own content. Runs only
+   * when the page tries to navigate. CMS text in a site's header or footer
+   * belongs to other items, and hidden elements (a collapsed menu) show
+   * nothing, so neither keeps a page without the item on screen.
+   */
+  const showsEditedContent = (): boolean => {
+    for (const el of document.querySelectorAll<HTMLElement>(ENCODED_SELECTOR)) {
+      if (isCurrentItem(el) && isVisible(el)) return true;
+    }
+    return false;
   };
 
   /**
@@ -305,7 +322,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       // the page would leave the item being edited. Alt+click follows it,
       // and so do Ctrl/Cmd/Shift-clicks, which open a new tab or window.
       clearSelection();
-      if (e.ctrlKey || e.metaKey || e.shiftKey || !showsPreprContent()) return;
+      if (e.ctrlKey || e.metaKey || e.shiftKey || !showsEditedContent()) return;
       const href = leavingLinkHref(e.target);
       if (!href) return;
       e.preventDefault();

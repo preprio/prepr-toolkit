@@ -131,6 +131,23 @@ describe('navigation guard', () => {
       expect(onBlocked).not.toHaveBeenCalled();
     });
 
+    it('lets a page navigate that only shows other items or hides the open one', () => {
+      editor.setCurrentItem('post-1');
+      document.body.innerHTML = `
+        <nav><a data-prepr-encoded data-prepr-id="menu">Pricing</a></nav>
+        <h1 data-prepr-encoded data-prepr-id="post-1" style="display: none">Post</h1>`;
+      const form = document.createElement('form');
+      form.action = '/login';
+      form.method = 'post';
+      document.body.appendChild(form);
+      expect(submit(form).defaultPrevented).toBe(false);
+      expect(onBlocked).not.toHaveBeenCalled();
+
+      document.querySelector('h1')!.removeAttribute('style');
+      expect(submit(form).defaultPrevented).toBe(true);
+      expect(onBlocked).toHaveBeenCalledTimes(1);
+    });
+
     it('stops a link to another page and reports its absolute URL', () => {
       const event = click(link('/pricing'));
       expect(event.defaultPrevented).toBe(true);
