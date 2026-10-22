@@ -416,6 +416,102 @@ describe('createIframeBridge — references', () => {
   });
 });
 
+describe('createIframeBridge — assets', () => {
+  const asset = { key: 'https://a.io/id1/{format}/f.jpg', field: 'image' };
+
+  it('passes the asset list on the handshake and on prepr:references', () => {
+    const onHandshake = vi.fn();
+    const onAssets = vi.fn();
+    const bridge = createIframeBridge(null, { onHandshake, onAssets });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE', assets: [asset] });
+    expect(onHandshake).toHaveBeenCalledWith({ assets: [asset] });
+    postFrom(EDITOR, {
+      event: 'prepr:references',
+      assets: [{ ...asset, entryId: 'a-1' }],
+    });
+    expect(onAssets).toHaveBeenCalledWith([{ ...asset, entryId: 'a-1' }]);
+    bridge.stop();
+  });
+
+  it('keeps working for editors that send no asset list', () => {
+    const onHandshake = vi.fn();
+    const onAssets = vi.fn();
+    const onReferences = vi.fn();
+    const bridge = createIframeBridge(null, {
+      onHandshake,
+      onAssets,
+      onReferences,
+    });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE', itemId: 'post-1' });
+    postFrom(EDITOR, { event: 'prepr:references', referencedIds: [] });
+    expect(onHandshake).toHaveBeenCalledWith({ itemId: 'post-1' });
+    expect(onAssets).not.toHaveBeenCalled();
+    expect(onReferences).toHaveBeenCalledTimes(1);
+    bridge.stop();
+  });
+
+  it('drops hostile asset entries and bounds the list', () => {
+    const onHandshake = vi.fn();
+    const bridge = createIframeBridge(null, { onHandshake });
+    bridge.start();
+    const polluted = JSON.parse(
+      '{"key":"https://a.io/id2/{format}/g.jpg","field":"x","__proto__":{"evil":1}}',
+    );
+    postFrom(EDITOR, {
+      event: 'prepr:initVE',
+      assets: [
+        null,
+        7,
+        'https://a.io/id1/f.jpg',
+        { key: 1, field: 'image' },
+        { key: asset.key, field: { toString: () => 'image' } },
+        { key: 'x'.repeat(3000), field: 'image' },
+        { key: asset.key, field: '' },
+        { ...asset, entryId: 42 },
+        polluted,
+        ...Array.from({ length: 600 }, () => asset),
+      ],
+    });
+    const { assets } = onHandshake.mock.calls[0][0];
+    expect(assets).toHaveLength(500 - 7);
+    expect(assets[0]).toEqual(asset);
+    expect(assets[1]).toEqual({ key: polluted.key, field: 'x' });
+    expect(({} as Record<string, unknown>).evil).toBeUndefined();
+    bridge.stop();
+  });
+
+  it('ignores a non-array asset list and asset lists from other origins', () => {
+    const onHandshake = vi.fn();
+    const onAssets = vi.fn();
+    const bridge = createIframeBridge(null, { onHandshake, onAssets });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE', assets: { 0: asset } });
+    expect(onHandshake).toHaveBeenCalledWith({});
+    postFrom(ATTACKER, { event: 'prepr:references', assets: [asset] });
+    expect(onAssets).not.toHaveBeenCalled();
+    bridge.stop();
+  });
+
+  it('survives an assets handler that throws', () => {
+    const onAssets = vi.fn(() => {
+      throw new Error('boom');
+    });
+    const onReferences = vi.fn();
+    const bridge = createIframeBridge(null, { onAssets, onReferences });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(EDITOR, {
+      event: 'prepr:references',
+      referencedIds: [],
+      assets: [asset],
+    });
+    expect(onReferences).toHaveBeenCalledTimes(1);
+    bridge.stop();
+  });
+});
+
 describe('createIframeBridge — navigation guard', () => {
   it('passes the opt-in through the handshake only when it is exactly true', () => {
     const onHandshake = vi.fn();

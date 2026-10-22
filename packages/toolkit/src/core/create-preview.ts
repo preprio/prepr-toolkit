@@ -320,13 +320,16 @@ export function createPreprPreview(
       componentIds,
       uiLocale,
       navigationGuard,
+      assets,
     }) => {
       // The labels are part of the editor's interface, so they follow its
       // language over the site's `locale` option.
       if (uiLocale) visualEditor?.setLocale(uiLocale);
       visualEditor?.setCurrentItem(itemId ?? null, referencedIds, componentIds);
       visualEditor?.setNavigationGuard(navigationGuard === true);
+      if (assets) visualEditor?.setAssets(assets);
     },
+    onAssets: (assets) => visualEditor?.setAssets(assets),
     onAllowNavigation: (href) => visualEditor?.allowNavigation(href),
     onReferences: (referencedIds, componentIds) =>
       visualEditor?.setReferences(referencedIds, componentIds),

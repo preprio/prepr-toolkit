@@ -23,6 +23,7 @@ interface EditorMessage {
   uiLocale?: unknown;
   navigationGuard?: unknown;
   href?: unknown;
+  assets?: unknown;
 }
 
 /** Which field the editor asked the preview to bring on screen. */
@@ -39,6 +40,18 @@ export interface ScrollToFieldMessage {
 export interface EditorReference {
   id: string;
   field: string;
+}
+
+/**
+ * An image asset used by the open item: where its field is, and the part of
+ * its CDN URL that identifies it whatever size the page renders it at.
+ */
+export interface EditorAsset {
+  key: string;
+  /** Field path in the editor, as stega text carries it. */
+  field: string;
+  /** The Dynamic Content entry that holds the asset. */
+  entryId?: string;
 }
 
 /** What the editor told the preview when the handshake completed. */
@@ -71,10 +84,18 @@ export interface EditorHandshake {
    * handle `navigation_blocked`.
    */
   navigationGuard?: boolean;
+  /**
+   * Image assets of the open item. Absent when the editor does not send
+   * them, in which case images are only editable where the page tags them.
+   */
+  assets?: EditorAsset[];
 }
 
 const MAX_REFERENCES = 500;
 const MAX_HREF_LENGTH = 8192;
+const MAX_ASSETS = 500;
+const MAX_ASSET_KEY_LENGTH = 2048;
+const MAX_ASSET_FIELD_LENGTH = 512;
 
 /** The editor's id list, or undefined when the value is not one. */
 function parseIds(value: unknown): string[] | undefined {
@@ -97,6 +118,32 @@ function parseReferences(value: unknown): EditorReference[] | undefined {
     if (typeof id === 'string' && id && typeof field === 'string' && field) {
       list.push({ id, field });
     }
+  }
+  return list;
+}
+
+function boundedString(value: unknown, max: number): string | undefined {
+  return typeof value === 'string' && value && value.length <= max
+    ? value
+    : undefined;
+}
+
+/**
+ * The editor's asset list, or undefined when the value is not one. Entries
+ * without a bounded non-empty string `key` and `field` are dropped, and so
+ * is a malformed `entryId`.
+ */
+function parseAssets(value: unknown): EditorAsset[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const list: EditorAsset[] = [];
+  for (const entry of value.slice(0, MAX_ASSETS)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const raw = entry as { key?: unknown; field?: unknown; entryId?: unknown };
+    const key = boundedString(raw.key, MAX_ASSET_KEY_LENGTH);
+    const field = boundedString(raw.field, MAX_ASSET_FIELD_LENGTH);
+    if (!key || !field) continue;
+    const entryId = boundedString(raw.entryId, MAX_ASSET_FIELD_LENGTH);
+    list.push(entryId ? { key, field, entryId } : { key, field });
   }
   return list;
 }
@@ -188,6 +235,8 @@ export interface IframeBridgeOptions {
     referencedIds: EditorReference[],
     componentIds?: string[],
   ) => void;
+  /** The editor's asset list changed (`assets` on `prepr:references`). */
+  onAssets?: (assets: EditorAsset[]) => void;
   /**
    * The editor confirmed leaving the page for `href` after a
    * `navigation_blocked` (`prepr:allowNavigation`). `href` is a non-empty
@@ -230,6 +279,7 @@ export function createIframeBridge(
   const onScrollToField = options.onScrollToField;
   const onHandshake = options.onHandshake;
   const onReferences = options.onReferences;
+  const onAssets = options.onAssets;
   const onAllowNavigation = options.onAllowNavigation;
   let parentOrigin: string | null = null;
 
@@ -274,6 +324,7 @@ export function createIframeBridge(
       const componentIds = parseIds(data.componentIds);
       const uiLocale = isLocale(data.uiLocale) ? data.uiLocale : undefined;
       const navigationGuard = data.navigationGuard === true;
+      const assets = parseAssets(data.assets);
       try {
         onHandshake?.({
           ...(itemId && { itemId }),
@@ -281,6 +332,7 @@ export function createIframeBridge(
           ...(componentIds && { componentIds }),
           ...(uiLocale && { uiLocale }),
           ...(navigationGuard && { navigationGuard }),
+          ...(assets && { assets }),
         });
       } catch (error) {
         debug.warn('handshake handler failed', error as object);
@@ -288,6 +340,14 @@ export function createIframeBridge(
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;
     if (data?.event === 'prepr:references') {
+      const assets = parseAssets(data.assets);
+      if (assets) {
+        try {
+          onAssets?.(assets);
+        } catch (error) {
+          debug.warn('assets handler failed', error as object);
+        }
+      }
       const referencedIds = parseReferences(data.referencedIds);
       if (!referencedIds) return;
       try {

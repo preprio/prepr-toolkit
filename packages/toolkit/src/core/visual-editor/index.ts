@@ -3,7 +3,13 @@ import type { StegaEditPayload } from '../stega/overlay';
 import { createScopedLogger } from '../utils';
 import { fieldLabel, findFieldElement, type FieldLookup } from './field-path';
 import { t, type Locale } from '../i18n';
-import type { EditorReference } from '../iframe-bridge';
+import type { EditorAsset, EditorReference } from '../iframe-bridge';
+import {
+  ASSET_SOURCE_ATTRIBUTES,
+  createAssetIndex,
+  tagAssetImages,
+  untagAssetImages,
+} from './asset-images';
 import { VisualEditorOverlay, type ItemKind } from './overlay';
 import { createNavigationGuard, leavingLinkHref } from './navigation-guard';
 
@@ -21,6 +27,8 @@ const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
 // in a section that renders late, or hydration re-renders it first.
 const FIND_RETRY_MS = 150;
 const FIND_RETRIES = 6;
+// Asset keys of image URLs seen on the page, reset once this large.
+const MAX_CACHED_KEYS = 2000;
 
 // Content changes that can move or resize an outlined element without
 // resizing it (a block added above it) or replace it outright (a heading
@@ -31,7 +39,15 @@ const LAYOUT_MUTATIONS: MutationObserverInit = {
   subtree: true,
   characterData: true,
   attributes: true,
-  attributeFilter: ['class', 'style', 'hidden', 'open', 'data-prepr-encoded'],
+  attributeFilter: [
+    'class',
+    'style',
+    'hidden',
+    'open',
+    'data-prepr-encoded',
+    // An image swapped by a carousel or lazy loader can show another asset.
+    ...ASSET_SOURCE_ATTRIBUTES,
+  ],
 };
 
 /** What a selection points at, so it can be found again after a re-render. */
@@ -73,6 +89,11 @@ export interface VisualEditor {
    * Until a list is given, other items are all treated alike (muted).
    */
   setReferences(references: EditorReference[], componentIds?: string[]): void;
+  /**
+   * Image assets of the open item. Images on the page showing one of them
+   * become editable as that asset's field, with no markup from the page.
+   */
+  setAssets(assets: EditorAsset[]): void;
   /**
    * Language of the outline labels, such as the editor's interface language
    * once the handshake names it. Labels already on screen keep their text
@@ -146,6 +167,8 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   // awaits it is never left hanging.
   let settlePendingFind: (() => void) | null = null;
   let guardEnabled = false;
+  let assetIndex = new Map<string, EditorAsset>();
+  const assetKeys = new Map<string, string | null>();
   const guard = createNavigationGuard({
     onBlocked: (href) => opts.onNavigationBlocked?.(href),
   });
@@ -399,9 +422,15 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     select(el, found, block);
   }
 
+  function tagAssets(): void {
+    if (assetKeys.size > MAX_CACHED_KEYS) assetKeys.clear();
+    tagAssetImages(assetIndex, currentItemId, assetKeys);
+  }
+
   // Runs once per frame at most, after any content change on the page.
   const handleLayoutFrame = (): void => {
     mutationFrame = null;
+    if (assetIndex.size) tagAssets();
     reselect();
     const hovered = overlay.getHoverTarget();
     if (hovered && !hovered.isConnected) {
@@ -415,7 +444,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
 
   const handleMutations = (): void => {
     if (mutationFrame !== null) return;
-    if (!selection && !overlay.getHoverTarget()) return;
+    if (!selection && !overlay.getHoverTarget() && !assetIndex.size) return;
     mutationFrame = requestAnimationFrame(handleLayoutFrame);
   };
 
@@ -458,6 +487,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     });
     mutationObserver = new MutationObserver(handleMutations);
     mutationObserver.observe(document.body, LAYOUT_MUTATIONS);
+    if (assetIndex.size) tagAssets();
     syncGuard();
     debug.log('visual editor started');
   }
@@ -496,6 +526,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       .querySelectorAll(`style[${CURSOR_STYLE_MARKER}]`)
       .forEach((node) => node.remove());
     overlay.unmount();
+    untagAssetImages();
     guard.stop();
     debug.log('visual editor stopped');
   }
@@ -548,9 +579,17 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     currentItemId = itemId;
     if (referenceList) setReferences(referenceList, componentIds);
     else if (componentIds) ownComponents = new Set(componentIds);
+    if (running && assetIndex.size) tagAssets();
     const selected = overlay.getSelectedTarget();
     const owner = selected ? encodedFrom(selected) : null;
     if (owner && !isCurrentItem(owner)) clearSelection();
+  }
+
+  function setAssets(assets: EditorAsset[]): void {
+    const hadAssets = assetIndex.size > 0;
+    assetIndex = createAssetIndex(assets);
+    // Also with an empty list, so images of removed assets are untagged.
+    if (running && (hadAssets || assetIndex.size)) tagAssets();
   }
 
   function setReferences(
@@ -584,6 +623,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     stop,
     setCurrentItem,
     setReferences,
+    setAssets,
     setLocale,
     focusField,
     setNavigationGuard,

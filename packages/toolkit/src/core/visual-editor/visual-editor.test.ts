@@ -98,6 +98,69 @@ describe('createVisualEditor', () => {
     document.removeEventListener('click', pageHandler);
   });
 
+  describe('images of the open item', () => {
+    const HERO =
+      'https://demo.stream.prepr.io/1fwxobmosdis/w_2000,ex_0,ey_0,ew_800,eh_400/hero.jpg';
+    const ASSETS = [
+      {
+        key: 'https://demo.stream.prepr.io/1fwxobmosdis/{format}/hero.jpg',
+        field: 'content.items.c1.items.image',
+      },
+    ];
+
+    function image(src: string): HTMLImageElement {
+      const img = document.createElement('img');
+      img.setAttribute('src', src);
+      document.body.appendChild(img);
+      return img;
+    }
+
+    it('makes an image showing one of its assets clickable as that field', () => {
+      const img = image(HERO);
+      editor.start();
+      editor.setCurrentItem('page-1');
+      editor.setAssets(ASSETS);
+
+      const click = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      });
+      img.dispatchEvent(click);
+
+      expect(click.defaultPrevented).toBe(true);
+      expect(onEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'page-1',
+          field: 'content.items.c1.items.image',
+        }),
+      );
+      expect(box('selected').textContent).toBe('Image');
+    });
+
+    it('tags images the page renders later', async () => {
+      editor.start();
+      editor.setCurrentItem('page-1');
+      editor.setAssets(ASSETS);
+      const img = image(HERO.replace('w_2000', 'w_640'));
+      await Promise.resolve();
+      await nextFrame();
+      expect(img.getAttribute('data-prepr-field')).toBe(
+        'content.items.c1.items.image',
+      );
+    });
+
+    it('leaves images alone without an asset list, and untags on stop', () => {
+      const img = image(HERO);
+      editor.start();
+      editor.setCurrentItem('page-1');
+      expect(img.hasAttribute('data-prepr-encoded')).toBe(false);
+      editor.setAssets(ASSETS);
+      expect(img.hasAttribute('data-prepr-encoded')).toBe(true);
+      editor.stop();
+      expect(img.hasAttribute('data-prepr-encoded')).toBe(false);
+    });
+  });
+
   it('lets an Alt-click through to the page', () => {
     const link = tagged('cta_label', 'a');
     editor.start();
