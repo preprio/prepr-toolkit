@@ -336,9 +336,9 @@ export function createPreprPreview(
     // The editor selecting a field scrolls the matching element into view. The
     // lookup relies on the attributes the stega scan writes, so it finds
     // nothing until encoded content has been tagged.
-    onScrollToField: ({ field, id, block, entryId }) => {
+    onScrollToField: ({ field, id, block, entryId, fieldById }) => {
       if (visualEditor) {
-        void visualEditor.focusField({ field, id, block, entryId });
+        void visualEditor.focusField({ field, id, block, entryId, fieldById });
         return;
       }
       if (!scrollToField({ field, id })) {

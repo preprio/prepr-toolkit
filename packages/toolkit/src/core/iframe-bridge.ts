@@ -17,6 +17,7 @@ interface EditorMessage {
   id?: unknown;
   block?: unknown;
   entryId?: unknown;
+  fieldById?: unknown;
   itemId?: unknown;
   referencedIds?: unknown;
   componentIds?: unknown;
@@ -34,6 +35,11 @@ export interface ScrollToFieldMessage {
   block?: number;
   /** The entry's `data-prepr-entry-id`, preferred over `field` when present. */
   entryId?: string;
+  /**
+   * The same field with stack entries named by id instead of position, as
+   * on entries added before save, whose position changes until then.
+   */
+  fieldById?: string;
 }
 
 /** A content item the open item links to, and the field that links it. */
@@ -374,8 +380,18 @@ export function createIframeBridge(
         typeof data.entryId === 'string' && data.entryId
           ? data.entryId
           : undefined;
+      const fieldById =
+        typeof data.fieldById === 'string' && data.fieldById
+          ? data.fieldById
+          : undefined;
       try {
-        onScrollToField?.({ field: data.field, id: data.id, block, entryId });
+        onScrollToField?.({
+          field: data.field,
+          id: data.id,
+          block,
+          entryId,
+          fieldById,
+        });
       } catch (error) {
         // A throwing handler must not take down the message listener and with
         // it the rest of the editor integration.

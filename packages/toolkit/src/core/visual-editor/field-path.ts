@@ -59,6 +59,8 @@ export interface FieldLookup {
   block?: number;
   /** Match `data-prepr-entry-id` first; `field` is the fallback. */
   entryId?: string;
+  /** `field` with stack entries named by id; tried when `field` matches nothing. */
+  fieldById?: string;
 }
 
 /**
@@ -78,14 +80,17 @@ export function findFieldElement(lookup: FieldLookup): HTMLElement | null {
       }
     }
   }
-  const wanted = normalizeFieldPath(lookup.field);
-  for (const candidate of candidates) {
-    const field = candidate.getAttribute('data-prepr-field');
-    if (!field || normalizeFieldPath(field) !== wanted) continue;
-    if (lookup.id && candidate.getAttribute('data-prepr-id') !== lookup.id) {
-      continue;
+  for (const path of [lookup.field, lookup.fieldById]) {
+    if (!path) continue;
+    const wanted = normalizeFieldPath(path);
+    for (const candidate of candidates) {
+      const field = candidate.getAttribute('data-prepr-field');
+      if (!field || normalizeFieldPath(field) !== wanted) continue;
+      if (lookup.id && candidate.getAttribute('data-prepr-id') !== lookup.id) {
+        continue;
+      }
+      return candidate;
     }
-    return candidate;
   }
   return null;
 }

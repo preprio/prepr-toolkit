@@ -179,6 +179,31 @@ describe('createIframeBridge — prepr:scrollToField', () => {
     bridge.stop();
   });
 
+  it('forwards the id-based path and drops a non-string one', () => {
+    const onScrollToField = vi.fn();
+    const bridge = createIframeBridge(null, { onScrollToField });
+    bridge.start();
+
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(EDITOR, {
+      event: 'prepr:scrollToField',
+      field: FIELD,
+      fieldById: 'sections.items.new-1.items.value',
+    });
+    postFrom(EDITOR, {
+      event: 'prepr:scrollToField',
+      field: FIELD,
+      fieldById: { nope: true },
+    });
+
+    expect(onScrollToField).toHaveBeenNthCalledWith(1, {
+      field: FIELD,
+      fieldById: 'sections.items.new-1.items.value',
+    });
+    expect(onScrollToField).toHaveBeenNthCalledWith(2, { field: FIELD });
+    bridge.stop();
+  });
+
   it('forwards an integer block and drops any other block value', () => {
     const onScrollToField = vi.fn();
     const bridge = createIframeBridge(null, { onScrollToField });

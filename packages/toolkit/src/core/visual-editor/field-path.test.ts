@@ -61,6 +61,28 @@ describe('findFieldElement', () => {
     expect(findFieldElement({ field: 'stack.items.000.title' })).toBe(el);
   });
 
+  it('finds an entry added before save by its id-based path', () => {
+    tagged('sections.items.000.items.headline');
+    const added = tagged('sections.items.new-1.items.headline');
+    expect(
+      findFieldElement({
+        field: 'sections.items.003.items.headline',
+        fieldById: 'sections.items.new-1.items.headline',
+      }),
+    ).toBe(added);
+  });
+
+  it('prefers the position path when both match', () => {
+    const saved = tagged('sections.items.0.items.headline');
+    tagged('sections.items.abc.items.headline');
+    expect(
+      findFieldElement({
+        field: 'sections.items.000.items.headline',
+        fieldById: 'sections.items.abc.items.headline',
+      }),
+    ).toBe(saved);
+  });
+
   it('narrows by content item id when one is given', () => {
     tagged('title', 'item-1');
     const second = tagged('title', 'item-2');
