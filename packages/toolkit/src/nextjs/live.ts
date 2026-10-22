@@ -52,7 +52,11 @@ function isFramed(): boolean {
 function startLive(): Promise<LiveStore> {
   starting ??= import('../core/live-preview').then(
     ({ createLiveBridge, createLiveStore }) => {
-      const started = createLiveStore();
+      const skipped = new Set(quarantined());
+      const started = createLiveStore({
+        accept: (patch) => !skipped.has(patchKey(patch)),
+      });
+      watchClientRenders(started);
       bridge = createLiveBridge(started, {
         allowedEditorOrigins: () => allowedEditorOrigins,
       });
@@ -144,7 +148,7 @@ export function PreprRefresh({ enabled = false }: PreprRefreshProps): null {
       if (!active) return;
       const offLog = started.onLogChange((log) => {
         if (log.length) sync.schedule(log);
-        else sync.cancel();
+        else sync.reset();
       });
       const offInvalidate = started.onInvalidate(() => router.refresh());
       unsubscribe = () => {
@@ -162,25 +166,152 @@ export function PreprRefresh({ enabled = false }: PreprRefreshProps): null {
   return null;
 }
 
+// Characters Prepr's hidden edit links are made of.
+const STEGA_CHARS = /[\u200b-\u200d\u2060-\u2064\ufeff]/;
+const RENDER_SETTLE_MS = 1000;
+const RENDER_POLL_MS = 100;
+
+/**
+ * Whether the page shows Prepr content: elements the visual editor tagged,
+ * or text that still carries hidden edit links. An error page shows none.
+ */
+function showsPreprContent(): boolean {
+  return (
+    document.querySelector('[data-prepr-encoded]') !== null ||
+    // Visible text only: inline scripts carry the route's data, edit links
+    // included, even when the route rendered its error page.
+    STEGA_CHARS.test(document.body?.innerText ?? '')
+  );
+}
+
+/** Calls `onBreak` once the page loses its Prepr content; returns a stop. */
+function watchUntilSettled(onBreak: () => void): () => void {
+  const interval = setInterval(() => {
+    if (showsPreprContent()) return;
+    clearInterval(interval);
+    onBreak();
+  }, RENDER_POLL_MS);
+  return () => clearInterval(interval);
+}
+
+// Changes that broke the page, kept for this tab across the reload that
+// recovers from them. The editor sends its unsaved changes again after the
+// reload; these are left out until the item is saved or the value changes.
+const QUARANTINE_KEY = '__prepr_live_quarantine';
+const MAX_QUARANTINED = 50;
+
+function quarantined(): string[] {
+  try {
+    const stored: unknown = JSON.parse(
+      sessionStorage.getItem(QUARANTINE_KEY) ?? '[]',
+    );
+    return Array.isArray(stored)
+      ? stored.filter((key): key is string => typeof key === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function setQuarantined(keys: string[]): void {
+  try {
+    if (keys.length) {
+      sessionStorage.setItem(
+        QUARANTINE_KEY,
+        JSON.stringify(keys.slice(-MAX_QUARANTINED)),
+      );
+    } else {
+      sessionStorage.removeItem(QUARANTINE_KEY);
+    }
+  } catch {
+    // Storage blocked: recovery still reloads, it only cannot skip the change.
+  }
+}
+
+const patchKey = (patch: LivePatch): string => JSON.stringify(patch);
+
+const CLIENT_RENDER_MS = 300;
+
+let recovering = false;
+
+/** Sets the changes since the last good render aside and reloads the frame. */
+function recoverFrom(log: LivePatch[], lastGood: LivePatch[]): void {
+  if (recovering) return;
+  recovering = true;
+  debug.warn('a live change broke the page; reloading without it');
+  const good = new Set(lastGood.map(patchKey));
+  const broken = log.map(patchKey).filter((key) => !good.has(key));
+  setQuarantined([...quarantined(), ...broken]);
+  window.location.reload();
+}
+
+/**
+ * Client components (`useLive`) re-render as soon as a change arrives, and
+ * one that throws makes Next.js replace the whole layout, `PreprRefresh`
+ * included, with its error page. So this watch lives with the store.
+ */
+function watchClientRenders(watched: LiveStore): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastGood: LivePatch[] = [];
+  watched.onLogChange((log) => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    if (!log.length) {
+      lastGood = [];
+      setQuarantined([]);
+      return;
+    }
+    if (!showsPreprContent()) return;
+    timer = setTimeout(() => {
+      timer = null;
+      if (showsPreprContent()) lastGood = log;
+      else recoverFrom(log, lastGood);
+    }, CLIENT_RENDER_MS);
+  });
+}
+
 /**
  * Sends the latest log after a pause, one request at a time, so renders never
  * pile up behind fast typing and the last state always reaches the server.
+ *
+ * A component that throws on an unsaved value makes Next.js replace the route
+ * with its error page, which a refresh does not undo. When a re-render loses
+ * all Prepr content, the changes since the last good render are set aside and
+ * the frame reloads, so a live edit never leaves the editor with a broken
+ * page.
  */
 function createLogSync() {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight = false;
   let pending: LivePatch[] | null = null;
   let cancelled = false;
+  let lastGood: LivePatch[] = [];
 
-  const send = async (log: LivePatch[]): Promise<void> => {
+  const send = async (incoming: LivePatch[]): Promise<void> => {
+    const skipped = new Set(quarantined());
+    const log = skipped.size
+      ? incoming.filter((patch) => !skipped.has(patchKey(patch)))
+      : incoming;
+    if (!log.length) return;
     inFlight = true;
+    // Watched on a timer rather than after the action: when an error page
+    // replaces the layout mid-render, the action's promise never settles.
+    const stopWatching = showsPreprContent()
+      ? watchUntilSettled(() => recoverFrom(log, lastGood))
+      : () => {};
+    let failed = false;
     try {
       await syncPreprLiveLog(log);
     } catch (error) {
+      failed = true;
       debug.log('sending unsaved changes failed', error as object);
-    } finally {
-      inFlight = false;
     }
+    // Let the render land before the watch ends.
+    await new Promise((resolve) => setTimeout(resolve, RENDER_SETTLE_MS));
+    stopWatching();
+    inFlight = false;
+    if (recovering) return;
+    if (!failed) lastGood = log;
     if (pending && !cancelled) {
       const next = pending;
       pending = null;
@@ -204,6 +335,12 @@ function createLogSync() {
       if (timer) clearTimeout(timer);
       timer = null;
     },
+    /** After a save: the stored content is what renders now. */
+    reset(): void {
+      this.cancel();
+      lastGood = [];
+      setQuarantined([]);
+    },
   };
 }
 
@@ -213,6 +350,7 @@ export function resetLivePreviewForTests(): void {
   bridge = null;
   store = null;
   starting = null;
+  recovering = false;
   startListeners.clear();
   allowedEditorOrigins = undefined;
 }

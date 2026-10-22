@@ -97,7 +97,14 @@ function withPatch(log: LivePatch[], patch: LivePatch): LivePatch[] {
  * Holds every registered query result. Pushes apply synchronously by `_id`;
  * invalidations debounce per item and refetch only registrations holding it.
  */
-export function createLiveStore(): LiveStore {
+export interface LiveStoreOptions {
+  /** Changes this returns false for are neither recorded nor applied. */
+  accept?: (patch: LivePatch) => boolean;
+}
+
+export function createLiveStore(options: LiveStoreOptions = {}): LiveStore {
+  const accepts = (patch: LivePatch): boolean =>
+    options.accept ? options.accept(patch) : true;
   const entries = new Set<Entry>();
   const invalidateListeners = new Set<(itemId: string) => void>();
   const pendingInvalidates = new Map<string, ReturnType<typeof setTimeout>>();
@@ -186,13 +193,13 @@ export function createLiveStore(): LiveStore {
     },
 
     pushPatch(itemId, field, value, edit) {
+      const patch: LivePatch = edit
+        ? { type: 'field', itemId, field, value, edit }
+        : { type: 'field', itemId, field, value };
+      if (!accepts(patch)) return;
       // Recorded even when no registration holds the item: a server render
       // may still show it.
-      record(
-        edit
-          ? { type: 'field', itemId, field, value, edit }
-          : { type: 'field', itemId, field, value },
-      );
+      record(patch);
       for (const entry of entries) {
         const next = patchSnapshot(
           entry.snapshot,
@@ -209,7 +216,9 @@ export function createLiveStore(): LiveStore {
     },
 
     pushList(itemId, field, list) {
-      record({ type: 'list', itemId, field, entries: list });
+      const patch: LivePatch = { type: 'list', itemId, field, entries: list };
+      if (!accepts(patch)) return;
+      record(patch);
       for (const entry of entries) {
         const next = syncListSnapshot(
           entry.snapshot,

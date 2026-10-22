@@ -120,6 +120,49 @@ describe('useLive', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Hello');
   });
 
+  it('reloads without a change a client component cannot render', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    // Containers of earlier tests still hold tagged headings.
+    document.body.innerHTML = '';
+    sessionStorage.clear();
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    function Fragile({ page }: { page: { _id: string; heading: string } }) {
+      const live = useLive(page);
+      // Stands in for a component that throws: the error page has no content.
+      return live.heading === 'boom' ? (
+        <p>Error</p>
+      ) : (
+        <h1 data-prepr-encoded="">{live.heading}</h1>
+      );
+    }
+    initLivePreview({ enabled: true });
+    await liveStarted();
+    const view = await render(
+      <Fragile page={{ _id: 'hero-1', heading: 'Hi' }} />,
+    );
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({
+        event: 'prepr:fieldChange',
+        itemId: 'hero-1',
+        field: 'heading',
+        value: 'boom',
+      });
+    });
+    await React.act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem('__prepr_live_quarantine')).toContain('boom');
+    await view.unmount();
+    sessionStorage.clear();
+    vi.useRealTimers();
+  });
+
   it('re-renders with pushed field values inside the editor iframe', async () => {
     stubFramed();
     initLivePreview({ enabled: true });
@@ -287,6 +330,53 @@ describe('PreprRefresh', () => {
     expect(syncPreprLiveLog).toHaveBeenCalledWith([
       { type: 'field', itemId: 'p', field: 'title', value: 'abc' },
     ]);
+    vi.useRealTimers();
+  });
+
+  it('reloads without the change that broke the page, and leaves it out after', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    sessionStorage.clear();
+    syncPreprLiveLog.mockClear();
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    const page = document.createElement('main');
+    page.innerHTML = '<h1 data-prepr-encoded>Stored</h1>';
+    document.body.appendChild(page);
+    // A change containing "boom" makes the route render its error page.
+    syncPreprLiveLog.mockImplementation(async (log: unknown) => {
+      page.innerHTML = JSON.stringify(log).includes('boom')
+        ? '<p>Something went wrong</p>'
+        : '<h1 data-prepr-encoded>ok</h1>';
+    });
+    await render(<PreprRefresh enabled />);
+    await liveStarted();
+    const type = async (field: string, value: string) => {
+      post({ event: 'prepr:fieldChange', itemId: 'p', field, value });
+      await vi.advanceTimersByTimeAsync(1500);
+    };
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      await type('title', 'fine');
+      await type('intro', 'boom');
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    // After the reload the editor sends both changes again.
+    page.innerHTML = '<h1 data-prepr-encoded>Stored</h1>';
+    syncPreprLiveLog.mockClear();
+    await React.act(async () => {
+      await type('title', 'fine again');
+    });
+    const sent = JSON.stringify(syncPreprLiveLog.mock.calls.at(-1)?.[0]);
+    expect(sent).toContain('fine again');
+    expect(sent).not.toContain('boom');
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    page.remove();
+    sessionStorage.clear();
+    syncPreprLiveLog.mockImplementation(async () => {});
     vi.useRealTimers();
   });
 
