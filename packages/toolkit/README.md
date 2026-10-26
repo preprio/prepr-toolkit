@@ -725,10 +725,10 @@ It mounts the toolbar, click-to-edit and live preview, and does nothing on a pag
 
 **Live preview.** Inside the Prepr editor, text the editor types is written straight into the elements whose edit links point at the changed field. Images, links and added or reordered blocks appear on save, when the page is requested again. Two attributes tune it:
 
-- `data-prepr-live="html"` on an element (or an ancestor) writes rich text as markup, reduced to formatting tags first. Without it, rich text is written as plain text.
+- `data-prepr-live="html"` on an element (or an ancestor) writes rich text as markup, reduced to formatting tags first. Without it, rich text waits for save, so it never loses its formatting while the editor types.
 - `data-prepr-live="off"` leaves an element alone, for values the template reformats (dates, truncation) that should wait for save.
 
-Set `"live": "auto"` in the payload if your server applies the editor's changes itself (see [`readLiveLogFromRequest`](#live-preview-beta)), or `"live": false` to turn live preview off.
+Set `"live": "server"` in the payload if your server applies the editor's changes itself (see [`readLiveLogFromRequest`](#live-preview-beta)), or `"live": false` to turn live preview off.
 
 ## Any other framework
 
@@ -896,11 +896,11 @@ controller.destroy();
 
 Live preview for server-rendered pages without a client framework. A no-op outside the Prepr editor. Returns `{ stop() }`.
 
-| Option                 | Type                          | Default      | Description                                                                                                                                                                                                                                        |
-| ---------------------- | ----------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apply`                | `'server' \| 'dom' \| 'auto'` | `'server'`   | `'server'` requests the page again with the changes (the server applies them with `normalizeQuery`). `'dom'` writes text changes into the page directly and needs no server support. `'auto'` writes what it can and asks the server for the rest. |
-| `allowedEditorOrigins` | `string[]`                    | `*.prepr.io` | As in [Preview options](#preview-options).                                                                                                                                                                                                         |
-| `strictMode`           | `boolean`                     | `false`      | As in [Preview options](#preview-options).                                                                                                                                                                                                         |
+| Option                 | Type                | Default      | Description                                                                                                                                                                                                                                                                   |
+| ---------------------- | ------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apply`                | `'server' \| 'dom'` | `'server'`   | `'server'` requests the page again with the changes (the server applies them with `normalizeQuery`). `'dom'` writes plain-text changes into the page directly and needs no server support; rich text waits for save unless the element opts in with `data-prepr-live="html"`. |
+| `allowedEditorOrigins` | `string[]`          | `*.prepr.io` | As in [Preview options](#preview-options).                                                                                                                                                                                                                                    |
+| `strictMode`           | `boolean`           | `false`      | As in [Preview options](#preview-options).                                                                                                                                                                                                                                    |
 
 Every mode renders the stored page again on save.
 

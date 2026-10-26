@@ -163,18 +163,4 @@ describe('startHtmlLivePreview apply modes', () => {
     expect(fetchMock.mock.calls[0][1].method).toBe('GET');
     expect(document.querySelector('h1')!.textContent).toBe('Stored');
   });
-
-  it("'auto' asks the server only for what the page cannot show", async () => {
-    live = startHtmlLivePreview({ apply: 'auto' });
-    post({ event: 'prepr:initVE' });
-    type('Typed');
-    await vi.advanceTimersByTimeAsync(400);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(document.querySelector('h1')!.textContent).toBe('Typed');
-
-    type({ url: 'https://cdn.example/a.jpg' }, 'image');
-    await vi.advanceTimersByTimeAsync(400);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
-  });
 });

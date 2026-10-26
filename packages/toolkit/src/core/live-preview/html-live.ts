@@ -30,12 +30,10 @@ export interface HtmlLivePreviewOptions {
    *   edit links point at the changed field. Needs no server support, so it
    *   suits any backend (PHP, Ruby, Python). Changes the page cannot show
    *   this way (images, links, reordered or added blocks) appear on save.
-   * - `'auto'`: `'dom'` where it can, a server render for the rest. Only
-   *   for servers that apply the changes, since the render replaces the page.
    *
    * Every mode renders the stored content again on save.
    */
-  apply?: 'server' | 'dom' | 'auto';
+  apply?: 'server' | 'dom';
 }
 
 export interface HtmlLivePreview {
@@ -128,8 +126,7 @@ export function startHtmlLivePreview(
       schedule(log);
       return;
     }
-    const { skipped } = applyPatchLogToDom(log);
-    if (apply === 'auto' && skipped) schedule(log);
+    applyPatchLogToDom(log);
   });
   const offInvalidate = store.onInvalidate(() => schedule([]));
 

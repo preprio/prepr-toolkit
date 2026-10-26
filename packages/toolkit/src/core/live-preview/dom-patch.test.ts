@@ -80,17 +80,21 @@ describe('applyPatchLogToDom', () => {
     expect(h1.getAttribute('data-prepr-field')).toBe('title');
   });
 
-  it('writes rich text as text unless the element opts in', () => {
+  it('leaves rich text for save unless the element opts in', () => {
     document.body.innerHTML = tagged('p', 'body', 'Old', 'div');
-    applyPatchLogToDom([field('p', 'body', '<p>New &amp; <b>bold</b></p>')]);
-    const div = document.querySelector('div')!;
-    expect(div.innerHTML).toBe('New &amp; bold');
+    const result = applyPatchLogToDom([
+      field('p', 'body', '<p>New &amp; <b>bold</b></p>'),
+    ]);
+    expect(document.querySelector('div')!.innerHTML).toBe('Old');
+    expect(result).toEqual({ applied: 0, skipped: 1 });
   });
 
   it('keeps plain text that only looks like markup', () => {
     document.body.innerHTML = tagged('p', 'title', 'Old');
     applyPatchLogToDom([field('p', 'title', 'a < b > c')]);
     expect(document.querySelector('h1')!.textContent).toBe('a < b > c');
+    applyPatchLogToDom([field('p', 'title', '<3 this')]);
+    expect(document.querySelector('h1')!.textContent).toBe('<3 this');
   });
 
   it('writes sanitized rich text where data-prepr-live="html"', () => {

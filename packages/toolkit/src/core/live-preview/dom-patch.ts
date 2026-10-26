@@ -154,17 +154,9 @@ export function sanitizeRichText(html: string): DocumentFragment {
   return out;
 }
 
-/**
- * The text a value renders as. Rich text (the editor sends a Text entry's
- * content as HTML) is parsed inertly so entities decode and tags drop; any
- * other value is used as typed, so `a < b` stays intact.
- */
-function displayText(value: string): string {
-  if (!value.trimStart().startsWith('<')) return value;
-  const template = document.createElement('template');
-  template.innerHTML = value;
-  return template.content.textContent ?? '';
-}
+// The editor sends rich text (a Text entry's content) as HTML that opens
+// with a tag; plain text such as `a < b` or `<3` does not match.
+const RICH_TEXT = /^\s*<[a-z!/]/i;
 
 /**
  * Replace the element's rendered value. Plain text replaces the first
@@ -193,8 +185,9 @@ export interface DomPatchResult {
   applied: number;
   /**
    * Changes the page could not show: structured values (assets, links),
-   * list changes, and text no element on the page renders. They appear when
-   * the page is rendered again.
+   * list changes, rich text outside `data-prepr-live="html"`, and text no
+   * element on the page renders. They appear when the page is rendered
+   * again.
    */
   skipped: number;
 }
@@ -203,10 +196,11 @@ export interface DomPatchResult {
  * Show the editor's unsaved text changes by writing them into the elements
  * whose edit links point at the changed field, with no server round trip.
  *
- * Text is written as text. A field whose element (or an ancestor) carries
- * `data-prepr-live="html"` is written as rich text, reduced to formatting
- * markup first. `data-prepr-live="off"` leaves an element alone, for values
- * the template reformats (dates, truncation) and that should wait for save.
+ * Plain text is written as text. Rich text (HTML) is written only where the
+ * element or an ancestor carries `data-prepr-live="html"`, reduced to
+ * formatting markup first; elsewhere it waits for save rather than lose its
+ * formatting. `data-prepr-live="off"` leaves an element alone, for values the
+ * template reformats (dates, truncation) and that should wait for save.
  *
  * Replays the whole log, so applying the same log twice changes nothing.
  */
@@ -238,7 +232,11 @@ export function applyPatchLogToDom(
       if (mode === 'html') {
         element.replaceChildren(sanitizeRichText(patch.value));
         written = true;
-      } else if (writeText(element, displayText(patch.value))) {
+      } else if (RICH_TEXT.test(patch.value)) {
+        // Written as text, rich text would lose its paragraphs and
+        // formatting while the editor types; it waits for save instead.
+        continue;
+      } else if (writeText(element, patch.value)) {
         written = true;
       }
     }
