@@ -362,6 +362,13 @@ button {
   background: #ffffff;
   box-sizing: border-box;
 }
+/* iOS Safari zooms the page when an input under 16px gains focus, and opening
+   the dropdown focuses this input. */
+@media (pointer: coarse) {
+  .prepr-segment-search {
+    font-size: 16px;
+  }
+}
 .prepr-segment-search::placeholder {
   color: var(--prepr-gray-400);
 }
