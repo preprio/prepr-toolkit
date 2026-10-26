@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { LiveBridge, LiveFetcher, LiveStore } from '../core/live-preview';
 import type { LivePatch } from '../core/live-preview/normalize-query';
 import { createScopedLogger } from '../core/utils';
+import { onTestReset } from '../core/live-preview/test-reset';
 import { syncPreprLiveLog } from './live-action';
 
 const debug = createScopedLogger('live-preview:next');
@@ -355,8 +356,7 @@ function createLogSync() {
   };
 }
 
-/** Test-only: drop the singleton store/bridge between test cases. */
-export function resetLivePreviewForTests(): void {
+onTestReset(() => {
   bridge?.stop();
   bridge = null;
   store = null;
@@ -365,4 +365,4 @@ export function resetLivePreviewForTests(): void {
   startListeners.clear();
   allowedEditorOrigins = undefined;
   strictMode = false;
-}
+});

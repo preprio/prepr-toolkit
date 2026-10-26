@@ -4,12 +4,8 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  initLivePreview,
-  PreprRefresh,
-  resetLivePreviewForTests,
-  useLive,
-} from './live';
+import { resetForTests } from '../core/live-preview/test-reset';
+import { initLivePreview, PreprRefresh, useLive } from './live';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -63,7 +59,7 @@ function Heading({ page }: { page: { _id: string; heading: string } }) {
 
 describe('useLive', () => {
   beforeEach(() => {
-    resetLivePreviewForTests();
+    resetForTests();
     refresh.mockClear();
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -227,7 +223,7 @@ describe('useLive', () => {
 });
 
 describe('useLive after a server re-render', () => {
-  beforeEach(() => resetLivePreviewForTests());
+  beforeEach(() => resetForTests());
   afterEach(() => vi.unstubAllGlobals());
 
   it('keeps typed text when the server sends the stored content again', async () => {
@@ -260,7 +256,7 @@ describe('useLive after a server re-render', () => {
 
 describe('PreprRefresh', () => {
   beforeEach(() => {
-    resetLivePreviewForTests();
+    resetForTests();
     refresh.mockClear();
   });
   afterEach(() => vi.unstubAllGlobals());

@@ -15,6 +15,7 @@ import type {
   applyPatchLog,
 } from '../core/live-preview';
 import type { QueryInput } from '../core/live-preview/query-document';
+import { onTestReset } from '../core/live-preview/test-reset';
 
 export interface UseNormalizedQueryOptions {
   /**
@@ -120,8 +121,7 @@ export function useNormalizedQuery<T>(
   });
 }
 
-/** Test-only: drop the singleton store between test cases. */
-export function resetNuxtLivePreviewForTests(): void {
+onTestReset(() => {
   bridge?.stop();
   bridge = null;
   store = null;
@@ -131,4 +131,4 @@ export function resetNuxtLivePreviewForTests(): void {
   log.value = [];
   allowedEditorOrigins = undefined;
   strictMode = undefined;
-}
+});

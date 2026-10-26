@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 
-import { resetNuxtLivePreviewForTests, useNormalizedQuery } from './live';
+import { resetForTests } from '../core/live-preview/test-reset';
+import { useNormalizedQuery } from './live';
 
 const QUERY = '{ Post { _id title } }';
 
@@ -10,7 +11,7 @@ function post(data: unknown, origin = 'https://editor.prepr.io'): void {
 }
 
 describe('useNormalizedQuery', () => {
-  beforeEach(() => resetNuxtLivePreviewForTests());
+  beforeEach(() => resetForTests());
   afterEach(() => vi.unstubAllGlobals());
 
   it('passes data through outside the editor iframe', () => {
