@@ -18,7 +18,7 @@ Every integration is the same three steps:
 2. **Layout** — mounts the preview toolbar and the tracking pixel.
 3. **Data fetching** — forwards the Prepr headers on your GraphQL requests, so Prepr returns personalized content.
 
-Jump to your framework: [Next.js](#nextjs) · [Astro](#astro) · [SvelteKit](#sveltekit) · [Nuxt](#nuxt) · [React without a framework](#react-no-framework) · [anything else](#any-other-framework).
+Jump to your framework: [Next.js](#nextjs) · [Astro](#astro) · [SvelteKit](#sveltekit) · [Nuxt](#nuxt) · [React without a framework](#react-no-framework) · [PHP, Ruby, Python and other backends](#any-backend-drop-in-script) · [anything else](#any-other-framework).
 
 Coming from `@preprio/prepr-nextjs`? See the [migration guide](https://github.com/preprio/prepr-toolkit/blob/main/MIGRATION.md).
 
@@ -399,7 +399,9 @@ On Next.js 15 and older the action does nothing and pages update on save.
 For Astro and Nuxt, see their sections. The framework-free core exports,
 `normalizeQuery(query, result, { log })`, `startHtmlLivePreview()` and
 `readLiveLogFromRequest(request)` from `@preprio/toolkit`, cover any other
-server-rendered stack.
+server-rendered stack. A backend that cannot run them uses
+`startHtmlLivePreview({ apply: 'dom' })`; see
+[Any backend](#any-backend-drop-in-script).
 
 ## Astro
 
@@ -685,6 +687,49 @@ This double-counts the first pageview, since the pixel's own install event fires
 
 The `id` is your access token, and in a client-rendered app it is public — bundled into JS and visible in devtools. Use a tracking-only token; do not derive it from a browser-exposed GraphQL URL, which would also expose content read access.
 
+## Any backend: drop-in script
+
+For server-rendered sites whose backend is not JavaScript (Laravel, Symfony, Rails, Django, …). The browser side needs one script tag; live preview needs no server support.
+
+**1. Render the props** into the page on preview deployments only, as JSON:
+
+```html
+<script type="application/json" data-prepr-toolbar-props>
+  {
+    "props": {
+      "activeSegment": null,
+      "activeVariant": null,
+      "segments": [{ "_id": "…", "name": "Students" }]
+    },
+    "options": { "locale": "nl" }
+  }
+</script>
+```
+
+`segments` comes from a `{ _Segments { _id name } }` query against your preview GraphQL URL; `activeSegment` / `activeVariant` from the `Prepr-Segments` / `Prepr-ABtesting` cookies (see [How It Works](#middleware)). Escape the JSON for a `<script>` element (`<` as `\u003c`).
+
+**2. Load the script**, from your bundle or a CDN:
+
+```javascript
+import '@preprio/toolkit/auto';
+```
+
+```html
+<script
+  type="module"
+  src="https://cdn.jsdelivr.net/npm/@preprio/toolkit@VERSION/dist/browser/auto.js"
+></script>
+```
+
+It mounts the toolbar, click-to-edit and live preview, and does nothing on a page without the props tag. Client-side page swaps (Livewire `wire:navigate`, Turbo, htmx) are handled: when `<body>` is replaced the preview starts again on the new page.
+
+**Live preview.** Inside the Prepr editor, text the editor types is written straight into the elements whose edit links point at the changed field. Images, links and added or reordered blocks appear on save, when the page is requested again. Two attributes tune it:
+
+- `data-prepr-live="html"` on an element (or an ancestor) writes rich text as markup, reduced to formatting tags first. Without it, rich text is written as plain text.
+- `data-prepr-live="off"` leaves an element alone, for values the template reformats (dates, truncation) that should wait for save.
+
+Set `"live": "auto"` in the payload if your server applies the editor's changes itself (see [`readLiveLogFromRequest`](#live-preview-beta)), or `"live": false` to turn live preview off.
+
 ## Any other framework
 
 The core is runtime-neutral: it works off a WHATWG `Request` and hands back the headers to forward to Prepr plus the cookies to persist. Adapting it to Express, Hono, Fastify, or a plain server is roughly twenty lines.
@@ -846,6 +891,26 @@ controller.destroy();
 - **`setTrackingParam(key, value)`** — sets a persistent tracking parameter: `setTrackingParam('user_type', 'returning')`.
 
 `trackEvent` and `setTrackingParam` are independent of `loadTrackingPixel` — they work against `window.prepr` however it got installed, including a legacy HTML snippet already on the page. If no pixel is installed at all they warn once in the console and return without throwing.
+
+#### `startHtmlLivePreview(options?)`
+
+Live preview for server-rendered pages without a client framework. A no-op outside the Prepr editor. Returns `{ stop() }`.
+
+| Option                 | Type                          | Default      | Description                                                                                                                                                                                                                                        |
+| ---------------------- | ----------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apply`                | `'server' \| 'dom' \| 'auto'` | `'server'`   | `'server'` requests the page again with the changes (the server applies them with `normalizeQuery`). `'dom'` writes text changes into the page directly and needs no server support. `'auto'` writes what it can and asks the server for the rest. |
+| `allowedEditorOrigins` | `string[]`                    | `*.prepr.io` | As in [Preview options](#preview-options).                                                                                                                                                                                                         |
+| `strictMode`           | `boolean`                     | `false`      | As in [Preview options](#preview-options).                                                                                                                                                                                                         |
+
+Every mode renders the stored page again on save.
+
+#### `applyPatchLogToDom(log, root?)`
+
+The `'dom'` mode on its own: writes a parsed patch log's text changes into the elements that render them and returns `{ applied, skipped }`. For custom setups; `startHtmlLivePreview` and `@preprio/toolkit/auto` call it for you.
+
+#### `startPreprAuto()`
+
+From `@preprio/toolkit/auto`, which also calls it on import. Starts the preview from the page's `data-prepr-toolbar-props` JSON and returns a function that stops it. See [Any backend](#any-backend-drop-in-script).
 
 #### `stegaClean(value)`
 
