@@ -271,6 +271,8 @@ saving:
 - In dynamic content fields, select `_id` on every entry type (`Text`,
   `Quote`, …). `Assets` entries have no `_id` of their own: select
   `items { _id }` instead.
+- A `Text` entry's content updates whether the query selects `body`,
+  `html` or `text` (the latter with tags stripped).
 - Render each dynamic content entry inside an element marked with
   `data-prepr-edit-target="<field>.<index>"` and
   `data-prepr-entry-id="<entry _id>"` (for `Assets`, the first asset's

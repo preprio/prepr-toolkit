@@ -5,7 +5,12 @@ import {
 } from '@vercel/stega';
 
 import { createScopedLogger } from '../utils';
-import { graphqlFieldName } from './field-name';
+import {
+  graphqlFieldName,
+  isTextEntry,
+  plainTextFromHtml,
+  TEXT_BODY_FIELDS,
+} from './field-name';
 import {
   indexSnapshot,
   type LivePath,
@@ -203,11 +208,14 @@ function applyPatch(
   if (segments.some((s) => !s || FORBIDDEN_SEGMENTS.has(s))) return root;
 
   const targets: LivePath[] = [];
+  // Targets that hold the tag-stripped form of the pushed text.
+  const plain = new Set<LivePath>();
   for (const ownerPath of ownerPaths) {
     if (doc) {
       const resolved = resolveTargets(root, doc, ownerPath, segments);
       root = resolved.root;
       targets.push(...resolved.targets);
+      resolved.plain.forEach((target) => plain.add(target));
     } else {
       targets.push([...ownerPath, ...segments.map(toPathSegment)]);
     }
@@ -222,7 +230,11 @@ function applyPatch(
 
   if (patch.type === 'field') {
     for (const target of targets) {
-      let value = keepEditLink(readAtPath(root, target), patch.value);
+      const pushed =
+        plain.has(target) && typeof patch.value === 'string'
+          ? plainTextFromHtml(patch.value)
+          : patch.value;
+      let value = keepEditLink(readAtPath(root, target), pushed);
       if (
         patch.edit &&
         typeof value === 'string' &&
@@ -310,16 +322,17 @@ function resolveTargets(
   doc: QueryDocument,
   ownerPath: LivePath,
   segments: string[],
-): { root: unknown; targets: LivePath[] } {
+): { root: unknown; targets: LivePath[]; plain: Set<LivePath> } {
   let owner: unknown = root;
   for (const step of ownerPath) {
     owner = (owner as Record<string | number, unknown>)[step];
   }
   const selections = selectionsAt(root, doc, ownerPath);
-  if (!selections) return { root, targets: [] };
+  if (!selections) return { root, targets: [], plain: new Set() };
 
   let current = root;
   const out: LivePath[] = [];
+  const plain = new Set<LivePath>();
   const walk = (
     node: unknown,
     sel: QuerySelection[],
@@ -345,12 +358,19 @@ function resolveTargets(
     if (node === null || typeof node !== 'object') return;
     const record = node as Record<string, unknown>;
     const wanted = graphqlFieldName(segment);
+    // A Text entry's `body` also reaches its `html` and `text`.
+    const textBody =
+      i === segments.length - 1 && segment === 'body' && isTextEntry(record)
+        ? TEXT_BODY_FIELDS
+        : null;
     let matched = false;
     for (const field of collectFields(sel, typenameOf(node), doc).values()) {
-      if (field.name !== segment && field.name !== wanted) continue;
+      const alias = textBody?.find((f) => f.name === field.name);
+      if (field.name !== segment && field.name !== wanted && !alias) continue;
       if (!Object.prototype.hasOwnProperty.call(record, field.key)) continue;
       matched = true;
       const fieldPath = [...path, field.key];
+      if (alias?.plain) plain.add(fieldPath);
       let value = record[field.key];
       // An empty component (just added, nothing typed yet) is null: build it
       // in the query's shape so the write has somewhere to land.
@@ -381,7 +401,7 @@ function resolveTargets(
     if (!matched && segment === 'items') walk(node, sel, i + 1, path);
   };
   walk(owner, selections, 0, ownerPath);
-  return { root: current, targets: out };
+  return { root: current, targets: out, plain };
 }
 
 const NON_ALPHANUMERIC = /[^a-z0-9]/gi;

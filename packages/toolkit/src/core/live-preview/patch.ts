@@ -1,6 +1,11 @@
 import { vercelStegaSplit } from '@vercel/stega';
 
-import { fieldKeyIn } from './field-name';
+import {
+  fieldKeyIn,
+  isTextEntry,
+  plainTextFromHtml,
+  TEXT_BODY_FIELDS,
+} from './field-name';
 import type { LivePath, SnapshotIndex } from './index-snapshot';
 
 const INDEX_SEGMENT = /^\d+$/;
@@ -124,13 +129,63 @@ export function patchSnapshot(
   let root = snapshot;
   let changed = false;
 
+  const markChanged = () => {
+    changed = true;
+  };
   for (const path of paths) {
-    root = patchAtPath(root, path, field, value, () => {
-      changed = true;
-    });
+    for (const [target, targetValue] of expandTextBody(
+      root,
+      path,
+      field,
+      value,
+    )) {
+      root = patchAtPath(root, path, target, targetValue, markChanged);
+    }
   }
 
   return changed ? root : snapshot;
+}
+
+/**
+ * The field writes one change becomes. A Text entry's `body` also lands on
+ * the `html` and `text` the query selected instead of, or next to, it.
+ */
+function expandTextBody(
+  root: unknown,
+  path: LivePath,
+  field: string,
+  value: LiveValue,
+): Array<[string, LiveValue]> {
+  const segments = field.split('.');
+  if (segments[segments.length - 1] !== 'body' || typeof value !== 'string') {
+    return [[field, value]];
+  }
+  let node: unknown = root;
+  for (const step of path) {
+    node = (node as Record<string | number, unknown>)[step];
+  }
+  for (const segment of segments.slice(0, -1)) {
+    if (node === null || typeof node !== 'object') return [[field, value]];
+    const record = node as Record<string | number, unknown>;
+    node = INDEX_SEGMENT.test(segment)
+      ? record[Number(segment)]
+      : record[fieldKeyIn(record, segment) ?? segment];
+  }
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) {
+    return [[field, value]];
+  }
+  const record = node as Record<string, unknown>;
+  if (!isTextEntry(record)) return [[field, value]];
+  const prefix = segments.slice(0, -1);
+  const writes: Array<[string, LiveValue]> = [];
+  for (const { name, plain } of TEXT_BODY_FIELDS) {
+    if (!(name in record)) continue;
+    writes.push([
+      [...prefix, name].join('.'),
+      plain ? plainTextFromHtml(value) : value,
+    ]);
+  }
+  return writes.length ? writes : [[field, value]];
 }
 
 function patchAtPath(
@@ -245,8 +300,6 @@ function listKeysOf(entry: unknown): string[] {
   return keys;
 }
 
-const TAG_PATTERN = /<[^>]+>/g;
-
 /**
  * A new Text entry in its siblings' queried shape. Internal links and the
  * edit marker are missing until save.
@@ -261,7 +314,7 @@ function buildText(
     _id: entry._id,
     body,
     html: body,
-    text: body.replace(TAG_PATTERN, ''),
+    text: plainTextFromHtml(body),
     format: entry.format ?? null,
   };
   if (!template) return full;

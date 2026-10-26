@@ -234,3 +234,45 @@ describe('patchSnapshot edit links', () => {
     );
   });
 });
+
+describe('patchSnapshot Text body', () => {
+  it('writes a body change to the html and text the snapshot holds', () => {
+    const data = {
+      Article: {
+        _id: 'a',
+        elements: [
+          { __typename: 'Text', _id: 't', html: '<p>Old</p>', text: 'Old' },
+        ],
+      },
+    };
+    const next = patchSnapshot(
+      data,
+      indexSnapshot(data),
+      't',
+      'body',
+      '<p>New</p>',
+    ) as typeof data;
+    expect(next.Article.elements[0]).toMatchObject({
+      html: '<p>New</p>',
+      text: 'New',
+    });
+  });
+
+  it('keeps writing body itself when the snapshot holds it', () => {
+    const data = { Text: { __typename: 'Text', _id: 't', body: 'Old' } };
+    const next = patchSnapshot(
+      data,
+      indexSnapshot(data),
+      't',
+      'body',
+      'New',
+    ) as typeof data;
+    expect(next.Text.body).toBe('New');
+  });
+
+  it('does not alias body on other types', () => {
+    const data = { Quote: { __typename: 'Quote', _id: 'q', text: 'Ann' } };
+    const next = patchSnapshot(data, indexSnapshot(data), 'q', 'body', 'X');
+    expect(next).toBe(data);
+  });
+});

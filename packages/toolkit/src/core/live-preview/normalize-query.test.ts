@@ -884,7 +884,7 @@ describe('normalizeQuery lists inside a new entry', () => {
         _id: 'tmp:1',
         body: '<p>Test 2</p>',
         format: null,
-        text: 'Test',
+        text: 'Test 2',
       },
     ]);
   });
@@ -1204,5 +1204,86 @@ describe('normalizeQuery new entries through a union fragment', () => {
       _id: 'tmp:1',
       command: 'npx prepr init',
     });
+  });
+});
+
+describe('normalizeQuery Text body', () => {
+  const ARTICLE_QUERY = /* GraphQL */ `
+    query Article($id: String) {
+      Article(id: $id) {
+        _id
+        elements {
+          __typename
+          ... on Text {
+            _id
+            content: html
+            text
+            format
+          }
+          ... on Quote {
+            _id
+            body
+            text: author
+          }
+        }
+      }
+    }
+  `;
+
+  const articleResult = () => ({
+    Article: {
+      _id: 'article-1',
+      elements: [
+        {
+          __typename: 'Text',
+          _id: 'text-1',
+          content: '<p>Old</p>',
+          text: 'Old',
+          format: 'HTML',
+        },
+        { __typename: 'Quote', _id: 'quote-1', body: 'Q', text: 'Ann' },
+      ],
+    },
+  });
+
+  it('writes a body change to the html and text the query selected', () => {
+    const next = normalizeQuery(ARTICLE_QUERY, articleResult(), {
+      log: [
+        {
+          type: 'field',
+          itemId: 'text-1',
+          field: 'body',
+          value: '<p>New <strong>copy</strong></p>',
+        },
+      ],
+    });
+    expect(next.Article.elements[0]).toMatchObject({
+      content: '<p>New <strong>copy</strong></p>',
+      text: 'New copy',
+    });
+  });
+
+  it('reaches a Text entry addressed through the owning item', () => {
+    const next = normalizeQuery(ARTICLE_QUERY, articleResult(), {
+      log: [
+        {
+          type: 'field',
+          itemId: 'article-1',
+          field: 'elements.0.body',
+          value: '<p>Via path</p>',
+        },
+      ],
+    });
+    expect(next.Article.elements[0]).toMatchObject({
+      content: '<p>Via path</p>',
+      text: 'Via path',
+    });
+  });
+
+  it('leaves the fields of other entry types alone', () => {
+    const next = normalizeQuery(ARTICLE_QUERY, articleResult(), {
+      log: [{ type: 'field', itemId: 'quote-1', field: 'body', value: 'Q2' }],
+    });
+    expect(next.Article.elements[1]).toMatchObject({ body: 'Q2', text: 'Ann' });
   });
 });
