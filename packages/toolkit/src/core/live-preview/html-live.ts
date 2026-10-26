@@ -1,6 +1,7 @@
 import { HEADER_LIVE_RENDER } from '../constants';
 import { createScopedLogger } from '../utils';
 import { createLiveBridge } from './bridge-events';
+import { applyPatchLogToDom } from './dom-patch';
 import { createLiveStore, type LiveStore } from './live-store';
 import { morphElement } from './morph';
 import type { LivePatch } from './normalize-query';
@@ -20,6 +21,19 @@ export interface HtmlLivePreviewOptions {
   allowedEditorOrigins?: string[];
   /** See the toolbar's `strictMode`. */
   strictMode?: boolean;
+  /**
+   * Where unsaved changes are applied while the editor types.
+   *
+   * - `'server'` (default): the page is requested again with the changes,
+   *   and the server applies them with `normalizeQuery`.
+   * - `'dom'`: text changes are written straight into the elements whose
+   *   edit links point at the changed field. Needs no server support, so it
+   *   suits any backend (PHP, Ruby, Python). Changes the page cannot show
+   *   this way (images, links, reordered or added blocks) appear on save.
+   *
+   * Every mode renders the stored content again on save.
+   */
+  apply?: 'server' | 'dom';
 }
 
 export interface HtmlLivePreview {
@@ -33,6 +47,10 @@ export interface HtmlLivePreview {
  * only the parts of the DOM that changed are updated. On save the page is
  * requested without changes. The server applies them with `normalizeQuery`;
  * see `readLiveLogFromRequest`.
+ *
+ * A backend that cannot run `normalizeQuery` passes `apply: 'dom'`: text
+ * changes are then written into the page directly, and the server only
+ * renders the stored content on save.
  *
  * A no-op outside the Prepr editor's preview iframe.
  */
@@ -100,9 +118,15 @@ export function startHtmlLivePreview(
     }, SYNC_DEBOUNCE_MS);
   };
 
+  const apply = options.apply ?? 'server';
   const offLog = store.onLogChange((log) => {
     // A cleared log means a save; the invalidation below re-renders.
-    if (log.length) schedule(log);
+    if (!log.length) return;
+    if (apply === 'server') {
+      schedule(log);
+      return;
+    }
+    applyPatchLogToDom(log);
   });
   const offInvalidate = store.onInvalidate(() => schedule([]));
 

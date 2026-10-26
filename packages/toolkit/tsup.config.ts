@@ -40,6 +40,9 @@ export default defineConfig([
     ...sharedOptions,
     entry: {
       index: 'src/index.ts',
+      // Side-effect entry: starts the preview on import. Listed under
+      // `sideEffects` in package.json so bundlers keep a bare import.
+      auto: 'src/auto.ts',
       // Consumed by the `.astro` components, which ship as source and are
       // compiled in the consumer's pipeline — so this needs its own entry and
       // a matching `./json-script` export, not just inlining into the barrel.
@@ -139,5 +142,16 @@ export default defineConfig([
     // The server side is typed structurally against a minimal `H3EventLike`;
     // `live` uses Vue's reactivity, which comes from the consumer's app.
     external: ['vue'],
+  },
+  {
+    // The auto entry as one self-contained module, for sites without a
+    // bundler: `<script type="module" src=".../dist/browser/auto.js">`.
+    entry: { 'browser/auto': 'src/auto.ts' },
+    format: ['esm'],
+    platform: 'browser',
+    dts: false,
+    minify: true,
+    noExternal: [/.*/],
+    clean: false,
   },
 ]);
