@@ -4,7 +4,7 @@ export {
   type StegaController,
   type StegaControllerOptions,
 } from './scan';
-export { type StegaEditPayload } from './overlay';
+export { type StegaEditPayload } from './dom';
 export {
   createStegaAutoClean,
   type StegaAutoClean,

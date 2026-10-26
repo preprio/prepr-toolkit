@@ -3,6 +3,9 @@ import { vercelStegaCombine, vercelStegaSplit } from '@vercel/stega';
 
 import { createStegaController, stegaClean } from './index';
 
+const nextFrame = (): Promise<void> =>
+  new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
 // visible text carrying a hidden { origin, href } payload
 function encode(
   visible: string,
@@ -44,7 +47,7 @@ describe('createStegaController', () => {
     document.body.innerHTML = '';
   });
 
-  it('start() injects a single <style data-prepr-stega> tag with the page-level classes', () => {
+  it('start() injects a single <style data-prepr-stega> tag marking encoded elements', () => {
     const controller = createStegaController({ onEdit: vi.fn() });
     controller.start();
 
@@ -52,13 +55,25 @@ describe('createStegaController', () => {
     expect(styles.length).toBe(1);
 
     const css = styles[0]!.textContent ?? '';
-    expect(css).toContain('.prepr-overlay');
-    expect(css).toContain('.prepr-tooltip');
-    expect(css).toContain('.prepr-proximity-highlight');
-    expect(css).toContain('10000');
-    expect(css).toContain('10001');
+    expect(css).toContain('[data-prepr-encoded]');
+    expect(css).toContain('outline');
+    // Never shifts the site's layout or overrides its animations.
+    expect(css).not.toContain('position');
+    expect(css).not.toMatch(/animation|transition/);
 
     controller.stop();
+  });
+
+  it('start() mounts the hover chrome in a shadow root with a clickable label', () => {
+    const controller = createStegaController({ onEdit: vi.fn() });
+    controller.start();
+
+    const host = document.querySelector('prepr-visual-editor');
+    expect(host?.shadowRoot).toBeTruthy();
+    expect(host?.hasAttribute('data-label-action')).toBe(true);
+
+    controller.stop();
+    expect(document.querySelector('prepr-visual-editor')).toBeNull();
   });
 
   it('start() scans the DOM and tags a planted stega-encoded node', () => {
@@ -79,7 +94,7 @@ describe('createStegaController', () => {
     controller.stop();
   });
 
-  it('stop() removes the injected style tag, overlay/tooltip and clears data attributes', () => {
+  it('stop() removes the injected style tag and hover chrome', () => {
     const p = document.createElement('p');
     p.textContent = encode('Editable heading');
     document.body.appendChild(p);
@@ -89,9 +104,44 @@ describe('createStegaController', () => {
     controller.stop();
 
     expect(document.querySelectorAll('style[data-prepr-stega]').length).toBe(0);
-    expect(document.querySelectorAll('.prepr-overlay').length).toBe(0);
-    expect(document.querySelectorAll('.prepr-tooltip').length).toBe(0);
-    expect(document.querySelectorAll('[data-prepr-encoded]').length).toBe(0);
+    expect(document.querySelector('prepr-visual-editor')).toBeNull();
+  });
+
+  it('keeps elements editable when edit mode is turned off and on again after auto-clean stripped the page', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+    const p = document.createElement('p');
+    p.textContent = encode(
+      'Editable heading',
+      'https://edit.example.com/content/edit/entity-1?field=meta_title',
+    );
+    document.body.appendChild(p);
+    vi.spyOn(p, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(40, 100, 300, 32),
+    );
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+    expect(p.textContent).toBe('Editable heading');
+
+    const onEdit = vi.fn();
+    const controller = createStegaController({ onEdit });
+    controller.start();
+    controller.stop();
+    controller.start();
+
+    p.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    await nextFrame();
+    await nextFrame();
+    const shadow = document.querySelector('prepr-visual-editor')!.shadowRoot!;
+    shadow.querySelector<HTMLElement>('.box.hover .label')!.click();
+    expect(onEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: 'https://edit.example.com/content/edit/entity-1?field=meta_title',
+        field: 'meta_title',
+      }),
+    );
+
+    controller.stop();
+    autoClean.stop();
   });
 
   it('does not tag plain (non-encoded) text nodes', () => {
@@ -107,37 +157,80 @@ describe('createStegaController', () => {
     controller.stop();
   });
 
-  it('fires onEdit with the decoded { href, origin } payload when the tooltip is clicked', () => {
+  it('hovering an encoded element labels it with its field and the label click fires onEdit', async () => {
     const p = document.createElement('p');
-    p.textContent = encode('Editable heading');
+    p.textContent = encode(
+      'Editable heading',
+      'https://edit.example.com/content/edit/entity-1?field=meta_title',
+    );
     document.body.appendChild(p);
+    vi.spyOn(p, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(40, 100, 300, 32),
+    );
 
     const onEdit = vi.fn();
     const controller = createStegaController({ onEdit });
     controller.start();
 
-    // mousemove is what makes the tooltip visible
-    p.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 }),
-    );
+    p.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    await nextFrame();
+    await nextFrame();
 
-    const tooltip = document.querySelector('.prepr-tooltip') as HTMLElement;
-    expect(tooltip).toBeTruthy();
+    const shadow = document.querySelector('prepr-visual-editor')!.shadowRoot!;
+    const hover = shadow.querySelector<HTMLElement>('.box.hover')!;
+    expect(hover.hasAttribute('data-visible')).toBe(true);
+    const label = hover.querySelector<HTMLElement>('.label')!;
+    expect(label.textContent).toBe('Meta title');
 
-    tooltip.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-
+    label.click();
     expect(onEdit).toHaveBeenCalledWith({
-      href: 'https://edit.example.com/entry/123',
+      href: 'https://edit.example.com/content/edit/entity-1?field=meta_title',
       origin: 'https://cms.example.com',
-      id: '123',
-      field: undefined,
+      id: 'entity-1',
+      field: 'meta_title',
       locale: undefined,
     });
+    // Clicking the element itself is left to the page.
+    onEdit.mockClear();
+    p.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onEdit).not.toHaveBeenCalled();
 
     controller.stop();
   });
 
-  it('tooltip: false — no overlay/tooltip chrome, cursor-only styles, clicking the element fires onEdit', () => {
+  it('keeps the hover while the pointer is on the label, and ends it off any encoded element', async () => {
+    const p = document.createElement('p');
+    p.textContent = encode('Editable heading');
+    const plain = document.createElement('div');
+    document.body.append(p, plain);
+    vi.spyOn(p, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(40, 100, 300, 32),
+    );
+
+    const controller = createStegaController({ onEdit: vi.fn() });
+    controller.start();
+    const host = document.querySelector('prepr-visual-editor')!;
+    const hover = host.shadowRoot!.querySelector<HTMLElement>('.box.hover')!;
+
+    p.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    await nextFrame();
+    await nextFrame();
+    expect(hover.hasAttribute('data-visible')).toBe(true);
+
+    // Events from inside the shadow root reach the page retargeted to its host.
+    host.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    await nextFrame();
+    expect(hover.hasAttribute('data-visible')).toBe(true);
+
+    plain.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    await nextFrame();
+    await nextFrame();
+    expect(hover.hasAttribute('data-visible')).toBe(false);
+
+    controller.stop();
+  });
+
+  it('tooltip: false — no hover chrome or marks, cursor-only styles, clicking the element fires onEdit', () => {
     const p = document.createElement('p');
     // id, field, and locale are parsed out of the encoded edit URL, so the
     // click payload carries them without the page setting any attribute.
@@ -151,16 +244,9 @@ describe('createStegaController', () => {
     const controller = createStegaController({ onEdit, tooltip: false });
     controller.start();
 
-    expect(document.querySelector('.prepr-overlay')).toBeNull();
-    expect(document.querySelector('.prepr-tooltip')).toBeNull();
+    expect(document.querySelector('prepr-visual-editor')).toBeNull();
     const style = document.querySelector('style[data-prepr-stega]');
-    expect(style?.textContent).toContain('cursor:pointer');
-
-    p.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 }),
-    );
-    expect(document.querySelector('.prepr-proximity-highlight')).toBeNull();
-    expect(p.classList.contains('prepr-overlay-active')).toBe(false);
+    expect(style?.textContent).toBe('[data-prepr-encoded]{cursor:pointer}');
 
     p.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 

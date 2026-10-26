@@ -1,7 +1,6 @@
 /**
  * Page-level stega styles, deliberately outside the toolbar shadow DOM — the
- * overlay, tooltip and proximity highlight have to layer over host page
- * content.
+ * edit-mode marks are drawn on the host page's own elements.
  *
  * Do not edit `stega.generated.ts`: it is LightningCSS output from
  * `./stega.css` via `scripts/compile-css.mjs`. Edit the CSS, run `pnpm

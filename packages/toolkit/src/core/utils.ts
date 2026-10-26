@@ -193,20 +193,3 @@ export function debounce<T extends (...args: any[]) => any>(
 
   return debouncedFunc;
 }
-
-// TTL cache over querySelectorAll, for hot paths that re-query the same nodes.
-export function createElementCache<T extends Element = Element>(
-  query: string,
-  ttl: number = 1000,
-) {
-  let cache: NodeListOf<T> | null = null;
-  let lastCacheTime = 0;
-  return () => {
-    const now = Date.now();
-    if (!cache || now - lastCacheTime > ttl) {
-      cache = document.querySelectorAll<T>(query);
-      lastCacheTime = now;
-    }
-    return cache;
-  };
-}

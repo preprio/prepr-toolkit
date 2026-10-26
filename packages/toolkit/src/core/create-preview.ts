@@ -258,8 +258,9 @@ export function createPreprPreview(
 
   // Inside the editor iframe the page becomes the editing surface: hover
   // outlines, click-to-select and selection driven by the editor's field
-  // focus. Standalone previews keep the CMS deep-link tooltip, or bare
-  // click-to-edit when no UI is mounted.
+  // focus. Standalone previews in edit mode mark editable elements and link
+  // the hovered one to the CMS, or offer bare click-to-edit when no UI is
+  // mounted.
   const visualEditor: VisualEditor | null = isIframe
     ? createVisualEditor({
         onEdit,
@@ -272,10 +273,12 @@ export function createPreprPreview(
   const stega =
     visualEditor ??
     createStegaController({
-      // The CMS deep-link tooltip is chrome, so it follows the same decision
-      // as the bar: unwanted in a headless preview that asked for no UI.
+      // The edit-mode marks and hover label are chrome, so they follow the
+      // same decision as the bar: unwanted in a headless preview that asked
+      // for no UI.
       tooltip: mountUi,
       onEdit,
+      locale,
     });
 
   // Unconditional: stega characters only exist when the server already

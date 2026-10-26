@@ -24,16 +24,6 @@ const LABEL_MARGIN_PX = 4;
 
 // Where to hit-test a target for something drawn over it, as fractions of
 // its box: the centre and four points inset from the corners.
-/** Whether `area` overlaps `rect` grown by the box padding. */
-function overlapsBox(area: Area, rect: DOMRect): boolean {
-  return (
-    area.left < rect.right + BOX_PADDING_PX &&
-    area.right > rect.left - BOX_PADDING_PX &&
-    area.top < rect.bottom + BOX_PADDING_PX &&
-    area.bottom > rect.top - BOX_PADDING_PX
-  );
-}
-
 const PROBE_POINTS: Array<[number, number]> = [
   [0.5, 0.5],
   [0.15, 0.2],
@@ -47,6 +37,16 @@ interface Area {
   top: number;
   right: number;
   bottom: number;
+}
+
+/** Whether `area` overlaps `rect` grown by the box padding. */
+function overlapsBox(area: Area, rect: DOMRect): boolean {
+  return (
+    area.left < rect.right + BOX_PADDING_PX &&
+    area.right > rect.left - BOX_PADDING_PX &&
+    area.top < rect.bottom + BOX_PADDING_PX &&
+    area.bottom > rect.top - BOX_PADDING_PX
+  );
 }
 
 function overlaps(a: Area, b: Area): boolean {
@@ -232,10 +232,14 @@ const STYLES = `
   font: 500 11px/1.3 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   letter-spacing: 0.01em;
   white-space: nowrap;
+  display: flex;
   max-width: 240px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+}
+.text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
 }
 .hover .label { background: rgba(79, 70, 229, 0.92); }
 /* Content of another item than the one open in the editor: still clickable,
@@ -257,6 +261,27 @@ const STYLES = `
   left: 2px;
   margin: 0;
 }
+/* A clickable hover label (edit mode on the live site). Only while shown, so
+   a fading box never leaves an invisible click target behind. */
+:host([data-label-action]) .hover[data-visible] .label {
+  pointer-events: auto;
+  cursor: pointer;
+}
+:host([data-label-action]) .hover .label::after {
+  content: '\\2197';
+  margin-left: 5px;
+}
+:host([data-label-action]) .hover .label:hover { background: #4338ca; }
+/* Bridges the gap between the label and its element, so the pointer can
+   travel from one to the other without the hover ending on the way. */
+:host([data-label-action]) .hover .label::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: ${LABEL_MARGIN_PX + BOX_PADDING_PX + 2}px;
+}
 @media (prefers-reduced-motion: reduce) {
   .box { transition: opacity 80ms linear; }
 }
@@ -276,16 +301,30 @@ export interface HoverOptions {
 interface Box {
   root: HTMLDivElement;
   label: HTMLDivElement;
+  text: HTMLSpanElement;
   target: HTMLElement | null;
 }
 
+export interface VisualEditorOverlayOptions {
+  /**
+   * Makes the hover label a button that calls this with the hovered element.
+   * Without it the chrome never takes a pointer event.
+   */
+  onLabelClick?: (target: HTMLElement) => void;
+}
+
 export class VisualEditorOverlay {
+  private readonly onLabelClick: ((target: HTMLElement) => void) | undefined;
   private host: HTMLElement | null = null;
   private hoverBox: Box | null = null;
   private selectedBox: Box | null = null;
   private frame: number | null = null;
   private scrollTimeout: ReturnType<typeof setTimeout> | null = null;
   private resizeObserver: ResizeObserver | null = null;
+
+  constructor(options: VisualEditorOverlayOptions = {}) {
+    this.onLabelClick = options.onLabelClick;
+  }
 
   mount(): void {
     if (this.host) return;
@@ -296,6 +335,14 @@ export class VisualEditorOverlay {
     shadow.appendChild(style);
     this.hoverBox = this.createBox(shadow, 'hover');
     this.selectedBox = this.createBox(shadow, 'selected');
+    const onLabelClick = this.onLabelClick;
+    if (onLabelClick) {
+      host.setAttribute('data-label-action', '');
+      const hoverBox = this.hoverBox;
+      hoverBox.label.addEventListener('click', () => {
+        if (hoverBox.target) onLabelClick(hoverBox.target);
+      });
+    }
     // On <html>, not <body>: a transformed or filtered body would become the
     // containing block for `position: fixed` and drag the boxes with it.
     document.documentElement.appendChild(host);
@@ -317,6 +364,14 @@ export class VisualEditorOverlay {
     this.host = null;
     this.hoverBox = null;
     this.selectedBox = null;
+  }
+
+  /**
+   * Whether a pointer event target is this chrome: events from inside the
+   * shadow root reach the page retargeted to its host.
+   */
+  owns(node: EventTarget | null): boolean {
+    return node !== null && node === this.host;
   }
 
   getHoverTarget(): HTMLElement | null {
@@ -373,9 +428,12 @@ export class VisualEditorOverlay {
     root.className = `box ${kind}`;
     const label = document.createElement('div');
     label.className = 'label';
+    const text = document.createElement('span');
+    text.className = 'text';
+    label.appendChild(text);
     root.appendChild(label);
     shadow.appendChild(root);
-    return { root, label, target: null };
+    return { root, label, text, target: null };
   }
 
   private retarget(
@@ -389,7 +447,7 @@ export class VisualEditorOverlay {
     box.target = target;
     if (target) {
       this.resizeObserver?.observe(target);
-      box.label.textContent = label;
+      box.text.textContent = label;
       // Appearing from nothing should not slide in from wherever the box was
       // last parked; only moves between visible targets animate.
       if (!box.root.hasAttribute('data-visible')) {

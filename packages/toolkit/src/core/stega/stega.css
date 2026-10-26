@@ -1,78 +1,21 @@
 /**
  * Source for stega.generated.ts — run `pnpm gen:css` after editing.
- * Injected into the host page, not the toolbar shadow DOM (see styles.ts).
- * Class names and the 10000/10001 z-indexes are asserted in stega.test.ts.
+ * Injected into the host page while edit mode is on (see styles.ts); the hover
+ * box and its label are drawn in their own shadow root instead.
  */
 
+/* `--prepr-presence` is animated from 0 on start (scan.ts); registered so it
+   interpolates instead of flipping halfway. */
+@property --prepr-presence {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+
+/* A faint mark on every editable element, so a visitor sees what can be
+   edited before hovering. An outline rather than a border or box-shadow: it
+   takes no layout space and leaves the site's own shadows alone. */
 [data-prepr-encoded] {
-  position: relative;
-}
-
-/* positioned by overlay.ts */
-.prepr-overlay {
-  position: absolute;
-  pointer-events: none;
-  border: 2px solid #4f46e5;
-  border-radius: 4px 0px 4px 4px;
-  transition: all 0.2s ease-in-out;
-  z-index: 10000;
-}
-
-/* positioned by overlay.ts */
-.prepr-tooltip {
-  position: absolute;
-  background-color: #4f46e5;
-  color: white;
-  font-size: 12px;
-  line-height: 1;
-  padding: 4px 8px;
-  /* flat edge faces the labelled element; flipped below, the flat edge is on top */
-  border-radius: 4px 4px 0 0;
-  white-space: nowrap;
-  z-index: 10001;
-  min-width: 80px;
-  text-align: center;
-  pointer-events: auto;
-  cursor: pointer;
-  transition: opacity 0.2s ease-in-out;
-}
-
-.prepr-tooltip[data-prepr-placement='below'] {
-  border-radius: 0 0 4px 4px;
-}
-
-.prepr-tooltip:hover {
-  background-color: #4338ca;
-}
-
-/* the ::before gradient bleeds outside the box, so stacking + overflow have to
-   be forced open or ancestor containers clip it */
-.prepr-proximity-highlight {
-  position: relative;
-  z-index: 1;
-}
-
-.prepr-proximity-highlight,
-.prepr-proximity-highlight * {
-  overflow: visible !important;
-}
-
-.prepr-proximity-highlight::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -4px;
-  right: -4px;
-  bottom: -2px;
-  pointer-events: none;
-  overflow: visible;
-  background: radial-gradient(
-    circle var(--gradient-size) at var(--cursor-x) var(--cursor-y),
-    rgba(79, 70, 229, 0.15) 0%,
-    rgba(37, 99, 235, 0) 70%
-  );
-  border: 2px solid rgba(79, 70, 229, 0.15);
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  z-index: 9999;
+  outline: 1px dashed rgb(79 70 229 / calc(0.3 * var(--prepr-presence, 1)));
+  outline-offset: 2px;
 }

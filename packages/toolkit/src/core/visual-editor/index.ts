@@ -1,5 +1,4 @@
-import { readEditPayload } from '../stega/dom';
-import type { StegaEditPayload } from '../stega/overlay';
+import { readEditPayload, type StegaEditPayload } from '../stega/dom';
 import { createScopedLogger } from '../utils';
 import { fieldLabel, findFieldElement, type FieldLookup } from './field-path';
 import { t, type Locale } from '../i18n';

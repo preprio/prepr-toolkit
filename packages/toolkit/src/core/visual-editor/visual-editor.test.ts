@@ -60,6 +60,8 @@ describe('createVisualEditor', () => {
     expect(host?.parentElement).toBe(document.documentElement);
     expect(box('hover')).toBeTruthy();
     expect(box('selected')).toBeTruthy();
+    // Clicks select the field itself; the label never takes the pointer.
+    expect(host?.hasAttribute('data-label-action')).toBe(false);
   });
 
   it('outlines and labels the hovered field', async () => {

@@ -1,8 +1,30 @@
 import type { StegaDecodedData } from './clean';
-import type { StegaEditPayload } from './overlay';
 
 // Single owner of the text-node walk + attribute-tagging contract shared by
 // elements.ts and auto-clean.ts.
+
+/**
+ * `id`, `field`, and `locale` are parsed out of the edit URL, and are absent
+ * when that URL did not carry them.
+ */
+export interface StegaEditPayload extends StegaDecodedData {
+  id?: string;
+  field?: string;
+  locale?: string;
+  /** Which list item inside the field value was clicked, when it was one. */
+  block?: number;
+  /**
+   * For content of an item the open item links to: the open item's field
+   * that holds the link, so the editor can focus it.
+   */
+  referenceField?: string;
+  /**
+   * The site's own id for this entry of a list-like field (a dynamic content
+   * item's `_id`), from `data-prepr-entry-id`. Lets the editor find the entry
+   * by id rather than by position.
+   */
+  entryId?: string;
+}
 
 const IGNORED_ANCESTORS = 'script, style, noscript';
 

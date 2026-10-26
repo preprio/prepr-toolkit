@@ -14,7 +14,7 @@ type DecodeFn = (str: string | null) => StegaDecodedData | null;
 /**
  * Detects stega-encoded text nodes and tags their parent elements, keeping the
  * set current via a debounced MutationObserver. Call `scanDocument()` +
- * `setupMutationObserver()` to start, `cleanup()` to stop.
+ * `setupMutationObserver()` to start, `disconnect()` to stop.
  */
 export class StegaElements {
   private elements: NodeListOf<Element> | undefined;
@@ -119,27 +119,16 @@ export class StegaElements {
     });
   }
 
-  /** Drops the active class but keeps the data attributes, unlike cleanup(). */
-  cleanupVisuals(): void {
-    document
-      .querySelectorAll('.prepr-overlay-active')
-      .forEach((element) => element.classList.remove('prepr-overlay-active'));
-  }
-
-  cleanup(): void {
+  /**
+   * Stops watching for new content. Tags stay on their elements: the page's
+   * stega characters are stripped once they are read, so a tag removed here
+   * could never be rebuilt when edit mode is turned back on.
+   */
+  disconnect(): void {
     if (this.observer) {
       this.observer.disconnect();
       this.observer = null;
     }
-    document.querySelectorAll('[data-prepr-encoded]').forEach((element) => {
-      element.removeAttribute('data-prepr-encoded');
-      element.removeAttribute('data-prepr-href');
-      element.removeAttribute('data-prepr-origin');
-      element.removeAttribute('data-prepr-id');
-      element.removeAttribute('data-prepr-field');
-      element.removeAttribute('data-prepr-locale');
-      element.classList.remove('prepr-overlay-active');
-    });
     this.elements = undefined;
   }
 }
