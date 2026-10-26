@@ -110,3 +110,71 @@ describe('startHtmlLivePreview outside the editor', () => {
     fetchSpy.mockRestore();
   });
 });
+
+describe('startHtmlLivePreview apply modes', () => {
+  const fetchMock = vi.fn();
+  let live: HtmlLivePreview | null = null;
+  const page =
+    '<h1 data-prepr-encoded data-prepr-id="p" data-prepr-field="title">Stored</h1>';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('top', {} as Window);
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(
+      new Response(`<html><body>${page}</body></html>`, { status: 200 }),
+    );
+    document.body.innerHTML = page;
+  });
+  afterEach(() => {
+    live?.stop();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const type = (value: unknown, fieldName = 'title') =>
+    post({ event: 'prepr:fieldChange', itemId: 'p', field: fieldName, value });
+
+  it("'dom' writes text into the page without asking the server", async () => {
+    live = startHtmlLivePreview({ apply: 'dom' });
+    post({ event: 'prepr:initVE' });
+    type('Typed');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(document.querySelector('h1')!.textContent).toBe('Typed');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("'dom' leaves what it cannot show for the save", async () => {
+    live = startHtmlLivePreview({ apply: 'dom' });
+    post({ event: 'prepr:initVE' });
+    type({ url: 'https://cdn.example/a.jpg' }, 'image');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("'dom' renders the stored page on save", async () => {
+    live = startHtmlLivePreview({ apply: 'dom' });
+    post({ event: 'prepr:initVE' });
+    type('Typed');
+    post({ event: 'prepr:itemChanged', itemId: 'p' });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].method).toBe('GET');
+    expect(document.querySelector('h1')!.textContent).toBe('Stored');
+  });
+
+  it("'auto' asks the server only for what the page cannot show", async () => {
+    live = startHtmlLivePreview({ apply: 'auto' });
+    post({ event: 'prepr:initVE' });
+    type('Typed');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector('h1')!.textContent).toBe('Typed');
+
+    type({ url: 'https://cdn.example/a.jpg' }, 'image');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+  });
+});

@@ -57,6 +57,10 @@ export {
   type HtmlLivePreviewOptions,
 } from './core/live-preview/html-live';
 export { readLiveLogFromRequest } from './core/live-preview/live-request';
+export {
+  applyPatchLogToDom,
+  type DomPatchResult,
+} from './core/live-preview/dom-patch';
 
 // --- Server -----------------------------------------------------------------
 export {
