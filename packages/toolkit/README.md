@@ -127,6 +127,7 @@ Per-framework peer dependencies — all optional; installing without them is fin
 | `@preprio/toolkit/astro`          | none (`.astro` components compile in your own pipeline) |
 | `@preprio/toolkit/sveltekit`      | `svelte` (only for the `.svelte` components)            |
 | `@preprio/toolkit/sveltekit/live` | none (returns a plain Svelte store)                     |
+| `@preprio/toolkit/codegen`        | `graphql` >= 16 (build time, from your Codegen setup)   |
 | `@preprio/toolkit/nuxt`           | `vue` (only for the `.vue` components)                  |
 | `@preprio/toolkit/nuxt/live`      | `vue` >= 3.3                                            |
 
@@ -728,13 +729,41 @@ exactly these.
 
 Live updates and click-to-edit find content by id, never by position, so
 they stay correct while an editor adds, removes or reorders blocks before
-saving:
+saving. Every model, component and dynamic content entry that should
+live-update needs `_id` (and ideally `__typename`) in the query result; items
+without `_id` stay static.
 
-- Select `_id` (and ideally `__typename`) on every model and component level
-  that should live-update. Items without `_id` stay static.
-- In dynamic content fields, select `_id` on every entry type (`Text`,
-  `Quote`, …). `Assets` entries have no `_id` of their own: select
-  `items { _id }` instead.
+**With GraphQL Codegen, let the toolkit select them.** Add the `preprIds`
+document transform to your output, and `_id` and `__typename` are added
+wherever your schema has them: on models and components, inside each member
+of a dynamic content field, never on collections like `Pages` or on unions
+themselves. The generated documents and types include them; your `.graphql`
+files stay as they are.
+
+```ts
+// codegen.ts
+import { preprIds } from '@preprio/toolkit/codegen';
+
+const config: CodegenConfig = {
+  schema: process.env.PREPR_GRAPHQL_URL,
+  documents: ['src/queries/**/*.graphql'],
+  generates: {
+    'src/gql/': {
+      preset: 'client',
+      documentTransforms: [preprIds],
+    },
+  },
+};
+```
+
+Without Codegen, `addPreprIds(document, schema)` from the same entry does the
+same to a parsed `DocumentNode` and a `GraphQLSchema`, or select them by hand:
+`_id` on every model and component level, and on every entry type in dynamic
+content fields (`Text`, `Quote`, …). `Assets` entries have no `_id` of their
+own: select `items { _id }` instead.
+
+The rest is about rendering:
+
 - A `Text` entry's content updates whether the query selects `body`,
   `html` or `text` (the latter with tags stripped).
 - Render each dynamic content entry inside an element marked with
@@ -1104,7 +1133,7 @@ createPreprPreview({ props, options: { locale: 'nl' } });
 
 - **Check `enabled`**: every live preview entry point needs your preview flag, and the middleware must run with `preview: true` for that page.
 - **Check the preview URL in Prepr**: it must point at a deployment that uses the GraphQL Preview token. A production build with preview off shows saved content only.
-- **Check `_id`**: an item or component whose query does not select `_id` stays static. See [Preparing your queries](#preparing-your-queries).
+- **Check `_id`**: an item or component whose query does not select `_id` stays static. Add the `preprIds` Codegen transform, or see [Preparing your queries](#preparing-your-queries).
 - **Check the frame**: a `Refused to frame` error in the browser console means your `Content-Security-Policy` `frame-ancestors` does not list your Prepr environment.
 - **Next.js only shows changes on save**: `normalizeQuery` with `PreprRefresh` needs Next.js 16 or later.
 

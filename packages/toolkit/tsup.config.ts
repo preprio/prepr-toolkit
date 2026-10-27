@@ -116,6 +116,15 @@ export default defineConfig([
   },
   {
     ...sharedOptions,
+    // Build-time helper for GraphQL Codegen; `graphql` comes from the
+    // consumer's codegen setup.
+    entry: { index: 'src/codegen/index.ts' },
+    outDir: 'dist/codegen',
+    clean: false,
+    external: ['graphql'],
+  },
+  {
+    ...sharedOptions,
     // Only the TS module is built here — the `.svelte` components ship as
     // source and are compiled by the *consumer's* Vite/Svelte pipeline (tsup
     // has no `.svelte` loader). Published verbatim via package.json's `files`

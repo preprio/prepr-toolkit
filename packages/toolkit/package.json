@@ -80,6 +80,11 @@
       "require": "./dist/astro/index.cjs"
     },
     "./astro/components/*": "./src/astro/*.astro",
+    "./codegen": {
+      "types": "./dist/codegen/index.d.ts",
+      "import": "./dist/codegen/index.js",
+      "require": "./dist/codegen/index.cjs"
+    },
     "./sveltekit": {
       "types": "./dist/sveltekit/index.d.ts",
       "import": "./dist/sveltekit/index.js",
@@ -125,6 +130,7 @@
     "preact": "^10.29.7"
   },
   "peerDependencies": {
+    "graphql": ">=16",
     "next": ">=13",
     "react": ">=17",
     "react-dom": ">=17",
@@ -132,6 +138,9 @@
     "vue": ">=3.3"
   },
   "peerDependenciesMeta": {
+    "graphql": {
+      "optional": true
+    },
     "next": {
       "optional": true
     },
@@ -153,6 +162,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "browserslist": "^4.28.7",
+    "graphql": "^16.14.2",
     "happy-dom": "^20.11.1",
     "lightningcss": "^1.33.0",
     "next": "^16.2.12",
