@@ -1,5 +1,6 @@
 ---
 import { print } from 'graphql';
+import { normalizeQuery } from '@preprio/toolkit/astro';
 import Layout from '../layouts/Layout.astro';
 import { Prepr } from '../lib/prepr';
 import { GetPageBySlugDocument } from '../gql/graphql';
@@ -12,7 +13,15 @@ import Feature from '../components/sections/Feature.astro';
 const slug = Astro.params.slug ?? '/';
 
 const response = await Prepr(print(GetPageBySlugDocument), { slug }, Astro.request.headers);
-const { data } = (await response.json()) as { data: GetPageBySlugQuery };
+const { data: fetched } = (await response.json()) as { data: GetPageBySlugQuery };
+
+// Inside the Prepr editor, applies the editor's unsaved changes to the result;
+// `PreprToolbar` re-requests the page while they type. Returns it untouched
+// when not in preview — the same flag as the middleware.
+const data = normalizeQuery(GetPageBySlugDocument, fetched, {
+  enabled: import.meta.env.DEV,
+  locals: Astro.locals,
+});
 
 if (!data?.Page) {
   return new Response('Not found', { status: 404 });

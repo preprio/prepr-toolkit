@@ -1,3 +1,4 @@
+import { dev } from '$app/environment';
 import { print } from 'graphql';
 import { error } from '@sveltejs/kit';
 import { Prepr } from '$lib/prepr.server';
@@ -28,5 +29,7 @@ export const load: PageServerLoad = async ({ params, request }) => {
     throw error(404, 'Not found');
   }
 
-  return { page: data.Page, _debug };
+  // `preview` gates live preview in `+page.svelte`, the same flag as the
+  // toolbar in `+layout.server.ts`.
+  return { page: data.Page, preview: dev, _debug };
 };

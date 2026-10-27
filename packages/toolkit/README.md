@@ -17,8 +17,9 @@ Every integration is the same three steps:
 1. **Middleware** — resolves the visitor's customer ID, segment, and A/B variant into request headers.
 2. **Layout** — mounts the preview toolbar and the tracking pixel.
 3. **Data fetching** — forwards the Prepr headers on your GraphQL requests, so Prepr returns personalized content.
+4. **Live preview** (optional) — shows the editor's unsaved changes in Prepr's side-by-side preview while they type. See [Live preview](#live-preview).
 
-Jump to your framework: [Next.js](#nextjs) · [Astro](#astro) · [SvelteKit](#sveltekit) · [Nuxt](#nuxt) · [React without a framework](#react-no-framework) · [anything else](#any-other-framework).
+Jump to your framework: [Next.js](#nextjs) · [Astro](#astro) · [SvelteKit](#sveltekit) · [Nuxt](#nuxt) · [React without a framework](#react-no-framework) · [anything else](#any-other-framework) · [Live preview](#live-preview).
 
 Coming from `@preprio/prepr-nextjs`? See the [migration guide](https://github.com/preprio/prepr-toolkit/blob/main/MIGRATION.md).
 
@@ -122,9 +123,12 @@ Per-framework peer dependencies — all optional; installing without them is fin
 | `@preprio/toolkit` (vanilla core) | none                                                    |
 | `@preprio/toolkit/react`          | `react` >= 17, `react-dom` >= 17                        |
 | `@preprio/toolkit/nextjs`         | `next` >= 13, `react` >= 17, `react-dom` >= 17          |
+| `@preprio/toolkit/nextjs/live`    | `next` >= 13, `react` >= 18 (live preview)              |
 | `@preprio/toolkit/astro`          | none (`.astro` components compile in your own pipeline) |
 | `@preprio/toolkit/sveltekit`      | `svelte` (only for the `.svelte` components)            |
+| `@preprio/toolkit/sveltekit/live` | none (returns a plain Svelte store)                     |
 | `@preprio/toolkit/nuxt`           | `vue` (only for the `.vue` components)                  |
+| `@preprio/toolkit/nuxt/live`      | `vue` >= 3.3                                            |
 
 ## The preview gate
 
@@ -250,102 +254,13 @@ The loader rewrites `w_` to the width Next asks for and scales `h_` alongside it
 
 See the runnable example at `examples/nextjs` for the full source of truth.
 
-### Live preview (beta)
+### Live preview in Next.js
 
-True live preview inside the Prepr editor iframe: keystrokes patch your query
-results instantly by item `_id`; saves refetch the affected queries.
+Two additions turn on [live preview](#live-preview) for an App Router site.
+Both take your preview flag, the same one you pass the middleware.
 
-**Requirements.** Live preview runs only where the Prepr middleware handles
-the request with `preview: true` (`createPreprMiddleware(request, { preview })`
-in `proxy.ts`). Make sure your middleware `matcher` covers every page you
-preview: on a page it skips, live preview does nothing and shows no error.
-Pass your preview flag as `enabled` to every live preview entry point below;
-each one does nothing without it.
-
-Live updates and click-to-edit find content by id, never by position, so
-they stay correct while an editor adds, removes or reorders blocks before
-saving:
-
-- Select `_id` (and ideally `__typename`) on every model and component level
-  that should live-update. Items without `_id` silently stay static.
-- In dynamic content fields, select `_id` on every entry type (`Text`,
-  `Quote`, …). `Assets` entries have no `_id` of their own: select
-  `items { _id }` instead.
-- A `Text` entry's content updates whether the query selects `body`,
-  `html` or `text` (the latter with tags stripped).
-- Render each dynamic content entry inside an element marked with
-  `data-prepr-edit-target="<field>.<index>"` and
-  `data-prepr-entry-id="<entry _id>"` (for `Assets`, the first asset's
-  `_id`). The index is the fallback when no id matches.
-- Values without a hidden edit link (images, videos, other URLs) are made
-  click-to-edit with `previewAttrs({ id, field }, { enabled: isPreview })`
-  on the element that renders them.
-- Where the page renders a linked item whose content comes from items nested
-  inside it (for example a personalization or a shared section referenced
-  from a stack), wrap it in an element with
-  `data-prepr-reference="<linked item _id>"`. The editor only knows the items
-  the open item links to directly; content inside the wrapper is outlined as
-  that linked item, and clicking it opens the link in the editor.
-
-Configure once in a small client component mounted in your root layout:
-
-```tsx
-'use client';
-import { useEffect } from 'react';
-import { initLivePreview } from '@preprio/toolkit/nextjs/live';
-
-export default function LivePreviewInit({ preview }: { preview: boolean }) {
-  useEffect(() => {
-    initLivePreview({
-      // Your preview flag. Without it nothing starts.
-      enabled: preview,
-      // Runs a registered query against Prepr GraphQL. `query` is whatever
-      // you registered (string or DocumentNode) — you own the transport.
-      fetcher: async (query, variables) => {
-        /* POST to your Prepr GraphQL endpoint, return json.data */
-      },
-    });
-  }, [preview]);
-  return null;
-}
-```
-
-Register query results in client components with `useLive`:
-
-```tsx
-'use client';
-import { useLive } from '@preprio/toolkit/nextjs/live';
-
-export default function PageContent({ data, slug }) {
-  const liveData = useLive(data, {
-    query: GetPageBySlugDocument,
-    variables: { slug },
-  });
-  // render from liveData — it re-renders on editor keystrokes and saves
-}
-```
-
-In `'use client'` files always import from `@preprio/toolkit/nextjs/live` —
-the `/nextjs` barrel also exports server-only helpers (`next/headers`), which
-a client module graph must not include.
-
-Omitting `query`/`variables` degrades that registration to keystroke pushes
-only. For server-component pages, mount `<PreprRefresh enabled={preview} />`
-instead — it calls `router.refresh()` on every save. Don't combine
-`PreprRefresh` with `useLive` registrations that pass a `query`: a save would
-both refetch and refresh. `useLive` without a `query` works alongside it.
-
-Without `enabled`, and outside the Prepr editor iframe, all of this is a
-passthrough with zero overhead. The CMS editor must emit `prepr:fieldChange` (per keystroke) and
-`prepr:itemChanged` (on save, with the root content item id) into the preview
-iframe — `examples/editor-emulator` emulates this for local development.
-Unsaved structural changes (adding/reordering components) appear after save;
-typed text is live immediately.
-
-#### Unsaved changes in server components: `normalizeQuery` (experimental, Next.js 16+)
-
-Server components show the editor's unsaved changes when you pass their query
-results through `normalizeQuery`, with whatever client you fetch with:
+**1. Run each query result through `normalizeQuery`**, with whatever client
+you fetch with:
 
 ```ts
 import { normalizeQuery } from '@preprio/toolkit/nextjs';
@@ -356,50 +271,66 @@ const data = await fetchFromPrepr(GetPageDocument, { slug }); // any client
 const page = await normalizeQuery(GetPageDocument, data, { enabled: preview });
 ```
 
-Mount `<PreprRefresh enabled={preview} />` in the root layout. While an
-editor types, it sends the unsaved changes to the server and the route
-re-renders with them; on save it refreshes with the stored content.
+**2. Mount `PreprRefresh` once in the root layout:**
 
-- The query (source text, a `DocumentNode`, or a typed document string) tells
-  the toolkit which response key holds which field. Changes land under
-  aliases, inside single components, on dynamic content entries, and on every
-  place the same item appears. Fields the query did not select are left
-  alone. Select `_id` on every item and component that should update.
-- Changed text keeps its hidden edit link, so it stays click-to-edit.
-- `useLive` data keeps the typed values across these re-renders.
+```tsx
+import { PreprRefresh } from '@preprio/toolkit/nextjs/live';
 
-**Production safety.** Pass `enabled` from the same preview flag you give the
-middleware, and never `true` on a production deployment:
+{
+  preview && <PreprRefresh enabled />;
+}
+```
 
-- With `enabled: false` (the default) the result is returned untouched and
-  the request is never read, so static and ISR pages stay static.
-  `PreprRefresh`, `initLivePreview` and `useLive` don't listen to the editor
-  at all.
-- Next.js registers the toolkit's server action in every build that imports
-  `@preprio/toolkit/nextjs/live`, so anyone can call it, browsers and scripts
-  alike. It does nothing (no parsing, no storage, no re-render) unless the
-  Prepr middleware handled the request with `preview: true`. The middleware
-  drops `Prepr-*` headers a client sends, so this can't be forged on a page
-  the middleware runs for. On a page its `matcher` skips, a forged header can
-  at most trigger an extra render, never change content, because
-  `normalizeQuery` there still needs `enabled`.
-- Changes only reach the re-render of the editor's own server action call.
-  The action stores them in the server process under a random, single-use
-  token and sets only that token as a cookie that expires immediately. Any
-  other request carrying the cookie, such as a plain or cacheable GET that
-  replays a token, sees nothing.
-- Changes are only accepted from the Prepr editor (`https://*.prepr.io`, or
-  your `allowedEditorOrigins` via `initLivePreview`), never from another page
-  that frames your site. They are validated as hostile input: link fields
-  never take `javascript:`, `vbscript:` or `data:` URLs. HTML text is passed
-  on as typed, like rich text from the API.
+While an editor types, `PreprRefresh` sends the unsaved changes to a server
+action and the route re-renders with them; on save it calls
+`router.refresh()` for the stored content. Server components need nothing
+else. Requires Next.js 16 or later; on Next.js 15 and older pages update on
+save only.
 
-On Next.js 15 and older the action does nothing and pages update on save.
+**Client components** can skip the server round trip: wrap the data they
+render in `useLive`, and keystrokes patch it in the browser. Import it from
+`@preprio/toolkit/nextjs/live` — the `/nextjs` barrel also exports
+server-only helpers (`next/headers`), which a client module graph must not
+include.
 
-For Astro and Nuxt, see their sections. The framework-free core exports,
-`normalizeQuery(query, result, { log })`, `startHtmlLivePreview()` and
-`readLiveLogFromRequest(request)` from `@preprio/toolkit`, cover any other
-server-rendered stack.
+```tsx
+'use client';
+import { useLive } from '@preprio/toolkit/nextjs/live';
+
+export default function Hero({ hero }: { hero: HeroFragment }) {
+  const live = useLive(hero);
+  return <h1>{live.title}</h1>;
+}
+```
+
+**Client-fetched data** (no server components): instead of `PreprRefresh`,
+call `initLivePreview({ enabled: preview, fetcher })` once in a client
+component, and pass `{ query, variables }` to `useLive`. On save the toolkit
+runs the query again through your `fetcher`:
+
+```tsx
+'use client';
+import { useEffect } from 'react';
+import { initLivePreview, useLive } from '@preprio/toolkit/nextjs/live';
+
+export function LivePreviewInit({ preview }: { preview: boolean }) {
+  useEffect(() => {
+    initLivePreview({
+      enabled: preview,
+      // Runs a registered query against Prepr GraphQL; return `json.data`.
+      fetcher: (query, variables) => fetchFromPrepr(query, variables),
+    });
+  }, [preview]);
+  return null;
+}
+
+// In a client component:
+const liveData = useLive(data, { query: GetPageDocument, variables: { slug } });
+```
+
+Don't combine `PreprRefresh` with `useLive` registrations that pass a
+`query`: a save would both refetch and refresh. `useLive` without a `query`
+works alongside it.
 
 ## Astro
 
@@ -452,11 +383,11 @@ The `.astro` components ship as source, compiled by your own Astro/Vite pipeline
 
 See the runnable example at `examples/astro` for the full source of truth.
 
-### Live preview (experimental)
+### Live preview in Astro
 
-Show the editor's unsaved changes while they type. Pass `preview` to
-`onPreprRequest` as above, and run each query result through
-`normalizeQuery` with your preview flag:
+To turn on [live preview](#live-preview), pass `preview` to `onPreprRequest`
+as above, and run each query result through `normalizeQuery` with the same
+flag:
 
 ```astro
 ---
@@ -472,13 +403,8 @@ const page = normalizeQuery(GetPageDocument, data, {
 
 `PreprToolbar.astro` does the rest. Inside the Prepr editor it requests the
 page again with the unsaved changes and updates only the parts of the DOM that
-changed; on save it shows the stored content. Preview must render on demand
-(`output: 'server'`).
-
-Safety: the middleware only accepts changes in preview, from a same-origin
-`POST` that carries the toolkit's header and a JSON body, and marks that
-response `Cache-Control: private, no-store`. With `enabled: false` the result
-is returned untouched. Changes are accepted only from the Prepr editor.
+changed; on save it shows the stored content. Preview pages must render on
+demand (`output: 'server'`, or `export const prerender = false`).
 
 ## SvelteKit
 
@@ -540,6 +466,35 @@ The `.svelte` components ship as source (compiled by your own Vite/Svelte pipeli
 
 See the runnable example at `examples/sveltekit` for the full source of truth.
 
+### Live preview in SvelteKit
+
+To turn on [live preview](#live-preview), return your preview flag from
+`load`, then run the query result through `normalizedQuery`. It applies the
+editor's changes in the browser, with no server round trip:
+
+```svelte
+<script lang="ts">
+  import { invalidateAll } from '$app/navigation';
+  import { normalizedQuery } from '@preprio/toolkit/sveltekit/live';
+
+  let { data } = $props();
+
+  const result = $derived(
+    normalizedQuery(GetPageDocument, data.result, {
+      enabled: data.preview,
+      onSave: invalidateAll,
+    }),
+  );
+</script>
+
+<h1>{$result.Page.title}</h1>
+```
+
+`normalizedQuery` returns a Svelte store: render from `$result`. Pass the
+result in the shape the query returns (`{ Page: … }`, not just the page), so
+the toolkit can tell which response key holds which field. On save,
+`invalidateAll` reruns your `load` functions for the stored content.
+
 ## Nuxt
 
 Requires Nitro's Node.js preset (the Nuxt default).
@@ -591,24 +546,25 @@ The `.vue` components ship as source (compiled by your own Vite/Vue pipeline) an
 
 See the runnable example at `examples/nuxt` for the full source of truth.
 
-### Live preview (experimental)
+### Live preview in Nuxt
 
-Show the editor's unsaved changes while they type, with no server round trip:
+To turn on [live preview](#live-preview), run the `useAsyncData` result
+through `useNormalizedQuery` with your preview flag. It applies the editor's
+changes in the browser, with no server round trip:
 
 ```ts
 import { useNormalizedQuery } from '@preprio/toolkit/nuxt/live';
 
 const { data, refresh } = await useAsyncData('page', () => fetchPage(slug));
 const page = useNormalizedQuery(GetPageDocument, data, {
-  enabled: preview, // your preview flag; nothing starts without it
+  enabled: preview,
   onSave: refresh,
 });
 ```
 
 Render from `page`. Nuxt hydrates the whole page, so every component that
-shows a changed field updates. Without `enabled`, on the server and outside
-the Prepr editor's preview iframe it returns the data unchanged. Changes are accepted only from
-the Prepr editor.
+shows a changed field updates. On save, `refresh` refetches the stored
+content.
 
 ## React (no framework)
 
@@ -730,6 +686,119 @@ const controller = createPreprPreview({ props: toolbarProps });
 ```
 
 Serialize the server-computed props into the page — a `<script type="application/json">` tag works well — and read them back on the client. See the runnable example at `examples/express` for the full source of truth.
+
+## Live preview
+
+Inside Prepr's side-by-side preview, live preview shows what an editor types
+before they save: text, links and other fields update on the page as they
+type, and a save shows the stored content. Outside the editor, and when it is
+not enabled, it does nothing and costs nothing: the runtime loads only inside
+the editor iframe.
+
+| Framework | Entry point                       | Applies changes                       | Setup                                   |
+| --------- | --------------------------------- | ------------------------------------- | --------------------------------------- |
+| Next.js   | `@preprio/toolkit/nextjs/live`    | On the server (`normalizeQuery`)      | [Next.js](#live-preview-in-nextjs)      |
+| Astro     | `@preprio/toolkit/astro`          | On the server (`normalizeQuery`)      | [Astro](#live-preview-in-astro)         |
+| SvelteKit | `@preprio/toolkit/sveltekit/live` | In the browser (`normalizedQuery`)    | [SvelteKit](#live-preview-in-sveltekit) |
+| Nuxt      | `@preprio/toolkit/nuxt/live`      | In the browser (`useNormalizedQuery`) | [Nuxt](#live-preview-in-nuxt)           |
+
+Other server-rendered stacks can use the framework-free core exports from
+`@preprio/toolkit`: `readLiveLogFromRequest(request)` in the server handler,
+`normalizeQuery(query, result, { log })` on each result, and
+`startHtmlLivePreview()` in the browser. The Astro wrapper is built from
+exactly these.
+
+### Before you start
+
+1. **Set up the toolbar for your framework first.** Live preview runs only
+   where the Prepr middleware handles the request with `preview: true`. Make
+   sure the middleware covers every page you preview: on a page it skips,
+   live preview does nothing and shows no error.
+2. **Pass your preview flag as `enabled`** to every live preview entry point.
+   Each one does nothing without it. Never pass `true` on a production
+   deployment.
+3. **Point Prepr at your preview deployment.** In Prepr, set the preview URL
+   to a deployment that uses the **GraphQL Preview** access token, with
+   **Enable edit mode** checked.
+4. **Allow Prepr to frame your site.** If your server sends a
+   `Content-Security-Policy`, add your Prepr environments to
+   `frame-ancestors`, for example
+   `frame-ancestors https://acme.prepr.io https://dev-acme.prepr.io`.
+
+### Preparing your queries
+
+Live updates and click-to-edit find content by id, never by position, so
+they stay correct while an editor adds, removes or reorders blocks before
+saving:
+
+- Select `_id` (and ideally `__typename`) on every model and component level
+  that should live-update. Items without `_id` stay static.
+- In dynamic content fields, select `_id` on every entry type (`Text`,
+  `Quote`, …). `Assets` entries have no `_id` of their own: select
+  `items { _id }` instead.
+- A `Text` entry's content updates whether the query selects `body`,
+  `html` or `text` (the latter with tags stripped).
+- Render each dynamic content entry inside an element marked with
+  `data-prepr-edit-target="<field>.<index>"` and
+  `data-prepr-entry-id="<entry _id>"` (for `Assets`, the first asset's
+  `_id`). The index is the fallback when no id matches.
+- Values without a hidden edit link (images, videos, other URLs) are made
+  click-to-edit with `previewAttrs({ id, field }, { enabled: preview })`
+  on the element that renders them.
+- Where the page renders a linked item whose content comes from items nested
+  inside it (for example a personalization or a shared section referenced
+  from a stack), wrap it in an element with
+  `data-prepr-reference="<linked item _id>"`. The editor only knows the items
+  the open item links to directly; content inside the wrapper is outlined as
+  that linked item, and clicking it opens the link in the editor.
+
+Typed text and changed fields show immediately. Structural changes, such as
+adding or reordering components, appear after save.
+
+### Options
+
+`PreprRefresh`, `initLivePreview`, `normalizedQuery` and `useNormalizedQuery`
+take the same two options as the toolbar (in Astro, set them on the
+toolbar's `options`):
+
+- **`allowedEditorOrigins`** — exact editor origins, replacing the
+  `https://*.prepr.io` default. Only needed when Prepr runs on your own domain.
+- **`strictMode`** — set it when your preview token uses GraphQL strict mode
+  (required fields never null). The editor then holds back new entries until
+  their required fields are filled, and never sends a cleared required field
+  as null.
+
+### Security
+
+- **Disabled means untouched.** With `enabled: false` (the default) results
+  are returned as they are and the request is never read, so static and ISR
+  pages stay static.
+- **Only the Prepr editor can send changes.** Changes are accepted only from
+  `https://*.prepr.io` (or your `allowedEditorOrigins`), never from another
+  page that frames your site. They are validated as hostile input: link
+  fields never take `javascript:`, `vbscript:` or `data:` URLs. HTML text is
+  passed on as typed, like rich text from the API.
+- **One editor's changes never reach anyone else.** On the server-side
+  frameworks, changes are read only in preview. Astro accepts them only from
+  a same-origin `POST` carrying the toolkit's header and marks that response
+  `Cache-Control: private, no-store`. Next.js stores them in the server
+  process under a random, single-use token, so a replayed or cached request
+  sees nothing.
+- **The Next.js server action is public but inert.** Next.js registers the
+  toolkit's server action in every build that imports
+  `@preprio/toolkit/nextjs/live`, so anyone can call it. It does nothing
+  unless the Prepr middleware handled the request with `preview: true`, and
+  the middleware drops `Prepr-*` headers a client sends.
+
+### Trying it locally
+
+The Next.js, Astro, SvelteKit and Nuxt examples all have live preview wired
+up; open them from a Prepr environment whose preview URL points at your local
+server. Without Prepr, `examples/editor-emulator` stands in for the editor
+with the Next.js example: it frames the site, performs the editor handshake
+and sends a change per keystroke and a save. It runs on
+`http://localhost:4444`, so add that origin to `allowedEditorOrigins` (on the
+toolbar's `options` and on `PreprRefresh`) while you test with it.
 
 ## API Reference
 
@@ -892,15 +961,15 @@ createPreprMiddleware(request, response, { preview });
 createPreprPreview({ props, options: { debug: true, locale: 'nl' } });
 ```
 
-| Option                 | Type                           | Default       | Description                                                                                                                                                                                                                                                                   |
-| ---------------------- | ------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `debug`                | `boolean`                      | `false`       | Enable debug logging.                                                                                                                                                                                                                                                         |
-| `locale`               | `'en' \| 'nl' \| 'fr' \| 'de'` | auto-detected | UI language. Falls back to the first supported browser language, then `en`. Inside the Prepr editor, the editor's interface language wins.                                                                                                                                    |
-| `features`             | `PreprFeatures`                | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                                                                                                                                                                                      |
-| `ui`                   | `boolean`                      | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                                                                                                                                                                                           |
-| `allowedEditorOrigins` | `string[]`                     | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted or local editors. Replaces the wildcard. `['*']` accepts any origin — development only.                                                                                                                   |
-| `strictMode`           | `boolean`                      | `false`       | Your preview token uses GraphQL strict mode (required fields never null). The editor then holds back new entries until their required fields are filled and never sends a cleared required field as null. Also on `PreprRefresh`, `initLivePreview` and `useNormalizedQuery`. |
-| `autoClean`            | `boolean`                      | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning).                                                                                                                                                                      |
+| Option                 | Type                           | Default       | Description                                                                                                                                                                                                                                                                                      |
+| ---------------------- | ------------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `debug`                | `boolean`                      | `false`       | Enable debug logging.                                                                                                                                                                                                                                                                            |
+| `locale`               | `'en' \| 'nl' \| 'fr' \| 'de'` | auto-detected | UI language. Falls back to the first supported browser language, then `en`. Inside the Prepr editor, the editor's interface language wins.                                                                                                                                                       |
+| `features`             | `PreprFeatures`                | all enabled   | Which features run. See [Feature flags](#feature-flags).                                                                                                                                                                                                                                         |
+| `ui`                   | `boolean`                      | `true`        | Mount the visible toolbar. See [Headless preview](#headless-preview-no-toolbar-ui).                                                                                                                                                                                                              |
+| `allowedEditorOrigins` | `string[]`                     | `*.prepr.io`  | Exact editor origins allowed to drive this preview, for self-hosted or local editors. Replaces the wildcard. `['*']` accepts any origin — development only.                                                                                                                                      |
+| `strictMode`           | `boolean`                      | `false`       | Your preview token uses GraphQL strict mode (required fields never null). The editor then holds back new entries until their required fields are filled and never sends a cleared required field as null. Also on `PreprRefresh`, `initLivePreview`, `normalizedQuery` and `useNormalizedQuery`. |
+| `autoClean`            | `boolean`                      | `true`        | Strip the invisible stega characters from visible text. See [Stega auto-cleaning](#stega-auto-cleaning).                                                                                                                                                                                         |
 
 `features` and `ui` are independent: `features` decides _what runs_, `ui` decides _whether the toolbar is visible_.
 
@@ -1035,6 +1104,14 @@ createPreprPreview({ props, options: { locale: 'nl' } });
 - **Middleware setup**: confirm `middleware.ts` sits in the project root (or `src/`) and its matcher covers the route.
 - **API calls**: personalization only works if you spread `getPreprHeaders()` into your GraphQL fetch. Missing headers is the most common reason segments appear to have no effect.
 - **Chained middleware**: when chaining, pass the existing `NextResponse` as the second argument. Creating a fresh `NextResponse.next()` afterwards discards Prepr's request headers.
+
+### Live preview does not update
+
+- **Check `enabled`**: every live preview entry point needs your preview flag, and the middleware must run with `preview: true` for that page.
+- **Check the preview URL in Prepr**: it must point at a deployment that uses the GraphQL Preview token. A production build with preview off shows saved content only.
+- **Check `_id`**: an item or component whose query does not select `_id` stays static. See [Preparing your queries](#preparing-your-queries).
+- **Check the frame**: a `Refused to frame` error in the browser console means your `Content-Security-Policy` `frame-ancestors` does not list your Prepr environment.
+- **Next.js only shows changes on save**: `normalizeQuery` with `PreprRefresh` needs Next.js 16 or later.
 
 ### Segments switch but content does not change
 

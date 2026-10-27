@@ -2,7 +2,8 @@ import { Suspense } from 'react';
 
 // Helper function to get all the props for the PreprToolbar component (this needs a server component)
 import { getToolbarProps, PreprToolbar } from '@preprio/toolkit/nextjs';
-import { preprGraphqlUrl } from '@/prepr-env';
+import { PreprRefresh } from '@preprio/toolkit/nextjs/live';
+import { isPreview, preprGraphqlUrl } from '@/prepr-env';
 import { preprFeatures } from '@/prepr-features';
 
 export default async function Layout({
@@ -10,10 +11,6 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  // The toolkit reads no env vars of its own — you decide what "preview" means.
-  // This starter uses NODE_ENV; on Vercel `process.env.VERCEL_ENV !== 'production'`
-  // is the usual choice, or use your own flag.
-  const isPreview = process.env.NODE_ENV !== 'production';
   let toolbarProps = null;
 
   // Read the URL outside the try so a missing env var fails loudly instead of
@@ -42,6 +39,10 @@ export default async function Layout({
               options={{ features: preprFeatures }}
             />
           </Suspense>
+          {/* Live preview: re-renders the route with the editor's unsaved
+              changes while they type (see `normalizeQuery` in page.tsx), and
+              refreshes it on save. */}
+          <PreprRefresh enabled={isPreview} />
           {children}
         </>
       ) : (

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { print } from 'graphql';
 import { getPreprHeaders } from '@preprio/toolkit/nuxt';
+import { useNormalizedQuery } from '@preprio/toolkit/nuxt/live';
 import { GetPageBySlugDocument } from '~/gql/graphql';
 import type { GetPageBySlugQuery } from '~/gql/graphql';
 
@@ -18,7 +19,7 @@ const config = useRuntimeConfig();
 // the fetch runs on the server during SSR.
 const requestHeaders = useRequestHeaders();
 
-const { data } = await useAsyncData(`page-${slug}`, async () => {
+const { data, refresh } = await useAsyncData(`page-${slug}`, async () => {
   const response = await $fetch<{ data: GetPageBySlugQuery }>(
     config.public.preprGraphqlUrl,
     {
@@ -39,9 +40,16 @@ if (!data.value?.Page) {
   throw createError({ statusCode: 404, statusMessage: 'Not found' });
 }
 
-const page = data.value.Page;
+// Inside the Prepr editor, shows the editor's unsaved changes while they type
+// and refetches on save. Returns the data unchanged when not in preview — the
+// same flag as the middleware.
+const live = useNormalizedQuery(GetPageBySlugDocument, data, {
+  enabled: import.meta.dev,
+  onSave: refresh,
+});
+const page = computed(() => live.value!.Page!);
 
-useHead({ meta: [{ property: 'prepr:id', content: page._id }] });
+useHead({ meta: [{ property: 'prepr:id', content: () => page.value._id }] });
 </script>
 
 <template>

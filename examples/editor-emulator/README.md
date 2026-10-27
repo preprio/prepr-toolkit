@@ -8,11 +8,16 @@ handshake, builds an editable field panel from the page's own data
 
 ## Run
 
-1. Start the Next.js example on port 3000 (`pnpm dev` in `examples/nextjs`).
-2. `pnpm dev` here (serves on http://localhost:4444).
-3. Open http://localhost:4444, click **Load**.
-4. Type in a field → the preview updates instantly (push leg).
-5. Click **Save** → the preview refetches (refetch leg; reflects API state).
+1. Trust the emulator's origin in the Next.js example: add
+   `allowedEditorOrigins: ['http://localhost:4444']` to the toolbar's
+   `options` and `allowedEditorOrigins={['http://localhost:4444']}` to
+   `PreprRefresh`. The toolkit only takes editor messages from
+   `https://*.prepr.io` by default. Don't commit this.
+2. Start the Next.js example on port 3000 (`pnpm dev` in `examples/nextjs`).
+3. `pnpm dev` here (serves on http://localhost:4444).
+4. Open http://localhost:4444, click **Load**.
+5. Type in a field → the preview updates instantly (push leg).
+6. Click **Save** → the preview refetches (refetch leg; reflects API state).
 
 Must be served over http (`file://` gives a `null` origin, which breaks
 the origin-trust handshake with the toolkit).

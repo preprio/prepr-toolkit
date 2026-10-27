@@ -1,4 +1,12 @@
 /**
+ * The preview flag: gates the middleware, the toolbar and live preview. The
+ * toolkit reads no env vars of its own — you decide what "preview" means.
+ * This starter uses NODE_ENV; on Vercel `process.env.VERCEL_ENV !== 'production'`
+ * is the usual choice, or use your own flag.
+ */
+export const isPreview = process.env.NODE_ENV !== 'production';
+
+/**
  * Single source for the Prepr GraphQL endpoint.
  *
  * Server-only: `PREPR_GRAPHQL_URL` carries an access token, so it must not be

@@ -3,7 +3,8 @@ import PageContent from '@/components/page-content';
 import { getClient } from '@/apollo-client';
 import { GetPageBySlugDocument, GetPageBySlugQuery } from '@/gql/graphql';
 import { notFound } from 'next/navigation';
-import { getPreprHeaders } from '@preprio/toolkit/nextjs';
+import { getPreprHeaders, normalizeQuery } from '@preprio/toolkit/nextjs';
+import { isPreview } from '@/prepr-env';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,9 @@ async function getData(slug: string) {
     return notFound();
   }
 
-  return data;
+  // Inside the Prepr editor, applies the editor's unsaved changes to the
+  // result. Returns it untouched when not in preview.
+  return normalizeQuery(GetPageBySlugDocument, data, { enabled: isPreview });
 }
 
 export default async function Page({
