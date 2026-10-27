@@ -822,13 +822,28 @@ The rest is about rendering:
 
 - A `Text` entry's content updates whether the query selects `body`,
   `html` or `text` (the latter with tags stripped).
-- Render each dynamic content entry inside an element marked with
-  `data-prepr-edit-target="<field>.<index>"` and
-  `data-prepr-entry-id="<entry _id>"` (for `Assets`, the first asset's
-  `_id`). The index is the fallback when no id matches.
-- Values without a hidden edit link (images, videos, other URLs) are made
-  click-to-edit with `previewAttrs({ id, field }, { enabled: preview })`
-  on the element that renders them.
+- **Dynamic content entries are found automatically.** In preview,
+  `normalizeQuery`, `normalizedQuery` and `useNormalizedQuery` add each
+  entry's `_id` (and, for `Text` entries, the field path) to the hidden edit
+  link of every text inside it. Click-to-edit and the editor's "jump to
+  field" then find the entry by id, also after an editor reorders entries.
+  Render a `Text` entry's HTML straight into one wrapper element, so its
+  edit link lands on that wrapper and the whole entry is outlined.
+- Prepr images are click-to-edit inside the editor without any markup: the
+  toolkit matches image URLs (also through image optimizers like
+  `/_next/image`) to the open item's assets.
+- **Set the attributes yourself only where that does not reach:**
+  - Data you fetch in the browser without those helpers: run it through
+    `annotateEditLinks(result, query)` from `@preprio/toolkit`, or mark the
+    element as below.
+  - An entry with no text and no Prepr image (an embed, a video URL): wrap
+    it in an element with `data-prepr-edit-target="<field>.<index>"` and
+    `data-prepr-entry-id="<entry _id>"` (for `Assets`, the first asset's
+    `_id`). Attributes you set always win over the automatic ones.
+  - Other values without a hidden edit link (video and other URLs): make
+    them click-to-edit with
+    `previewAttrs({ id, field }, { enabled: preview })` on the element that
+    renders them.
 - Where the page renders a linked item whose content comes from items nested
   inside it (for example a personalization or a shared section referenced
   from a stack), wrap it in an element with
