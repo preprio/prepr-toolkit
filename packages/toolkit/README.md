@@ -793,12 +793,8 @@ toolbar's `options`):
 ### Trying it locally
 
 The Next.js, Astro, SvelteKit and Nuxt examples all have live preview wired
-up; open them from a Prepr environment whose preview URL points at your local
-server. Without Prepr, `examples/editor-emulator` stands in for the editor
-with the Next.js example: it frames the site, performs the editor handshake
-and sends a change per keystroke and a save. It runs on
-`http://localhost:4444`, so add that origin to `allowedEditorOrigins` (on the
-toolbar's `options` and on `PreprRefresh`) while you test with it.
+up. Open them from a Prepr environment whose preview URL points at your local
+server.
 
 ## API Reference
 

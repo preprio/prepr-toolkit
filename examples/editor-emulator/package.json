@@ -1,7 +1,0 @@
-{
-  "name": "editor-emulator",
-  "private": true,
-  "scripts": {
-    "dev": "npx serve -l 4444 ."
-  }
-}
