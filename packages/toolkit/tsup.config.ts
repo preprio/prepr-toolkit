@@ -120,11 +120,12 @@ export default defineConfig([
     // source and are compiled by the *consumer's* Vite/Svelte pipeline (tsup
     // has no `.svelte` loader). Published verbatim via package.json's `files`
     // field, resolved via the `./sveltekit/components/*` export map entry.
-    entry: { index: 'src/sveltekit/index.ts' },
+    entry: { index: 'src/sveltekit/index.ts', live: 'src/sveltekit/live.ts' },
     outDir: 'dist/sveltekit',
     clean: false,
-    // Typed structurally against a minimal `SvelteKitRequestEvent` — nothing
-    // to externalize.
+    // Typed structurally against a minimal `SvelteKitRequestEvent`, and
+    // `live` writes out Svelte's store contract itself — nothing to
+    // externalize.
     external: [],
   },
   {

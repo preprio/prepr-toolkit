@@ -85,6 +85,11 @@
       "import": "./dist/sveltekit/index.js",
       "require": "./dist/sveltekit/index.cjs"
     },
+    "./sveltekit/live": {
+      "types": "./dist/sveltekit/live.d.ts",
+      "import": "./dist/sveltekit/live.js",
+      "require": "./dist/sveltekit/live.cjs"
+    },
     "./sveltekit/components/*": "./src/sveltekit/*.svelte",
     "./nuxt": {
       "types": "./dist/nuxt/index.d.ts",
