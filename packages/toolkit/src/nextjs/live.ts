@@ -30,6 +30,8 @@ export interface LivePreviewConfig {
 export interface PreprRefreshProps {
   /** Pass your preview flag; never `true` on a production deployment. */
   enabled?: boolean;
+  /** Exact editor origins, replacing the `*.prepr.io` default. */
+  allowedEditorOrigins?: string[];
   /** Your preview token uses GraphQL strict mode; see the toolbar option. */
   strictMode?: boolean;
 }
@@ -146,13 +148,17 @@ export function useLive<T>(data: T, opts?: UseLiveOptions): T {
  */
 export function PreprRefresh({
   enabled = false,
+  allowedEditorOrigins: origins,
   strictMode: strict = false,
 }: PreprRefreshProps): null {
   const router = useRouter();
+  // Joined so a new array literal each render doesn't restart the effect.
+  const originsKey = origins?.join(' ');
 
   useEffect(() => {
     if (!enabled || !isFramed()) return;
     if (strict) strictMode = true;
+    if (originsKey) allowedEditorOrigins = originsKey.split(' ');
     const sync = createLogSync();
     let unsubscribe: (() => void) | null = null;
     let active = true;
@@ -173,7 +179,7 @@ export function PreprRefresh({
       unsubscribe?.();
       sync.cancel();
     };
-  }, [enabled, strict, router]);
+  }, [enabled, originsKey, strict, router]);
 
   return null;
 }

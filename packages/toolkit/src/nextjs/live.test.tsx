@@ -292,6 +292,36 @@ describe('PreprRefresh', () => {
     vi.useRealTimers();
   });
 
+  it('only takes changes from the allowedEditorOrigins it is given', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    await render(
+      <PreprRefresh
+        enabled
+        allowedEditorOrigins={['https://cms.example.com']}
+      />,
+    );
+    await liveStarted();
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({ event: 'prepr:itemChanged', itemId: 'any' });
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(refresh).not.toHaveBeenCalled();
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' }, 'https://cms.example.com');
+      post(
+        { event: 'prepr:itemChanged', itemId: 'any' },
+        'https://cms.example.com',
+      );
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it('does nothing outside the iframe', async () => {
     await render(<PreprRefresh enabled />);
     await liveStarted();
