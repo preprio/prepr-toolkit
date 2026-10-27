@@ -733,15 +733,20 @@ saving. Every model, component and dynamic content entry that should
 live-update needs `_id` (and ideally `__typename`) in the query result; items
 without `_id` stay static.
 
-**With GraphQL Codegen, let the toolkit select them.** Add the `preprIds`
-document transform to your output, and `_id` and `__typename` are added
-wherever your schema has them: on models and components, inside each member
-of a dynamic content field, never on collections like `Pages` or on unions
-themselves. The generated documents and types include them; your `.graphql`
-files stay as they are.
+There are three ways to get them there. Pick the first that fits your setup.
+
+#### Option 1: GraphQL Codegen (recommended)
+
+Add the `preprIds` document transform to your Codegen output. `_id` and
+`__typename` are added wherever your schema has them: on models and
+components, and inside each member of a dynamic content field. Collections
+like `Pages` and unions themselves never get an `_id`, so the queries stay
+valid. Your `.graphql` files stay as they are; the generated documents and
+types include the fields, at no runtime cost.
 
 ```ts
 // codegen.ts
+import type { CodegenConfig } from '@graphql-codegen/cli';
 import { preprIds } from '@preprio/toolkit/codegen';
 
 const config: CodegenConfig = {
@@ -754,13 +759,64 @@ const config: CodegenConfig = {
     },
   },
 };
+
+export default config;
 ```
 
-Without Codegen, `addPreprIds(document, schema)` from the same entry does the
-same to a parsed `DocumentNode` and a `GraphQLSchema`, or select them by hand:
-`_id` on every model and component level, and on every entry type in dynamic
-content fields (`Text`, `Quote`, …). `Assets` entries have no `_id` of their
-own: select `items { _id }` instead.
+Run Codegen again after adding it. Needs `graphql` 16 or later, which a
+Codegen setup already has.
+
+#### Option 2: at runtime, without Codegen
+
+`addPreprIds(document, schema)` does the same to a parsed query. It needs
+your schema, which Prepr serves through introspection on the same GraphQL
+URL. Load it once on the server, and transform each query once:
+
+```ts
+import { addPreprIds } from '@preprio/toolkit/codegen';
+import {
+  buildClientSchema,
+  getIntrospectionQuery,
+  parse,
+  print,
+  type GraphQLSchema,
+} from 'graphql';
+
+const url = process.env.PREPR_GRAPHQL_URL!;
+
+let schema: Promise<GraphQLSchema> | undefined;
+function preprSchema(): Promise<GraphQLSchema> {
+  schema ??= fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: getIntrospectionQuery() }),
+  })
+    .then((response) => response.json())
+    .then(({ data }) => buildClientSchema(data));
+  return schema;
+}
+
+const prepared = new Map<string, string>();
+export async function withPreprIds(query: string): Promise<string> {
+  let result = prepared.get(query);
+  if (!result) {
+    result = print(addPreprIds(parse(query), await preprSchema()));
+    prepared.set(query, result);
+  }
+  return result;
+}
+```
+
+Then send `await withPreprIds(query)` instead of `query` in your fetch
+helper. With a client that takes a `DocumentNode`, pass
+`addPreprIds(document, schema)` instead. Keep this on the server: the
+GraphQL URL carries your access token.
+
+#### Option 3: by hand
+
+Select `_id` (and `__typename`) on every model and component level, and on
+every entry type in dynamic content fields (`Text`, `Quote`, …). `Assets`
+entries have no `_id` of their own: select `items { _id }` instead.
 
 The rest is about rendering:
 
