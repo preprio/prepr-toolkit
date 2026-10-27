@@ -621,23 +621,22 @@ const location = useLocation();
 
 ### Tracking pageviews
 
-`loadTrackingPixel` queues one `pageload` event when it installs. Client-side route changes emit nothing on their own, so fire them yourself:
+The pixel tracks pageviews by itself, client-side route changes included. It counts a view for the Prepr content item named by a `prepr:id` meta tag in `<head>`, and watches that tag: when a route change points it at another item, the pixel records a new view. Render the tag on every page that shows a Prepr item:
 
 ```tsx
-import { useEffect } from 'react';
-import { useLocation } from 'react-router';
-import { trackEvent } from '@preprio/toolkit';
-
-function usePreprPageviews() {
-  const { pathname } = useLocation();
-
-  useEffect(() => {
-    trackEvent('pageload');
-  }, [pathname]);
+function Page({ page }: { page: { _id: string } }) {
+  return (
+    <>
+      <meta property="prepr:id" content={page._id} />
+      {/* … */}
+    </>
+  );
 }
 ```
 
-This double-counts the first pageview, since the pixel's own install event fires too. Skip the initial run with a ref if the exact count matters.
+React 19 hoists a `<meta>` rendered anywhere in the tree into `<head>`. On React 18, set it with your head manager (`react-helmet-async` or similar) instead.
+
+A page without the tag records no view. Calling `trackEvent('pageload')` yourself does not help: the pixel takes one `pageload` per page load and ignores the rest. Use `trackEvent` for your own events, such as `trackEvent('add_to_cart', { productId })`.
 
 The `id` is your access token, and in a client-rendered app it is public — bundled into JS and visible in devtools. Use a tracking-only token; do not derive it from a browser-exposed GraphQL URL, which would also expose content read access.
 
