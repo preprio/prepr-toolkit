@@ -1,4 +1,9 @@
 // @vitest-environment node
+import {
+  vercelStegaCombine,
+  vercelStegaDecode,
+  vercelStegaSplit,
+} from '@vercel/stega';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const jar = new Map<string, { value: string; options: unknown }>();
@@ -137,4 +142,41 @@ describe('syncPreprLiveLog + normalizeQuery', () => {
     );
     spy.mockRestore();
   });
+  it('adds list entry ids to edit links in preview, with or without a log', async () => {
+    const page = await normalizeQuery(
+      '{ Page { _id content { _id body } } }',
+      STEGA_PAGE,
+      {
+        enabled: true,
+      },
+    );
+    expect(entryOf(page.Page.content[0].body)).toBe('text-1');
+    expect(await normalizeQuery(QUERY, STEGA_PAGE)).toBe(STEGA_PAGE);
+  });
 });
+
+const STEGA_PAGE = {
+  Page: {
+    _id: 'page-1',
+    content: [
+      {
+        _id: 'text-1',
+        body: vercelStegaCombine(
+          'Hi',
+          {
+            origin: 'prepr.io',
+            href: 'https://acme.prepr.io/content/edit/page-1?locale=en-US',
+          },
+          false,
+        ),
+      },
+    ],
+  },
+};
+
+function entryOf(value: string): string | null {
+  const { href } = vercelStegaDecode(vercelStegaSplit(value).encoded) as {
+    href: string;
+  };
+  return new URL(href).searchParams.get('entry');
+}

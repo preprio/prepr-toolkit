@@ -28,6 +28,9 @@ export interface StegaEditPayload extends StegaDecodedData {
 
 const IGNORED_ANCESTORS = 'script, style, noscript';
 
+/** Marks a `data-prepr-entry-id` the toolkit set from an edit link. */
+const AUTO_ENTRY_ATTR = 'data-prepr-entry-auto';
+
 /** Skip nodes under an ignored ancestor, and blank text. */
 export function isIgnoredTextNode(node: Node): boolean {
   if (node.parentElement?.closest(IGNORED_ANCESTORS)) return true;
@@ -98,6 +101,7 @@ function parseEditHref(href: string): {
   id?: string;
   field?: string;
   locale?: string;
+  entry?: string;
 } {
   try {
     const url = new URL(href, window.location.origin);
@@ -105,6 +109,8 @@ function parseEditHref(href: string): {
       id: url.pathname.split('/').pop() || undefined,
       field: url.searchParams.get('field') || undefined,
       locale: url.searchParams.get('locale') || undefined,
+      // Added by the toolkit's `annotateEditLinks`, not by Prepr.
+      entry: url.searchParams.get('entry') || undefined,
     };
   } catch {
     return {};
@@ -147,12 +153,21 @@ export function tagEncodedElement(
   element.setAttribute('data-prepr-href', decoded.href);
   element.setAttribute('data-prepr-origin', decoded.origin);
 
-  const { id, field, locale } = parseEditHref(decoded.href);
+  const { id, field, locale, entry } = parseEditHref(decoded.href);
   setOrRemove(element, 'data-prepr-id', id);
   const fieldHint =
     element.getAttribute('data-prepr-edit-target')?.trim() || undefined;
   setOrRemove(element, 'data-prepr-field', field ?? fieldHint);
   setOrRemove(element, 'data-prepr-locale', locale);
+
+  // The entry id from the link, unless the site set its own on the element.
+  const siteEntry =
+    element.hasAttribute('data-prepr-entry-id') &&
+    !element.hasAttribute(AUTO_ENTRY_ATTR);
+  if (!siteEntry) {
+    setOrRemove(element, 'data-prepr-entry-id', entry);
+    setOrRemove(element, AUTO_ENTRY_ATTR, entry && 'true');
+  }
 }
 
 /**

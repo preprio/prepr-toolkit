@@ -51,6 +51,7 @@ export {
   type NormalizeQueryOptions,
 } from './core/live-preview/normalize-query';
 export type { QueryInput } from './core/live-preview/query-document';
+export { annotateEditLinks } from './core/live-preview/edit-links';
 export {
   startHtmlLivePreview,
   type HtmlLivePreview,

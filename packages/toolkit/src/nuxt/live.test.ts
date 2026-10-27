@@ -1,3 +1,8 @@
+import {
+  vercelStegaCombine,
+  vercelStegaDecode,
+  vercelStegaSplit,
+} from '@vercel/stega';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 
@@ -80,4 +85,36 @@ describe('useNormalizedQuery', () => {
     scope.stop();
     vi.useRealTimers();
   });
+  it('adds list entry ids to edit links when enabled, in and out of the iframe', () => {
+    const page = useNormalizedQuery(QUERY, ref(STEGA_PAGE), { enabled: true });
+    expect(entryOf(page.value.Page.content[0].body)).toBe('text-1');
+    const plain = ref(STEGA_PAGE);
+    expect(useNormalizedQuery(QUERY, plain).value).toBe(plain.value);
+  });
 });
+
+const STEGA_PAGE = {
+  Page: {
+    _id: 'page-1',
+    content: [
+      {
+        _id: 'text-1',
+        body: vercelStegaCombine(
+          'Hi',
+          {
+            origin: 'prepr.io',
+            href: 'https://acme.prepr.io/content/edit/page-1?locale=en-US',
+          },
+          false,
+        ),
+      },
+    ],
+  },
+};
+
+function entryOf(value: string): string | null {
+  const { href } = vercelStegaDecode(vercelStegaSplit(value).encoded) as {
+    href: string;
+  };
+  return new URL(href).searchParams.get('entry');
+}

@@ -1,3 +1,8 @@
+import {
+  vercelStegaCombine,
+  vercelStegaDecode,
+  vercelStegaSplit,
+} from '@vercel/stega';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetForTests } from '../core/live-preview/test-reset';
@@ -109,4 +114,39 @@ describe('normalizedQuery', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
+  it('adds list entry ids to edit links when enabled, in and out of the iframe', () => {
+    const { seen } = read(
+      normalizedQuery(QUERY, STEGA_PAGE, { enabled: true }),
+    );
+    expect(entryOf(seen.value.Page.content[0].body)).toBe('text-1');
+    expect(read(normalizedQuery(QUERY, STEGA_PAGE)).seen.value).toBe(
+      STEGA_PAGE,
+    );
+  });
 });
+
+const STEGA_PAGE = {
+  Page: {
+    _id: 'page-1',
+    content: [
+      {
+        _id: 'text-1',
+        body: vercelStegaCombine(
+          'Hi',
+          {
+            origin: 'prepr.io',
+            href: 'https://acme.prepr.io/content/edit/page-1?locale=en-US',
+          },
+          false,
+        ),
+      },
+    ],
+  },
+};
+
+function entryOf(value: string): string | null {
+  const { href } = vercelStegaDecode(vercelStegaSplit(value).encoded) as {
+    href: string;
+  };
+  return new URL(href).searchParams.get('entry');
+}

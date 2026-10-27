@@ -21,6 +21,7 @@ import {
 } from '../core/live-preview/normalize-query';
 import { readLiveLogFromRequest } from '../core/live-preview/live-request';
 import type { QueryInput } from '../core/live-preview/query-document';
+import { annotateEditLinks } from '../core/live-preview/edit-links';
 
 export type { PreprMiddlewareOptions };
 
@@ -168,11 +169,14 @@ export function normalizeQuery<T>(
   result: T,
   options: AstroNormalizeQueryOptions = {},
 ): T {
-  if (!options.enabled || !options.locals) return result;
-  const log = (options.locals as Record<symbol, unknown>)[LIVE_LOG] as
-    LivePatch[] | undefined;
-  if (!log?.length) return result;
-  return applyPatchLog(query, result, {
+  if (!options.enabled) return result;
+  // Every render in preview, so click-to-edit finds list entries by id.
+  const annotated = annotateEditLinks(result, query, options.operationName);
+  const log = (options.locals as Record<symbol, unknown> | undefined)?.[
+    LIVE_LOG
+  ] as LivePatch[] | undefined;
+  if (!log?.length) return annotated;
+  return applyPatchLog(query, annotated, {
     log,
     operationName: options.operationName,
   });

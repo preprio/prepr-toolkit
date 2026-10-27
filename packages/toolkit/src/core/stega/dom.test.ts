@@ -120,4 +120,26 @@ describe('tagEncodedElement', () => {
 
     expect(el.hasAttribute('data-prepr-field')).toBe(false);
   });
+
+  it('takes the entry id from an annotated edit link', () => {
+    const el = tag(`${HREF}&entry=text-1`);
+
+    expect(el.getAttribute('data-prepr-entry-id')).toBe('text-1');
+  });
+
+  it('keeps an entry id the site set itself', () => {
+    const el = document.createElement('div');
+    el.setAttribute('data-prepr-entry-id', 'site-id');
+    document.body.appendChild(el);
+    tagEncodedElement(el, { href: `${HREF}&entry=text-1`, origin: ORIGIN });
+
+    expect(el.getAttribute('data-prepr-entry-id')).toBe('site-id');
+  });
+
+  it('drops an entry id it set when a new link carries none', () => {
+    const el = tag(`${HREF}&entry=text-1`);
+    tagEncodedElement(el, { href: HREF, origin: ORIGIN });
+
+    expect(el.hasAttribute('data-prepr-entry-id')).toBe(false);
+  });
 });

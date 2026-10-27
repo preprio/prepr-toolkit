@@ -6,6 +6,7 @@ import {
   type LivePatch,
 } from '../core/live-preview/normalize-query';
 import type { QueryInput } from '../core/live-preview/query-document';
+import { annotateEditLinks } from '../core/live-preview/edit-links';
 import * as React from 'react';
 
 import { LIVE_LOG_COOKIE, takeLiveLog } from './live-log';
@@ -133,7 +134,9 @@ export async function normalizeQuery<T>(
   options: NextNormalizeQueryOptions = {},
 ): Promise<T> {
   if (!options.enabled) return result;
+  // Every render in preview, so click-to-edit finds list entries by id.
+  const annotated = annotateEditLinks(result, query, options.operationName);
   const log = await getPreprLiveLog();
-  if (!log.length) return result;
-  return applyPatchLog(query, result, log, options.operationName);
+  if (!log.length) return annotated;
+  return applyPatchLog(query, annotated, log, options.operationName);
 }

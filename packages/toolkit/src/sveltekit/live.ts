@@ -5,6 +5,7 @@ import type {
   applyPatchLog,
 } from '../core/live-preview';
 import type { QueryInput } from '../core/live-preview/query-document';
+import { annotateEditLinks } from '../core/live-preview/edit-links';
 import { onTestReset } from '../core/live-preview/test-reset';
 
 export interface NormalizedQueryOptions {
@@ -38,6 +39,15 @@ let allowedEditorOrigins: string[] | undefined;
 let strictMode: boolean | undefined;
 const logListeners = new Set<() => void>();
 const startListeners = new Set<(store: LiveStore) => void>();
+
+function constant<T>(value: T): NormalizedQueryStore<T> {
+  return {
+    subscribe(run) {
+      run(value);
+      return () => {};
+    },
+  };
+}
 
 function isFramed(): boolean {
   return typeof window !== 'undefined' && window.self !== window.top;
@@ -104,14 +114,11 @@ export function normalizedQuery<T>(
   data: T,
   options: NormalizedQueryOptions = {},
 ): NormalizedQueryStore<T> {
-  if (!options.enabled || !isFramed()) {
-    return {
-      subscribe(run) {
-        run(data);
-        return () => {};
-      },
-    };
-  }
+  if (!options.enabled) return constant(data);
+  // On the server too, so the hydrated page matches: click-to-edit then
+  // finds list entries by id.
+  const annotated = annotateEditLinks(data, query);
+  if (!isFramed()) return constant(annotated);
   if (options.strictMode) strictMode = true;
   if (options.allowedEditorOrigins) {
     allowedEditorOrigins = [...options.allowedEditorOrigins];
@@ -119,7 +126,7 @@ export function normalizedQuery<T>(
   startLive();
   // The log only fills once `applyLog` is loaded.
   const current = (): T =>
-    log.length && applyLog ? applyLog(query, data, log) : data;
+    log.length && applyLog ? applyLog(query, annotated, log) : annotated;
 
   return {
     subscribe(run) {

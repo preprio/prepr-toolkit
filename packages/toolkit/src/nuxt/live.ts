@@ -15,6 +15,7 @@ import type {
   applyPatchLog,
 } from '../core/live-preview';
 import type { QueryInput } from '../core/live-preview/query-document';
+import { annotateEditLinks } from '../core/live-preview/edit-links';
 import { onTestReset } from '../core/live-preview/test-reset';
 
 export interface UseNormalizedQueryOptions {
@@ -93,9 +94,11 @@ export function useNormalizedQuery<T>(
   data: Ref<T> | T,
   options: UseNormalizedQueryOptions = {},
 ): ComputedRef<T> {
-  if (!options.enabled || !isFramed()) {
-    return computed(() => unref(data) as T);
-  }
+  if (!options.enabled) return computed(() => unref(data) as T);
+  // On the server too, so the hydrated page matches: click-to-edit then
+  // finds list entries by id.
+  const annotated = computed(() => annotateEditLinks(unref(data) as T, query));
+  if (!isFramed()) return annotated;
   if (options.strictMode) strictMode = true;
   if (options.allowedEditorOrigins) {
     allowedEditorOrigins = [...options.allowedEditorOrigins];
@@ -114,7 +117,7 @@ export function useNormalizedQuery<T>(
   }
   // The log only fills once `applyLog` is loaded.
   return computed(() => {
-    const value = unref(data) as T;
+    const value = annotated.value;
     return log.value.length && applyLog
       ? applyLog(query, value, log.value)
       : value;
