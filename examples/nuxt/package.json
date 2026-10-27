@@ -15,7 +15,7 @@
     "@graphql-typed-document-node/core": "^3.2.0",
     "@preprio/toolkit": "workspace:*",
     "graphql": "^16.14.2",
-    "nuxt": "^4.2.2"
+    "nuxt": "^4.6.2"
   },
   "devDependencies": {
     "@graphql-codegen/cli": "6.3.1",
