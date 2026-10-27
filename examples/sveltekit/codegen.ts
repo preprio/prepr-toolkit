@@ -1,4 +1,5 @@
 import type { CodegenConfig } from '@graphql-codegen/cli';
+import { preprIds } from '@preprio/toolkit/codegen';
 
 /**
  * Schema URL comes from the environment — it embeds an access token, so it must
@@ -23,6 +24,9 @@ const config: CodegenConfig = {
   generates: {
     'src/gql/': {
       preset: 'client',
+      // Selects `_id` and `__typename` wherever the schema has them, so live
+      // preview and click-to-edit find every item without hand-written `_id`s.
+      documentTransforms: [preprIds],
       plugins: [],
       presetConfig: { fragmentMasking: false },
       // SvelteKit's strict tsconfig enables verbatimModuleSyntax — emit
