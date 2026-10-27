@@ -115,4 +115,42 @@ describe('annotateEditLinks', () => {
     const once = annotateEditLinks(page());
     expect(annotateEditLinks(once)).toBe(once);
   });
+
+  it("names an Assets entry by its first asset's _id", () => {
+    const data = {
+      Page: {
+        _id: 'page-1',
+        content: [
+          {
+            __typename: 'Assets',
+            items: [
+              { _id: 'asset-1', caption: encoded('One', 'page-1') },
+              { _id: 'asset-2', caption: encoded('Two', 'page-1') },
+            ],
+          },
+        ],
+      },
+    };
+    const out = annotateEditLinks(data).Page.content[0]!.items;
+    for (const asset of out) {
+      expect(link(asset.caption).searchParams.get('entry')).toBe('asset-1');
+    }
+  });
+
+  it('adds no field below the top level, where the editor finds entries by id', () => {
+    const data = {
+      Page: {
+        _id: 'page-1',
+        // A component without `_id` selected: the entry sits two levels down.
+        sections: [
+          { content: [{ _id: 'text-1', body: encoded('Hi', 'page-1') }] },
+        ],
+      },
+    };
+    const url = link(
+      annotateEditLinks(data).Page.sections[0]!.content[0]!.body,
+    );
+    expect(url.searchParams.get('entry')).toBe('text-1');
+    expect(url.searchParams.has('field')).toBe(false);
+  });
 });

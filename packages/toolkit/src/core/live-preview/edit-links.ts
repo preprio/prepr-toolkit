@@ -27,6 +27,28 @@ interface Context {
   entryField?: string;
   /** The owner of that entry. */
   entryOwnerId?: string;
+  /** Inside an `Assets` entry, whose assets are not entries of their own. */
+  inAssets?: boolean;
+}
+
+// The only field path the editor focuses an entry by: a field of the open
+// item and the entry's index (`content.3`). Deeper entries are found by id.
+const TOP_LEVEL_ENTRY = /^[A-Za-z0-9_]+\.\d+$/;
+
+/**
+ * The id the editor knows a list entry by: its `_id`, or for an `Assets`
+ * entry in dynamic content (which has none) its first asset's.
+ */
+function entryIdOf(element: unknown): string | undefined {
+  if (!isRecord(element)) return undefined;
+  if (typeof element._id === 'string') return element._id;
+  if (element.__typename !== 'Assets' || !Array.isArray(element.items)) {
+    return undefined;
+  }
+  const first: unknown = element.items[0];
+  return isRecord(first) && typeof first._id === 'string'
+    ? first._id
+    : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -64,6 +86,7 @@ function annotate(value: string, ctx: Context): string {
   if (
     !url.searchParams.has('field') &&
     ctx.entryField &&
+    TOP_LEVEL_ENTRY.test(ctx.entryField) &&
     itemId === ctx.entryOwnerId
   ) {
     url.searchParams.set('field', ctx.entryField);
@@ -86,14 +109,15 @@ function walk(
     let changed = false;
     const next = value.map((element, index) => {
       const path = [...ctx.path, String(index)];
-      const entry =
-        isRecord(element) && typeof element._id === 'string'
-          ? {
-              entryId: element._id,
-              entryField: ctx.ownerId ? path.join('.') : undefined,
-              entryOwnerId: ctx.ownerId,
-            }
-          : {};
+      const entryId = ctx.inAssets ? undefined : entryIdOf(element);
+      const entry = entryId
+        ? {
+            entryId,
+            entryField: ctx.ownerId ? path.join('.') : undefined,
+            entryOwnerId: ctx.ownerId,
+            inAssets: isRecord(element) && element._id === undefined,
+          }
+        : {};
       const out = walk(element, selections, { ...ctx, ...entry, path });
       if (out !== element) changed = true;
       return out;
