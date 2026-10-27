@@ -737,12 +737,13 @@ There are three ways to get them there. Pick the first that fits your setup.
 
 #### Option 1: GraphQL Codegen (recommended)
 
-Add the `preprIds` document transform to your Codegen output. `_id` and
-`__typename` are added wherever your schema has them: on models and
-components, and inside each member of a dynamic content field. Collections
-like `Pages` and unions themselves never get an `_id`, so the queries stay
-valid. Your `.graphql` files stay as they are; the generated documents and
-types include the fields, at no runtime cost.
+Add the `preprIds` document transform to your Codegen output. `_id` is
+added wherever your schema has one: on models and components, and inside
+each member of a dynamic content field. Collections like `Pages` and unions
+themselves never get an `_id`, so the queries stay valid. Your `.graphql`
+files stay as they are; the generated documents and types include the field,
+at no runtime cost. Adding a field never breaks code that compiles today, so
+this is safe to turn on in an existing project.
 
 ```ts
 // codegen.ts
@@ -765,6 +766,13 @@ export default config;
 
 Run Codegen again after adding it. Needs `graphql` 16 or later, which a
 Codegen setup already has.
+
+To add `__typename` everywhere too, use `createPreprIds({ typename: true })`
+instead. It is off by default because a selected `__typename` changes the
+generated types: each member of a union is typed on its own, so code that
+reads a union's fields without checking `__typename` first stops compiling.
+Live preview only needs it on dynamic content entries, where you select it
+already to render them.
 
 #### Option 2: at runtime, without Codegen
 

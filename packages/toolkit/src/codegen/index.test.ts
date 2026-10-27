@@ -2,7 +2,7 @@
 import { buildSchema, parse, print, validate } from 'graphql';
 import { describe, expect, it } from 'vitest';
 
-import { addPreprIds, preprIds } from './index';
+import { addPreprIds, createPreprIds, preprIds } from './index';
 
 // The shapes that matter in a Prepr schema: models and components carry
 // `_id`; collections, the root and helper types like `_FocalPoint` do not;
@@ -27,13 +27,24 @@ const SDL = `
 `;
 const schema = buildSchema(SDL);
 
-function run(query: string): string {
-  const document = addPreprIds(parse(query), schema);
+function run(query: string, typename = true): string {
+  const document = addPreprIds(parse(query), schema, { typename });
   expect(validate(schema, document)).toEqual([]);
   return print(document);
 }
 
 describe('addPreprIds', () => {
+  it('adds only _id by default, which never changes existing types', () => {
+    const document = addPreprIds(
+      parse(`{ Page { sections { ... on Hero { title } } } }`),
+      schema,
+    );
+    expect(validate(schema, document)).toEqual([]);
+    const out = print(document);
+    expect(out.match(/_id/g)).toHaveLength(2);
+    expect(out).not.toContain('__typename');
+  });
+
   it('adds _id and __typename on every level that has them', () => {
     expect(run(`query { Page(slug: "/") { title seo { title } } }`))
       .toMatchInlineSnapshot(`
@@ -135,5 +146,13 @@ describe('preprIds (codegen document transform)', () => {
     expect(file.location).toBe('page.graphql');
     expect(print(file.document!)).toContain('_id');
     expect(empty).toEqual({ location: 'empty.graphql' });
+  });
+
+  it('passes options through createPreprIds', () => {
+    const [file] = createPreprIds({ typename: true }).transform({
+      documents: [{ document: parse(`{ Page { title } }`) }],
+      schema: parse(SDL),
+    });
+    expect(print(file!.document!)).toContain('__typename');
   });
 });

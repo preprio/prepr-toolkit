@@ -24,8 +24,8 @@ const config: CodegenConfig = {
   generates: {
     'src/gql/': {
       preset: 'client',
-      // Selects `_id` and `__typename` wherever the schema has them, so live
-      // preview and click-to-edit find every item without hand-written `_id`s.
+      // Selects `_id` wherever the schema has one, so live preview and
+      // click-to-edit find every item without hand-written `_id`s.
       documentTransforms: [preprIds],
       plugins: [],
       presetConfig: { fragmentMasking: false },
