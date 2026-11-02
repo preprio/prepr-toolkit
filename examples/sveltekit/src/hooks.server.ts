@@ -1,6 +1,6 @@
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { preprHandle } from '@preprio/toolkit/sveltekit';
-import { preprFeatures } from '$lib/prepr';
+import { preprFeatures } from '#lib/prepr.js';
 
 // `preview` is the only gate — the toolkit reads no env vars of its own. This
 // starter uses SvelteKit's built-in `dev` flag; use whatever signal your

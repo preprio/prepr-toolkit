@@ -1,10 +1,10 @@
 <script lang="ts">
   import '../app.css';
-  import NavBar from '$lib/components/NavBar.svelte';
+  import NavBar from '#lib/components/NavBar.svelte';
   import PreprToolbar from '@preprio/toolkit/sveltekit/components/PreprToolbar';
   import PreprTrackingPixel from '@preprio/toolkit/sveltekit/components/PreprTrackingPixel';
   import { extractAccessToken } from '@preprio/toolkit/sveltekit';
-  import { preprFeatures, preprGraphqlUrl } from '$lib/prepr';
+  import { preprFeatures, preprGraphqlUrl } from '#lib/prepr.js';
   import type { Snippet } from 'svelte';
   import type { LayoutData } from './$types';
 
