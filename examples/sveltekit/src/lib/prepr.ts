@@ -3,11 +3,10 @@
 // value ships to the browser, so use a scoped read-only token with only the
 // "Enable edit mode" / GraphQL read permissions.
 //
-// `$env/dynamic/public` rather than `$env/static/public`: the static form only
-// generates a typed export for variables that exist at build time, so a build
-// or typecheck without a local `.env` fails to compile. The dynamic form reads
-// at runtime and always typechecks, which is what CI needs.
-import { env } from '$env/dynamic/public';
+// `PUBLIC_PREPR_GRAPHQL_URL` is declared in `src/env.ts` as a dynamic, optional
+// variable: it is read at runtime rather than inlined, so a build or typecheck
+// without a local `.env` still succeeds, which is what CI needs.
+import { PUBLIC_PREPR_GRAPHQL_URL } from '$app/env/public';
 import type { PreprFeatures } from '@preprio/toolkit';
 
 /**
@@ -27,7 +26,7 @@ export const preprFeatures: PreprFeatures = {};
  * (during typecheck, build, or SSR of a page that never calls it) does not.
  */
 export function preprGraphqlUrl(): string {
-  const url = env.PUBLIC_PREPR_GRAPHQL_URL;
+  const url = PUBLIC_PREPR_GRAPHQL_URL;
   if (!url) {
     throw new Error(
       'PUBLIC_PREPR_GRAPHQL_URL is not set. Copy .env.example to .env and add ' +

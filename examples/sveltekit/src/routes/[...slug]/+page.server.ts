@@ -1,6 +1,6 @@
 import { print } from 'graphql';
 import { error } from '@sveltejs/kit';
-import { Prepr } from '$lib/prepr.server';
+import { Prepr } from '#lib/prepr.server.js';
 import { GetPageBySlugDocument } from '../../gql/graphql';
 import type { GetPageBySlugQuery } from '../../gql/graphql';
 import type { PageServerLoad } from './$types';

@@ -1,7 +1,7 @@
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { getToolbarProps } from '@preprio/toolkit/sveltekit';
-import { graphqlUrl } from '$lib/prepr.server';
-import { preprFeatures } from '$lib/prepr';
+import { graphqlUrl } from '#lib/prepr.server.js';
+import { preprFeatures } from '#lib/prepr.js';
 import type { LayoutServerLoad } from './$types';
 
 // The toolkit reads no env vars of its own — you decide what "preview" means.
