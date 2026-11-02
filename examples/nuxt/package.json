@@ -15,7 +15,7 @@
     "@graphql-typed-document-node/core": "^3.2.0",
     "@preprio/toolkit": "workspace:*",
     "graphql": "^16.14.2",
-    "nuxt": "^4.2.2"
+    "nuxt": "^4.6.3"
   },
   "devDependencies": {
     "@graphql-codegen/cli": "6.3.1",
@@ -25,6 +25,6 @@
     "@tailwindcss/vite": "^4.3.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vue-tsc": "^3.2.2"
+    "vue-tsc": "^3.3.14"
   }
 }

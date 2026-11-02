@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Hero from '$lib/sections/Hero.svelte';
-  import Feature from '$lib/sections/Feature.svelte';
+  import Hero from '#lib/sections/Hero.svelte';
+  import Feature from '#lib/sections/Feature.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
