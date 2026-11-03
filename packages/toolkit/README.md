@@ -851,7 +851,21 @@ The rest is about rendering:
   - Other values without a hidden edit link (video and other URLs): make
     them click-to-edit with
     `previewAttrs({ id, field }, { enabled: preview })` on the element that
-    renders them.
+    renders them. Encoded text inside that element does not override it.
+  - Fields Prepr returns without an edit link, such as remote content, next
+    to a text field that has one: `stegaTarget(text, { field })` reads the
+    item and path from the text and points at the sibling field, ready for
+    `previewAttrs`. Use `products.items.2` to point at one entry.
+
+    ```tsx
+    // Each product card opens its row of the component's `products` field.
+    <article
+      {...previewAttrs(
+        stegaTarget(block.title, { field: `products.items.${index}` }),
+        { enabled: preview },
+      )}
+    >
+    ```
 - Where the page renders a linked item whose content comes from items nested
   inside it (for example a personalization or a shared section referenced
   from a stack), wrap it in an element with

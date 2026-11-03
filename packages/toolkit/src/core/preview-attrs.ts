@@ -1,3 +1,5 @@
+import { decodeStega } from './stega/clean';
+
 export interface PreviewAttrsTarget {
   /** `_id` of the content item or component that owns the field. */
   id: string | null | undefined;
@@ -27,14 +29,14 @@ export interface PreviewAttrsOptions {
  * <figure {...previewAttrs({ id: post._id, field: 'cover_image' }, { enabled: isPreview })}>
  * ```
  *
- * Returns an empty object when disabled or when there is no id, so it is safe
- * to spread unconditionally.
+ * Returns an empty object when disabled or when there is no target or id, so
+ * it is safe to spread unconditionally.
  */
 export function previewAttrs(
-  target: PreviewAttrsTarget,
+  target: PreviewAttrsTarget | null | undefined,
   options: PreviewAttrsOptions,
 ): Record<string, string> {
-  if (!options.enabled || !target.id || !target.field) return {};
+  if (!options.enabled || !target?.id || !target.field) return {};
   const attrs: Record<string, string> = {
     'data-prepr-encoded': '',
     'data-prepr-id': target.id,
@@ -43,4 +45,55 @@ export function previewAttrs(
   if (target.locale) attrs['data-prepr-locale'] = target.locale;
   if (target.entryId) attrs['data-prepr-entry-id'] = target.entryId;
   return attrs;
+}
+
+export interface StegaTargetOptions {
+  /**
+   * A field next to the encoded one, in the same item or component, to target
+   * instead: a dotted path that replaces the encoded field's last segment
+   * (`products`, or `products.items.2` for one entry of it).
+   */
+  field?: string;
+}
+
+/** Only parsed for its path and query; the base is never requested. */
+const URL_BASE = 'https://prepr.invalid';
+
+/**
+ * The edit target behind a text value Prepr returned with a hidden edit link,
+ * for {@link previewAttrs}. Reach for it when the field to edit carries no
+ * link of its own, such as remote content or a list of references, but a
+ * text field of the same component does: the component's title points the
+ * way to its `products`.
+ *
+ * ```tsx
+ * const products = stegaTarget(block.title, { field: 'products' });
+ * <article {...previewAttrs(products, { enabled: isPreview })}>
+ * ```
+ *
+ * Returns null for a value without an edit link (a production render, or a
+ * value Prepr does not encode). Works on the server and in the browser.
+ */
+export function stegaTarget(
+  value: string | null | undefined,
+  options: StegaTargetOptions = {},
+): PreviewAttrsTarget | null {
+  const decoded = value ? decodeStega(value) : null;
+  if (!decoded) return null;
+  let url: URL;
+  try {
+    url = new URL(decoded.href, URL_BASE);
+  } catch {
+    return null;
+  }
+  const id = decodeURIComponent(url.pathname.split('/').pop() ?? '');
+  const field = url.searchParams.get('field');
+  if (!id || !field) return null;
+  return {
+    id,
+    field: options.field
+      ? `${field.slice(0, field.lastIndexOf('.') + 1)}${options.field}`
+      : field,
+    locale: url.searchParams.get('locale'),
+  };
 }
