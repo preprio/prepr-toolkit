@@ -1,8 +1,8 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
   import { normalizedQuery } from '@preprio/toolkit/sveltekit/live';
-  import Hero from '$lib/sections/Hero.svelte';
-  import Feature from '$lib/sections/Feature.svelte';
+  import Hero from '#lib/sections/Hero.svelte';
+  import Feature from '#lib/sections/Feature.svelte';
   import { GetPageBySlugDocument } from '../../gql/graphql';
   import type { PageData } from './$types';
 
