@@ -296,6 +296,37 @@ describe('createStegaAutoClean', () => {
     document.body.innerHTML = '';
   });
 
+  it('keeps a site-set previewAttrs target when encoded text inside it resolves to it', async () => {
+    const { createStegaAutoClean } = await import('./auto-clean');
+    document.body.innerHTML = '';
+    // A product card tagged by the site, holding an encoded badge whose
+    // `data-prepr-edit-target` makes the card its overlay target.
+    const card = document.createElement('article');
+    card.setAttribute('data-prepr-edit-target', '');
+    card.setAttribute('data-prepr-encoded', '');
+    card.setAttribute('data-prepr-id', 'page-1');
+    card.setAttribute('data-prepr-field', 'content.items.006.items.products');
+    const badge = document.createElement('span');
+    badge.textContent = encode(
+      'From the range',
+      'https://edit.example.com/content/edit/page-1?field=content.items.006.items.label',
+    );
+    card.appendChild(badge);
+    document.body.appendChild(card);
+
+    const autoClean = createStegaAutoClean();
+    autoClean.start();
+
+    expect(badge.textContent).toBe('From the range');
+    expect(card.getAttribute('data-prepr-field')).toBe(
+      'content.items.006.items.products',
+    );
+    expect(card.hasAttribute('data-prepr-href')).toBe(false);
+
+    autoClean.stop();
+    document.body.innerHTML = '';
+  });
+
   it('leaves plain text alone', async () => {
     const { createStegaAutoClean } = await import('./auto-clean');
     document.body.innerHTML = '';

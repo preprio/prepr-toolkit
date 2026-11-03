@@ -134,10 +134,14 @@ function setOrRemove(
  * encoded marker, the edit URL and its origin, and the content item id, field
  * path, and locale parsed out of that URL.
  *
- * Always overwrites, and removes the parsed attributes a new href does not
- * carry — a re-clean after the href changed must not leave a stale field path
- * pointing the editor at the wrong field. Callers that must not re-tag check
- * `hasAttribute('data-prepr-encoded')` themselves.
+ * Overwrites an earlier tag, and removes the parsed attributes a new href
+ * does not carry — a re-clean after the href changed must not leave a stale
+ * field path pointing the editor at the wrong field. Callers that must not
+ * re-tag check `hasAttribute('data-prepr-encoded')` themselves.
+ *
+ * Never touches an element the site tagged itself with `previewAttrs`: its
+ * target is deliberate, while encoded text inside it (a badge, a caption)
+ * only names the field that text came from. Returns whether it tagged.
  *
  * When the href names no field, a value on the element's own
  * `data-prepr-edit-target` attribute (`data-prepr-edit-target="content"`) is
@@ -148,7 +152,8 @@ function setOrRemove(
 export function tagEncodedElement(
   element: Element,
   decoded: StegaDecodedData,
-): void {
+): boolean {
+  if (isSiteTagged(element)) return false;
   element.setAttribute('data-prepr-encoded', '');
   element.setAttribute('data-prepr-href', decoded.href);
   element.setAttribute('data-prepr-origin', decoded.origin);
@@ -168,6 +173,18 @@ export function tagEncodedElement(
     setOrRemove(element, 'data-prepr-entry-id', entry);
     setOrRemove(element, AUTO_ENTRY_ATTR, entry && 'true');
   }
+  return true;
+}
+
+/**
+ * Tagged by the site (`previewAttrs`) rather than from an edit link: only
+ * {@link tagEncodedElement} sets `data-prepr-href`.
+ */
+function isSiteTagged(element: Element): boolean {
+  return (
+    element.hasAttribute('data-prepr-encoded') &&
+    !element.hasAttribute('data-prepr-href')
+  );
 }
 
 /**

@@ -95,8 +95,7 @@ export function createStegaAutoClean(
       }
       pendingHidden.delete(textNode);
       if (shown.hasAttribute('data-prepr-encoded')) return false;
-      tagEncodedElement(shown, info.decoded);
-      return true;
+      return tagEncodedElement(shown, info.decoded);
     }
 
     try {
@@ -123,8 +122,7 @@ export function createStegaAutoClean(
 
       if (target) {
         pendingHidden.delete(textNode);
-        tagEncodedElement(target, decoded);
-        return true;
+        return tagEncodedElement(target, decoded);
       }
       // No box yet; `decoded` is retained above so a later pass can tag it.
       pendingHidden.add(textNode);
