@@ -337,6 +337,7 @@ export function createPreprPreview(
     },
     onAssets: (assets) => visualEditor?.setAssets(assets),
     onAllowNavigation: (href) => visualEditor?.allowNavigation(href),
+    onItemChanged: () => visualEditor?.itemSaved(),
     onReferences: (referencedIds, componentIds) =>
       visualEditor?.setReferences(referencedIds, componentIds),
     // The editor selecting a field scrolls the matching element into view. The

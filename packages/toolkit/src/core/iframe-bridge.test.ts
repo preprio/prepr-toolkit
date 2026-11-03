@@ -441,6 +441,21 @@ describe('createIframeBridge — references', () => {
   });
 });
 
+describe('createIframeBridge — prepr:itemChanged', () => {
+  it('reports a save from the editor origin only', () => {
+    const onItemChanged = vi.fn();
+    const bridge = createIframeBridge(null, { onItemChanged });
+    bridge.start();
+    postFrom(EDITOR, { event: 'prepr:initVE' });
+    postFrom(ATTACKER, { event: 'prepr:itemChanged', itemId: 'x' });
+    postFrom(EDITOR, { event: 'prepr:itemChanged', itemId: 42 });
+    postFrom(EDITOR, { event: 'prepr:itemChanged', itemId: 'item-1' });
+    expect(onItemChanged).toHaveBeenCalledTimes(1);
+    expect(onItemChanged).toHaveBeenCalledWith('item-1');
+    bridge.stop();
+  });
+});
+
 describe('createIframeBridge — assets', () => {
   const asset = { key: 'https://a.io/id1/{format}/f.jpg', field: 'image' };
 

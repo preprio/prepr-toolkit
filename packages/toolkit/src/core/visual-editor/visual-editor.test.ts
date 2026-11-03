@@ -161,6 +161,106 @@ describe('createVisualEditor', () => {
       editor.stop();
       expect(img.hasAttribute('data-prepr-encoded')).toBe(false);
     });
+
+    describe('an image the editor removed', () => {
+      const REMOVED = 'data-prepr-removed';
+      const OTHER =
+        'https://demo.stream.prepr.io/2abcdefghijk/w_2000/other.jpg';
+      const OTHER_ASSET = {
+        key: 'https://demo.stream.prepr.io/2abcdefghijk/{format}/other.jpg',
+        field: 'content.items.c1.items.image',
+      };
+
+      const settle = async (): Promise<void> => {
+        await Promise.resolve();
+        await nextFrame();
+      };
+
+      function removed(): HTMLImageElement {
+        const img = image(HERO);
+        editor.start();
+        editor.setCurrentItem('page-1');
+        editor.setAssets(ASSETS);
+        editor.setAssets([]);
+        return img;
+      }
+
+      it('stays on the page faded, still clickable as its field', () => {
+        const img = removed();
+        expect(img.hasAttribute(REMOVED)).toBe(true);
+        expect(img.getAttribute('data-prepr-field')).toBe(
+          'content.items.c1.items.image',
+        );
+
+        const click = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+        });
+        img.dispatchEvent(click);
+        expect(click.defaultPrevented).toBe(true);
+        expect(onEdit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'page-1',
+            field: 'content.items.c1.items.image',
+          }),
+        );
+      });
+
+      it('fades with a stylesheet that respects reduced motion', () => {
+        removed();
+        const css = [...document.querySelectorAll('style')]
+          .map((style) => style.textContent)
+          .join('');
+        expect(css).toContain(`[${REMOVED}]`);
+        expect(css).toContain('opacity:.2');
+        expect(css).toContain('prefers-reduced-motion');
+      });
+
+      it('returns to normal when the asset is back', () => {
+        const img = removed();
+        editor.setAssets(ASSETS);
+        expect(img.hasAttribute(REMOVED)).toBe(false);
+        expect(img.hasAttribute('data-prepr-encoded')).toBe(true);
+      });
+
+      it('makes way for the image picked in its place', async () => {
+        const img = removed();
+        editor.setAssets([OTHER_ASSET]);
+        img.setAttribute('src', OTHER);
+        await settle();
+        expect(img.hasAttribute(REMOVED)).toBe(false);
+        expect(img.getAttribute('data-prepr-field')).toBe(
+          'content.items.c1.items.image',
+        );
+      });
+
+      it('stays faded after save until the page renders the saved item', async () => {
+        const img = removed();
+        editor.itemSaved();
+        await settle();
+        expect(img.hasAttribute(REMOVED)).toBe(true);
+
+        img.remove();
+        await settle();
+        // The same asset shown again later is no longer a removed one.
+        const again = image(HERO);
+        await settle();
+        expect(again.hasAttribute(REMOVED)).toBe(false);
+        expect(again.hasAttribute('data-prepr-encoded')).toBe(false);
+      });
+
+      it('is forgotten when another item opens', () => {
+        const img = removed();
+        editor.setCurrentItem('page-2');
+        expect(img.hasAttribute(REMOVED)).toBe(false);
+      });
+
+      it('loses its mark on stop', () => {
+        const img = removed();
+        editor.stop();
+        expect(img.hasAttribute(REMOVED)).toBe(false);
+      });
+    });
   });
 
   it('lets an Alt-click through to the page', () => {

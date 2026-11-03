@@ -249,6 +249,11 @@ export interface IframeBridgeOptions {
    * string; its scheme is not checked here.
    */
   onAllowNavigation?: (href: string) => void;
+  /**
+   * The editor saved the open item (`prepr:itemChanged`), with that item's
+   * id. The page shows stored content from its next render on.
+   */
+  onItemChanged?: (itemId: string) => void;
 }
 
 /**
@@ -287,6 +292,7 @@ export function createIframeBridge(
   const onReferences = options.onReferences;
   const onAssets = options.onAssets;
   const onAllowNavigation = options.onAllowNavigation;
+  const onItemChanged = options.onItemChanged;
   let parentOrigin: string | null = null;
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -407,6 +413,14 @@ export function createIframeBridge(
         onAllowNavigation?.(href);
       } catch (error) {
         debug.warn('allowNavigation handler failed', error as object);
+      }
+    }
+    if (data?.event === 'prepr:itemChanged') {
+      if (typeof data.itemId !== 'string' || !data.itemId) return;
+      try {
+        onItemChanged?.(data.itemId);
+      } catch (error) {
+        debug.warn('itemChanged handler failed', error as object);
       }
     }
   };

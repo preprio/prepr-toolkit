@@ -16,6 +16,11 @@ const SOURCE_SET_ATTRIBUTES = ['srcset', 'data-srcset'];
 
 /** Marks an image this pass tagged, so it can be untagged again. */
 export const ASSET_ATTR = 'data-prepr-asset';
+/**
+ * Marks an image showing an asset the editor removed from its field. The
+ * page keeps showing it until save, so the layout does not shift.
+ */
+export const REMOVED_ATTR = 'data-prepr-removed';
 /** Attributes whose changes can change which asset an image shows. */
 export const ASSET_SOURCE_ATTRIBUTES = [
   ...SOURCE_URL_ATTRIBUTES,
@@ -27,6 +32,7 @@ const TAG_ATTRIBUTES = [
   'data-prepr-field',
   'data-prepr-entry-id',
   ASSET_ATTR,
+  REMOVED_ATTR,
 ];
 
 function decodeSegment(segment: string): string {
@@ -207,6 +213,10 @@ function besideOtherItem(
  * `isCurrentItem`, an image whose surrounding text belongs only to other
  * items is left untagged, as it shows that item's copy of the asset.
  *
+ * Images showing one of the `removed` assets are tagged as that asset's
+ * field and marked with `REMOVED_ATTR`; on images the page tagged itself
+ * only the mark is set. Returns whether any image got the mark.
+ *
  * Writes an attribute only when its value changes: the tags are observed, so
  * a rewrite with the same value would trigger another pass.
  */
@@ -214,13 +224,27 @@ export function tagAssetImages(
   index: Map<string, EditorAsset>,
   itemId: string | null,
   keys: Map<string, string | null>,
-  options: { isCurrentItem?: (el: Element) => boolean } = {},
-): void {
-  const { isCurrentItem } = options;
+  options: {
+    isCurrentItem?: (el: Element) => boolean;
+    removed?: Map<string, EditorAsset>;
+  } = {},
+): boolean {
+  const { isCurrentItem, removed } = options;
+  let showsRemoved = false;
   for (const img of document.getElementsByTagName('img')) {
     const ours = img.hasAttribute(ASSET_ATTR);
-    if (!ours && img.hasAttribute('data-prepr-encoded')) continue;
-    const match = index.size ? matchAsset(img, index, keys) : undefined;
+    let match = index.size ? matchAsset(img, index, keys) : undefined;
+    let isRemoved = false;
+    if (!match && removed?.size) {
+      match = matchAsset(img, removed, keys);
+      isRemoved = match !== undefined;
+    }
+    if (!ours && img.hasAttribute('data-prepr-encoded')) {
+      const mark = isRemoved && (!isCurrentItem || isCurrentItem(img));
+      setIfChanged(img, REMOVED_ATTR, mark ? '' : null);
+      showsRemoved ||= mark;
+      continue;
+    }
     const asset =
       match && isCurrentItem && besideOtherItem(img, isCurrentItem)
         ? undefined
@@ -234,9 +258,15 @@ export function tagAssetImages(
     setIfChanged(img, 'data-prepr-id', itemId);
     setIfChanged(img, 'data-prepr-field', asset.field);
     setIfChanged(img, 'data-prepr-entry-id', asset.entryId ?? null);
+    setIfChanged(img, REMOVED_ATTR, isRemoved ? '' : null);
+    showsRemoved ||= isRemoved;
   }
+  return showsRemoved;
 }
 
 export function untagAssetImages(): void {
   document.querySelectorAll(`img[${ASSET_ATTR}]`).forEach(untagAssetImage);
+  document
+    .querySelectorAll(`img[${REMOVED_ATTR}]`)
+    .forEach((img) => img.removeAttribute(REMOVED_ATTR));
 }

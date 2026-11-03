@@ -6,6 +6,7 @@ import type { EditorAsset, EditorReference } from '../iframe-bridge';
 import {
   ASSET_SOURCE_ATTRIBUTES,
   createAssetIndex,
+  REMOVED_ATTR,
   tagAssetImages,
   untagAssetImages,
 } from './asset-images';
@@ -33,7 +34,10 @@ const CHROME_SELECTOR =
 const SECTIONING_SELECTOR = 'article, aside, main, nav, section';
 const PLAIN_HEADER_FOOTER = 'header:not([role]), footer:not([role])';
 const CURSOR_STYLE_MARKER = 'data-prepr-visual-editor';
-const CURSOR_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}html[data-prepr-ve-suspended] ${ENCODED_SELECTOR}{cursor:auto}`;
+// A removed image stays in place, faded, until the item is saved. Sites often
+// set opacity on images themselves (a fade-in once loaded), hence !important.
+const REMOVED_STYLES = `img[${REMOVED_ATTR}]{opacity:.2!important;transition:opacity .2s ease}@media (prefers-reduced-motion:reduce){img[${REMOVED_ATTR}]{transition:none}}`;
+const CURSOR_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}html[data-prepr-ve-suspended] ${ENCODED_SELECTOR}{cursor:auto}${REMOVED_STYLES}`;
 const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
 
 // Content can be tagged a moment after the editor asks for it: the field sits
@@ -42,6 +46,9 @@ const FIND_RETRY_MS = 150;
 const FIND_RETRIES = 6;
 // Asset keys of image URLs seen on the page, reset once this large.
 const MAX_CACHED_KEYS = 2000;
+// After a save, removed images stay faded until the page renders stored
+// content without them, or this long when it never does.
+const SAVED_FADE_MS = 10_000;
 
 // Content changes that can move or resize an outlined element without
 // resizing it (a block added above it) or replace it outright (a heading
@@ -110,6 +117,11 @@ export interface VisualEditor {
    * become editable as that asset's field, with no markup from the page.
    */
   setAssets(assets: EditorAsset[]): void;
+  /**
+   * The editor saved the open item. Images of assets removed since the last
+   * save stay faded until the page renders without them.
+   */
+  itemSaved(): void;
   /**
    * Language of the outline labels, such as the editor's interface language
    * once the handshake names it. Labels already on screen keep their text
@@ -192,6 +204,12 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   let guardEnabled = false;
   let assetIndex = new Map<string, EditorAsset>();
   const assetKeys = new Map<string, string | null>();
+  // Assets the editor removed from the open item since the last save, as the
+  // asset list last named them. The page keeps showing them until then.
+  const removedAssets = new Map<string, EditorAsset>();
+  // Set by a save: removed assets are forgotten once no image shows them.
+  let saved = false;
+  let savedTimeout: ReturnType<typeof setTimeout> | null = null;
   const guard = createNavigationGuard({
     onBlocked: (href) => opts.onNavigationBlocked?.(href),
     showsEditedContent: () => showsEditedContent(),
@@ -489,17 +507,38 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     select(el, found, block);
   }
 
+  const hasAssets = (): boolean =>
+    assetIndex.size > 0 || removedAssets.size > 0;
+
   function tagAssets(): void {
     if (assetKeys.size > MAX_CACHED_KEYS) assetKeys.clear();
-    tagAssetImages(assetIndex, currentItemId, assetKeys, {
+    const showsRemoved = tagAssetImages(assetIndex, currentItemId, assetKeys, {
       isCurrentItem: (el) => isCurrentItem(el as HTMLElement),
+      removed: removedAssets,
     });
+    if (saved && !showsRemoved) forgetRemoved();
+  }
+
+  function forgetRemoved(): void {
+    saved = false;
+    if (savedTimeout) clearTimeout(savedTimeout);
+    savedTimeout = null;
+    if (!removedAssets.size) return;
+    removedAssets.clear();
+    if (running) tagAssets();
+  }
+
+  function itemSaved(): void {
+    if (!removedAssets.size) return;
+    saved = true;
+    if (savedTimeout) clearTimeout(savedTimeout);
+    savedTimeout = setTimeout(forgetRemoved, SAVED_FADE_MS);
   }
 
   // Runs once per frame at most, after any content change on the page.
   const handleLayoutFrame = (): void => {
     mutationFrame = null;
-    if (assetIndex.size) tagAssets();
+    if (hasAssets()) tagAssets();
     reselect();
     const hovered = overlay.getHoverTarget();
     if (hovered && !hovered.isConnected) {
@@ -513,7 +552,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
 
   const handleMutations = (): void => {
     if (mutationFrame !== null) return;
-    if (!selection && !overlay.getHoverTarget() && !assetIndex.size) return;
+    if (!selection && !overlay.getHoverTarget() && !hasAssets()) return;
     mutationFrame = requestAnimationFrame(handleLayoutFrame);
   };
 
@@ -556,7 +595,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     });
     mutationObserver = new MutationObserver(handleMutations);
     mutationObserver.observe(document.body, LAYOUT_MUTATIONS);
-    if (assetIndex.size) tagAssets();
+    if (hasAssets()) tagAssets();
     syncGuard();
     debug.log('visual editor started');
   }
@@ -645,20 +684,28 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     referenceList?: EditorReference[],
     componentIds?: string[],
   ): void {
+    // Removed assets belong to the item that was open.
+    if (itemId !== currentItemId) forgetRemoved();
     currentItemId = itemId;
     if (referenceList) setReferences(referenceList, componentIds);
     else if (componentIds) ownComponents = new Set(componentIds);
-    if (running && assetIndex.size) tagAssets();
+    if (running && hasAssets()) tagAssets();
     const selected = overlay.getSelectedTarget();
     const owner = selected ? encodedFrom(selected) : null;
     if (owner && !isCurrentItem(owner)) clearSelection();
   }
 
   function setAssets(assets: EditorAsset[]): void {
-    const hadAssets = assetIndex.size > 0;
-    assetIndex = createAssetIndex(assets);
-    // Also with an empty list, so images of removed assets are untagged.
-    if (running && (hadAssets || assetIndex.size)) tagAssets();
+    const hadAssets = hasAssets();
+    const next = createAssetIndex(assets);
+    for (const [key, asset] of assetIndex) {
+      if (!next.has(key)) removedAssets.set(key, asset);
+    }
+    // An asset back in the list (undo, or picked again) is no longer removed.
+    for (const key of next.keys()) removedAssets.delete(key);
+    assetIndex = next;
+    // Also with an empty list, so images of removed assets are marked.
+    if (running && (hadAssets || hasAssets())) tagAssets();
   }
 
   function setReferences(
@@ -693,6 +740,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     setCurrentItem,
     setReferences,
     setAssets,
+    itemSaved,
     setLocale,
     focusField,
     setNavigationGuard,

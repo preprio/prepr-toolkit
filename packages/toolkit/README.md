@@ -840,6 +840,13 @@ The rest is about rendering:
 - Prepr images are click-to-edit inside the editor without any markup: the
   toolkit matches image URLs (also through image optimizers like
   `/_next/image`) to the open item's assets.
+- **A removed image stays until the editor picks another or saves.** The
+  page keeps rendering it, faded to 20% opacity, so the layout does not
+  shift while the editor chooses a replacement. It stays click-to-edit and
+  opens its field. A newly picked image replaces it; after a save the page
+  renders stored content, so an empty state you render for a missing image
+  shows only then. In a field with several images, a removed one keeps its
+  place when the query selects the assets' `_id`.
 - **Set the attributes yourself only where that does not reach:**
   - Data you fetch in the browser without those helpers: run it through
     `annotateEditLinks(result, query)` from `@preprio/toolkit`, or mark the
