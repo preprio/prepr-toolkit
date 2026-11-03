@@ -872,6 +872,20 @@ The rest is about rendering:
   `data-prepr-reference="<linked item _id>"`. The editor only knows the items
   the open item links to directly; content inside the wrapper is outlined as
   that linked item, and clicking it opens the link in the editor.
+- Content of items the open item does not link to (for example news cards
+  filled by a query) is outlined muted as "other item". Clicking it does not
+  follow its link: the editor offers to open that item, or to go to the
+  linked page. Ctrl/Cmd/Shift-click still opens the link in a new tab, and
+  Alt-click follows it. Inside the site's header, footer and navigation
+  (`header`, `footer`, `nav` and the `banner`, `contentinfo` and
+  `navigation` roles) such content stays unmarked and its links behave as
+  any other page link (a `header` or `footer` inside an `article`, `section`,
+  `aside` or `main` belongs to that content and is not site chrome). Change
+  that per part of the page with an attribute on
+  an ancestor; the nearest one wins:
+  - `data-prepr-other-item="off"` keeps other items inside it unmarked.
+  - `data-prepr-other-item="on"` marks them, also inside a header, footer or
+    navigation.
 
 Typed text and changed fields show immediately. Structural changes, such as
 adding or reordering components, appear after save.

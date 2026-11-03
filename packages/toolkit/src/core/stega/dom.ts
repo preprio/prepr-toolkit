@@ -24,6 +24,12 @@ export interface StegaEditPayload extends StegaDecodedData {
    * by id rather than by position.
    */
   entryId?: string;
+  /**
+   * For content of an item the open item does not link to: the absolute
+   * `http(s)` URL of the link that was clicked, when the click landed in one
+   * that leads to another page. The editor can offer to go there.
+   */
+  linkHref?: string;
 }
 
 const IGNORED_ANCESTORS = 'script, style, noscript';

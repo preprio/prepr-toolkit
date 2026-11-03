@@ -229,6 +229,7 @@ export function createPreprPreview(
     block,
     entryId,
     referenceField,
+    linkHref,
   }: StegaEditPayload) => {
     // Validated even though only the standalone branch opens the URL: a
     // href the browser would refuse is a malformed payload, and must not
@@ -240,7 +241,8 @@ export function createPreprPreview(
     }
     if (isIframe) {
       // The editor resolves the content item itself, so only the focus
-      // target crosses the bridge — no href or origin.
+      // target crosses the bridge — no edit href or origin. `linkHref` is
+      // the page link a click on another item's content landed in.
       sendPreprEvent('field_edit_requested', {
         id,
         field,
@@ -248,6 +250,7 @@ export function createPreprPreview(
         ...(block !== undefined && { block }),
         ...(entryId && { entryId }),
         ...(referenceField && { referenceField }),
+        ...(linkHref && { linkHref }),
       });
     } else if (safeHref) {
       // `noopener` — without it the opened tab keeps a live `window.opener`

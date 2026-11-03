@@ -18,6 +18,20 @@ const ENCODED_SELECTOR = '[data-prepr-encoded]';
 /** Marks where the page renders a linked item; its value is that item's id. */
 const REFERENCE_ATTR = 'data-prepr-reference';
 const REFERENCE_SELECTOR = `[${REFERENCE_ATTR}]`;
+/**
+ * Set by the site on an ancestor: `off` keeps content of unrelated items
+ * inside it quiet, `on` outlines it even inside site chrome.
+ */
+const OTHER_ITEM_ATTR = 'data-prepr-other-item';
+const OTHER_ITEM_SELECTOR = `[${OTHER_ITEM_ATTR}="on"],[${OTHER_ITEM_ATTR}="off"]`;
+// Site chrome (header, footer, menus) renders CMS text of other items on
+// every page; outlining it all would bury the edited content.
+const CHROME_SELECTOR =
+  'header, footer, nav, [role=banner], [role=contentinfo], [role=navigation]';
+// A `<header>` or `<footer>` inside one of these belongs to that part of the
+// page (a card's header), not to the site.
+const SECTIONING_SELECTOR = 'article, aside, main, nav, section';
+const PLAIN_HEADER_FOOTER = 'header:not([role]), footer:not([role])';
 const CURSOR_STYLE_MARKER = 'data-prepr-visual-editor';
 const CURSOR_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}html[data-prepr-ve-suspended] ${ENCODED_SELECTOR}{cursor:auto}`;
 const SUSPENDED_ATTR = 'data-prepr-ve-suspended';
@@ -83,9 +97,12 @@ export interface VisualEditor {
   ): void;
   /**
    * Items the open item references, each with the field that links it.
-   * Their content is outlined as linked and a click leads to that field;
-   * content of any other item gets no outline and its clicks reach the page.
-   * Until a list is given, other items are all treated alike (muted).
+   * Their content is outlined as linked and a click leads to that field.
+   * Content of any other item stays muted, and a click on it requests the
+   * edit of that item instead of following a link; inside site chrome
+   * (header, footer, navigation) it gets no outline and its clicks reach
+   * the page. `data-prepr-other-item="on"` or `"off"` on an ancestor
+   * overrides that split.
    */
   setReferences(references: EditorReference[], componentIds?: string[]): void;
   /**
@@ -236,11 +253,35 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     return null;
   };
 
+  /** Whether the site's header, footer or navigation renders `el`. */
+  const inSiteChrome = (el: HTMLElement): boolean => {
+    let chrome = el.closest<HTMLElement>(CHROME_SELECTOR);
+    while (chrome) {
+      if (
+        !chrome.matches(PLAIN_HEADER_FOOTER) ||
+        !chrome.parentElement?.closest(SECTIONING_SELECTOR)
+      ) {
+        return true;
+      }
+      chrome =
+        chrome.parentElement?.closest<HTMLElement>(CHROME_SELECTOR) ?? null;
+    }
+    return false;
+  };
+
+  /** Whether content of an unrelated item is outlined where `el` sits. */
+  const showsOtherItem = (el: HTMLElement): boolean => {
+    const choice = el.closest(OTHER_ITEM_SELECTOR);
+    if (choice) return choice.getAttribute(OTHER_ITEM_ATTR) === 'on';
+    return !inSiteChrome(el);
+  };
+
   /** null: unrelated to the open item, so the visual editor leaves it alone. */
   const itemKind = (el: HTMLElement): ItemKind | null => {
     if (isCurrentItem(el)) return 'current';
     if (!references) return 'other';
-    return linkedIdOf(el) ? 'referenced' : null;
+    if (linkedIdOf(el)) return 'referenced';
+    return showsOtherItem(el) ? 'other' : null;
   };
 
   const referenceFieldOf = (el: HTMLElement): string | undefined => {
@@ -334,6 +375,9 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       }
       return;
     }
+    // Content of another item is often a teaser linking to that item's page:
+    // Ctrl/Cmd/Shift-clicks still open it in a new tab or window.
+    if (kind === 'other' && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
     // Capture phase, so the page's own handlers and link navigation never see
     // a click that selects a field.
     e.preventDefault();
@@ -347,11 +391,14 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       kind === 'referenced' ? referenceFieldOf(encoded) : undefined;
     // Nested content is reported as the linked item the open item knows.
     const linkedId = kind === 'referenced' ? linkedIdOf(encoded) : null;
+    // The editor can offer to open the page the clicked link leads to.
+    const linkHref = kind === 'other' ? leavingLinkHref(e.target) : null;
     opts.onEdit({
       ...readEditPayload(encoded),
       ...(linkedId && { id: linkedId }),
       ...(item && { block: item.index }),
       ...(referenceField && { referenceField }),
+      ...(linkHref && { linkHref }),
     });
   };
 

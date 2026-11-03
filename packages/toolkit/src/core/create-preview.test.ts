@@ -198,6 +198,51 @@ describe('createPreprPreview', () => {
     controller.destroy();
   });
 
+  it('posts the page link of a clicked unrelated item once references are known', async () => {
+    const controller = createPreprPreview({ props: PROPS });
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { event: 'prepr:initVE', itemId: 'item-1' },
+        origin: 'https://acme.prepr.io',
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { event: 'prepr:references', referencedIds: [] },
+        origin: 'https://acme.prepr.io',
+      }),
+    );
+
+    const card = document.createElement('a');
+    card.setAttribute('href', '/news/launch');
+    const el = document.createElement('h3');
+    el.setAttribute('data-prepr-encoded', '');
+    el.setAttribute('data-prepr-id', 'news-3');
+    el.setAttribute('data-prepr-field', 'title');
+    el.setAttribute('data-prepr-locale', 'en-GB');
+    card.appendChild(el);
+    document.body.appendChild(card);
+
+    el.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const posted = postMessageSpy.mock.calls
+      .map(([message]) => message as Record<string, unknown>)
+      .find((message) => message?.event === 'field_edit_requested');
+    expect(posted).toEqual({
+      name: 'prepr_preview_bar',
+      event: 'field_edit_requested',
+      id: 'news-3',
+      field: 'title',
+      locale: 'en-GB',
+      linkHref: `${window.location.origin}/news/launch`,
+    });
+
+    controller.destroy();
+  });
+
   describe('visual editor label language', () => {
     async function hoverLabelAfterHandshake(
       handshake: Record<string, unknown>,

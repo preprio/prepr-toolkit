@@ -457,11 +457,14 @@ describe('createVisualEditor', () => {
 
       label.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
       await nextFrame();
-      expect(box('hover').hasAttribute('data-visible')).toBe(false);
+      expect(box('hover').getAttribute('data-item-kind')).toBe('other');
     });
 
-    it('leaves unrelated content alone: no outline, and its clicks reach the page', async () => {
+    it('leaves unrelated content in site navigation alone: no outline, and its clicks reach the page', async () => {
+      const menu = document.createElement('nav');
+      document.body.appendChild(menu);
       const nav = item('label', 'navigation-1', 'a');
+      menu.appendChild(nav);
       rect(nav);
       editor.start();
       editor.setCurrentItem('item-1', [{ id: 'person-1', field: 'author' }]);
@@ -489,6 +492,205 @@ describe('createVisualEditor', () => {
       name.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
       await nextFrame();
       expect(box('hover').textContent).toBe('Reviewer › Name · linked item');
+    });
+  });
+
+  describe('unrelated items once the reference list is known', () => {
+    function unrelated(field: string, id = 'news-3', tag = 'h3'): HTMLElement {
+      const el = tagged(field, tag);
+      el.setAttribute('data-prepr-id', id);
+      rect(el);
+      return el;
+    }
+
+    function inside(selector: string, el: HTMLElement): HTMLElement {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = selector;
+      const outer = wrapper.firstElementChild as HTMLElement;
+      let innermost = outer;
+      while (innermost.firstElementChild) {
+        innermost = innermost.firstElementChild as HTMLElement;
+      }
+      innermost.appendChild(el);
+      document.body.appendChild(outer);
+      return outer;
+    }
+
+    function link(href: string): HTMLAnchorElement {
+      const a = document.createElement('a');
+      a.setAttribute('href', href);
+      document.body.appendChild(a);
+      return a;
+    }
+
+    async function hoverKind(el: HTMLElement): Promise<string | null> {
+      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+      await nextFrame();
+      await nextFrame();
+      return box('hover').hasAttribute('data-visible')
+        ? box('hover').getAttribute('data-item-kind')
+        : null;
+    }
+
+    const click = (el: HTMLElement, init: MouseEventInit = {}): MouseEvent => {
+      const event = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      el.dispatchEvent(event);
+      return event;
+    };
+
+    beforeEach(() => {
+      editor.stop();
+      editor = createVisualEditor({ onEdit, onNavigationBlocked });
+    });
+
+    const onNavigationBlocked = vi.fn();
+    afterEach(() => onNavigationBlocked.mockReset());
+
+    function startWithReferences(): void {
+      // Something of the open item is on screen, as on a real page.
+      tagged('title', 'h1');
+      editor.start();
+      editor.setNavigationGuard(true);
+      editor.setCurrentItem('item-1', [{ id: 'person-1', field: 'author' }]);
+    }
+
+    it('outlines an item that is neither open nor linked muted, labelled as another item', async () => {
+      const title = unrelated('title');
+      startWithReferences();
+
+      expect(await hoverKind(title)).toBe('other');
+      expect(box('hover').textContent).toBe('Title · other item');
+    });
+
+    it('requests the edit of that item on click without following its link or selecting it', async () => {
+      const card = link('/news/launch');
+      const title = unrelated('title');
+      card.appendChild(title);
+      const pageHandler = vi.fn();
+      document.addEventListener('click', pageHandler);
+      startWithReferences();
+
+      const event = click(title);
+      await nextFrame();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(pageHandler).not.toHaveBeenCalled();
+      expect(onNavigationBlocked).not.toHaveBeenCalled();
+      expect(onEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'news-3',
+          field: 'title',
+          linkHref: `${window.location.origin}/news/launch`,
+        }),
+      );
+      expect(box('selected').hasAttribute('data-visible')).toBe(false);
+      document.removeEventListener('click', pageHandler);
+    });
+
+    it('sends no link for a click outside a link, or on a javascript: link', () => {
+      const plain = unrelated('title');
+      const scripted = link('javascript:alert(1)');
+      const inScript = unrelated('summary', 'news-4', 'p');
+      scripted.appendChild(inScript);
+      startWithReferences();
+
+      click(plain);
+      click(inScript);
+
+      expect(onEdit).toHaveBeenCalledTimes(2);
+      for (const [payload] of onEdit.mock.calls) {
+        expect(payload).not.toHaveProperty('linkHref');
+      }
+    });
+
+    it('lets Ctrl/Cmd/Shift-clicks through to open the link in a new tab, and Alt-clicks follow it', () => {
+      const card = link('/news/launch');
+      const title = unrelated('title');
+      card.appendChild(title);
+      startWithReferences();
+
+      for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) {
+        expect(click(title, { [modifier]: true }).defaultPrevented).toBe(false);
+      }
+      expect(onEdit).not.toHaveBeenCalled();
+    });
+
+    it('keeps a linked item linked', async () => {
+      const name = unrelated('name', 'person-1', 'p');
+      startWithReferences();
+
+      expect(await hoverKind(name)).toBe('referenced');
+    });
+
+    it.each([
+      ['<header></header>'],
+      ['<footer></footer>'],
+      ['<nav></nav>'],
+      ['<div role="banner"></div>'],
+      ['<div role="contentinfo"></div>'],
+      ['<div role="navigation"></div>'],
+    ])('leaves site chrome alone: %s', async (chrome) => {
+      const label = unrelated('label', 'menu-1', 'a');
+      label.setAttribute('href', '/pricing');
+      inside(chrome, label);
+      startWithReferences();
+
+      expect(await hoverKind(label)).toBeNull();
+      const event = click(label);
+      expect(onEdit).not.toHaveBeenCalled();
+      // The link click goes to the navigation guard, as for any page link.
+      expect(event.defaultPrevented).toBe(true);
+      expect(onNavigationBlocked).toHaveBeenCalledWith(
+        `${window.location.origin}/pricing`,
+      );
+    });
+
+    it('outlines the header of a card, which is not site chrome', async () => {
+      const title = unrelated('title');
+      inside('<article><header></header></article>', title);
+      startWithReferences();
+
+      expect(await hoverKind(title)).toBe('other');
+    });
+
+    it('stays quiet under data-prepr-other-item="off"', async () => {
+      const title = unrelated('title');
+      inside(
+        '<section data-prepr-other-item="off"><div></div></section>',
+        title,
+      );
+      startWithReferences();
+
+      expect(await hoverKind(title)).toBeNull();
+      click(title);
+      expect(onEdit).not.toHaveBeenCalled();
+    });
+
+    it('outlines site chrome under data-prepr-other-item="on"', async () => {
+      const title = unrelated('title');
+      inside('<footer><div data-prepr-other-item="on"></div></footer>', title);
+      startWithReferences();
+
+      expect(await hoverKind(title)).toBe('other');
+      click(title);
+      expect(onEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'news-3' }),
+      );
+    });
+
+    it('lets the nearest data-prepr-other-item win', async () => {
+      const title = unrelated('title');
+      inside(
+        '<div data-prepr-other-item="off"><nav data-prepr-other-item="on"></nav></div>',
+        title,
+      );
+      startWithReferences();
+
+      expect(await hoverKind(title)).toBe('other');
     });
   });
 
