@@ -134,6 +134,60 @@ describe('tagAssetImages', () => {
     expect(el.hasAttribute('data-prepr-entry-id')).toBe(false);
   });
 
+  describe('an image beside another item’s content', () => {
+    const SRC =
+      'https://demo.stream.prepr.io/1fwxobmosdis/w_600/pexels-photo.jpg';
+    const isCurrentItem = (el: Element) =>
+      el.getAttribute('data-prepr-id') === 'page-1';
+
+    function card(textIds: string[]): HTMLImageElement {
+      const wrapper = document.createElement('a');
+      wrapper.href = '/news/x';
+      const image = document.createElement('img');
+      image.setAttribute('src', SRC);
+      wrapper.appendChild(image);
+      for (const id of textIds) {
+        const text = document.createElement('h3');
+        text.setAttribute('data-prepr-encoded', '');
+        text.setAttribute('data-prepr-id', id);
+        wrapper.appendChild(text);
+      }
+      document.body.appendChild(wrapper);
+      return image;
+    }
+
+    it('is left alone when the text around it belongs only to other items', () => {
+      // A query-driven news card reusing a photo the open page also shows.
+      const image = card(['news-1']);
+      tagAssetImages(index, 'page-1', new Map(), { isCurrentItem });
+      expect(image.hasAttribute('data-prepr-encoded')).toBe(false);
+    });
+
+    it('is tagged when the text around it is the open item’s', () => {
+      const image = card(['page-1']);
+      tagAssetImages(index, 'page-1', new Map(), { isCurrentItem });
+      expect(image.getAttribute('data-prepr-id')).toBe('page-1');
+    });
+
+    it('is tagged when the text around it mixes both', () => {
+      const image = card(['news-1', 'page-1']);
+      tagAssetImages(index, 'page-1', new Map(), { isCurrentItem });
+      expect(image.getAttribute('data-prepr-id')).toBe('page-1');
+    });
+
+    it('is untagged again once its block turns out to be another item’s', () => {
+      const image = card([]);
+      tagAssetImages(index, 'page-1', new Map(), { isCurrentItem });
+      expect(image.hasAttribute('data-prepr-encoded')).toBe(true);
+      const text = document.createElement('h3');
+      text.setAttribute('data-prepr-encoded', '');
+      text.setAttribute('data-prepr-id', 'news-1');
+      image.parentElement!.appendChild(text);
+      tagAssetImages(index, 'page-1', new Map(), { isCurrentItem });
+      expect(image.hasAttribute('data-prepr-encoded')).toBe(false);
+    });
+  });
+
   it('matches srcset candidates and <picture> sources', () => {
     const fromSrcset = img({
       src: '/placeholder.gif',

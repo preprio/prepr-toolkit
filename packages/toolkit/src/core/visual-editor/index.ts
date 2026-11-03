@@ -444,7 +444,9 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
 
   function tagAssets(): void {
     if (assetKeys.size > MAX_CACHED_KEYS) assetKeys.clear();
-    tagAssetImages(assetIndex, currentItemId, assetKeys);
+    tagAssetImages(assetIndex, currentItemId, assetKeys, {
+      isCurrentItem: (el) => isCurrentItem(el as HTMLElement),
+    });
   }
 
   // Runs once per frame at most, after any content change on the page.

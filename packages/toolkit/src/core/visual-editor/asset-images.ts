@@ -171,11 +171,41 @@ export function untagAssetImage(img: Element): void {
   for (const name of TAG_ATTRIBUTES) img.removeAttribute(name);
 }
 
+// Field text the site's own markup or the stega pass tagged, not images.
+const TEXT_FIELD_SELECTOR = `[data-prepr-encoded]:not([${ASSET_ATTR}])`;
+
+/**
+ * Whether the closest block around `img` that shows any field text shows only
+ * other items' text. One asset can appear both in the open item and in another
+ * item listed on the same page (a news card reusing the page's photo): the URL
+ * alone cannot tell them apart, the content beside the image can.
+ */
+function besideOtherItem(
+  img: HTMLImageElement,
+  isCurrentItem: (el: Element) => boolean,
+): boolean {
+  for (
+    let block = img.parentElement;
+    block && block !== document.body;
+    block = block.parentElement
+  ) {
+    const texts = block.querySelectorAll(TEXT_FIELD_SELECTOR);
+    if (texts.length === 0) continue;
+    for (const text of texts) {
+      if (isCurrentItem(text)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 /**
  * Tags every `<img>` showing an asset of the open item with the attributes
  * the stega pass writes for text, so it outlines and selects like any other
  * field. Images the page tagged itself (`previewAttrs`) are left alone, and
- * images tagged earlier that no longer match are untagged.
+ * images tagged earlier that no longer match are untagged. With
+ * `isCurrentItem`, an image whose surrounding text belongs only to other
+ * items is left untagged, as it shows that item's copy of the asset.
  *
  * Writes an attribute only when its value changes: the tags are observed, so
  * a rewrite with the same value would trigger another pass.
@@ -184,11 +214,17 @@ export function tagAssetImages(
   index: Map<string, EditorAsset>,
   itemId: string | null,
   keys: Map<string, string | null>,
+  options: { isCurrentItem?: (el: Element) => boolean } = {},
 ): void {
+  const { isCurrentItem } = options;
   for (const img of document.getElementsByTagName('img')) {
     const ours = img.hasAttribute(ASSET_ATTR);
     if (!ours && img.hasAttribute('data-prepr-encoded')) continue;
-    const asset = index.size ? matchAsset(img, index, keys) : undefined;
+    const match = index.size ? matchAsset(img, index, keys) : undefined;
+    const asset =
+      match && isCurrentItem && besideOtherItem(img, isCurrentItem)
+        ? undefined
+        : match;
     if (!asset) {
       if (ours) untagAssetImage(img);
       continue;
