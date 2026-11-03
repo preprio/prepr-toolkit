@@ -1287,3 +1287,104 @@ describe('normalizeQuery Text body', () => {
     expect(next.Article.elements[1]).toMatchObject({ body: 'Q2', text: 'Ann' });
   });
 });
+
+describe('normalizeQuery cleared assets', () => {
+  const POST_QUERY = /* GraphQL */ `
+    query Post {
+      Post {
+        _id
+        title
+        cover {
+          __typename
+          url(width: 800)
+        }
+        gallery {
+          _id
+          url
+        }
+        content {
+          __typename
+          ... on Assets {
+            items {
+              _id
+              url
+            }
+          }
+        }
+      }
+    }
+  `;
+  const result = () => ({
+    data: {
+      Post: {
+        _id: 'post-1',
+        title: 'Hello',
+        cover: { __typename: 'Asset', url: 'https://cdn/w_800/old.jpg' },
+        gallery: [
+          { _id: 'a', url: 'https://cdn/a.jpg' },
+          { _id: 'b', url: 'https://cdn/b.jpg' },
+        ],
+        content: [
+          {
+            __typename: 'Assets',
+            items: [{ _id: 'block-asset', url: 'https://cdn/x.jpg' }],
+          },
+        ],
+      },
+    },
+  });
+
+  it('keeps a cleared single asset and a cleared list in the render', () => {
+    const data = result();
+    const next = normalizeQuery(POST_QUERY, data, {
+      log: [
+        { type: 'field', itemId: 'post-1', field: 'cover', value: null },
+        { type: 'field', itemId: 'post-1', field: 'gallery', value: [] },
+        { type: 'field', itemId: 'block-asset', field: 'items', value: [] },
+      ],
+    });
+    expect(next).toEqual(data);
+  });
+
+  it('keeps an asset removed from a list in its slot', () => {
+    const next = normalizeQuery(POST_QUERY, result(), {
+      log: [
+        {
+          type: 'field',
+          itemId: 'post-1',
+          field: 'gallery',
+          value: [{ _id: 'b', url: 'https://cdn/b.jpg' }],
+        },
+      ],
+    });
+    expect(next.data.Post.gallery.map((asset) => asset._id)).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it('shows the asset picked after a clear', () => {
+    const next = normalizeQuery(POST_QUERY, result(), {
+      log: [
+        { type: 'field', itemId: 'post-1', field: 'cover', value: null },
+        {
+          type: 'field',
+          itemId: 'post-1',
+          field: 'cover',
+          value: { _id: 'n', url: 'https://cdn/w_800/new.jpg' },
+        },
+      ],
+    });
+    expect(next.data.Post.cover).toEqual({
+      __typename: 'Asset',
+      url: 'https://cdn/w_800/new.jpg',
+    });
+  });
+
+  it('still clears a field that is not an asset', () => {
+    const next = normalizeQuery(POST_QUERY, result(), {
+      log: [{ type: 'field', itemId: 'post-1', field: 'title', value: null }],
+    });
+    expect(next.data.Post.title).toBeNull();
+  });
+});

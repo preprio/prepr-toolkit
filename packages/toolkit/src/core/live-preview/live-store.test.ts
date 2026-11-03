@@ -23,6 +23,27 @@ describe('createLiveStore', () => {
     expect(snapshot.Page.content[0].heading).toBe('Hello');
   });
 
+  it('keeps a cleared image in the snapshot until the refetch after save', async () => {
+    const store = createLiveStore();
+    const stored = {
+      Post: { _id: 'p', cover: { url: 'https://cdn/old.jpg' } },
+    };
+    const saved = { Post: { _id: 'p', cover: null } };
+    const reg = store.register(stored, {
+      query: 'q',
+      fetcher: vi.fn().mockResolvedValue(saved),
+    });
+
+    store.pushPatch('p', 'cover', null);
+    expect(reg.getSnapshot()).toBe(stored);
+    // A registration made after the clear replays the log the same way.
+    expect(store.register(stored).getSnapshot()).toBe(stored);
+
+    store.invalidate('p');
+    await vi.advanceTimersByTimeAsync(200);
+    expect(reg.getSnapshot()).toBe(saved);
+  });
+
   it('pushPatch does not notify registrations without the item', () => {
     const store = createLiveStore();
     const reg = store.register({ Other: { _id: 'other-1', title: 't' } });

@@ -188,22 +188,121 @@ describe('patchSnapshot', () => {
       ]);
     });
 
-    it('writes into an empty field as-is and clears with null', () => {
+    it('writes into an empty field as-is', () => {
       const filled = patchSnapshot(post, index, 'post-1', 'empty', {
         url: 'https://cdn/c.jpg',
       }) as { Post: { empty: unknown } };
       expect(filled.Post.empty).toEqual({ url: 'https://cdn/c.jpg' });
+    });
+  });
 
-      const cleared = patchSnapshot(
-        post,
-        index,
+  describe('cleared assets', () => {
+    const post = {
+      Post: {
+        _id: 'post-1',
+        title: 'Hello',
+        cover: { url: 'https://cdn/w_800/old.jpg', width: 800 },
+        typed: { __typename: 'Asset', alt: 'no url selected' },
+        gallery: [
+          { _id: 'a', url: 'https://cdn/a.jpg' },
+          { _id: 'b', url: 'https://cdn/b.jpg' },
+          { _id: 'c', url: 'https://cdn/c.jpg' },
+        ],
+        author: { name: 'Ann' },
+      },
+    };
+    const index = indexSnapshot(post);
+
+    it('keeps a single asset the editor cleared, so the layout holds until save', () => {
+      expect(patchSnapshot(post, index, 'post-1', 'cover', null)).toBe(post);
+      expect(patchSnapshot(post, index, 'post-1', 'cover', [])).toBe(post);
+      expect(patchSnapshot(post, index, 'post-1', 'typed', null)).toBe(post);
+    });
+
+    it('keeps every asset of a list the editor emptied', () => {
+      expect(patchSnapshot(post, index, 'post-1', 'gallery', [])).toBe(post);
+      expect(patchSnapshot(post, index, 'post-1', 'gallery', null)).toBe(post);
+    });
+
+    it('keeps an asset removed from a list in its slot', () => {
+      const next = patchSnapshot(post, index, 'post-1', 'gallery', [
+        { _id: 'a', url: 'https://cdn/a.jpg' },
+        { _id: 'c', url: 'https://cdn/c.jpg' },
+      ]) as typeof post;
+      expect(next.Post.gallery.map((asset) => asset._id)).toEqual([
+        'a',
+        'b',
+        'c',
+      ]);
+    });
+
+    it('lets a newly picked asset end the wait for removed ones', () => {
+      const removed = patchSnapshot(post, index, 'post-1', 'gallery', [
+        { _id: 'a', url: 'https://cdn/a.jpg' },
+      ]);
+      const next = patchSnapshot(
+        removed,
+        indexSnapshot(removed),
         'post-1',
-        'cover_image',
-        null,
-      ) as {
-        Post: { cover_image: unknown };
+        'gallery',
+        [
+          { _id: 'a', url: 'https://cdn/a.jpg' },
+          { _id: 'd', url: 'https://cdn/d.jpg' },
+        ],
+      ) as typeof post;
+      expect(next.Post.gallery.map((asset) => asset._id)).toEqual(['a', 'd']);
+    });
+
+    it('keeps removed assets while the editor sends other URLs for the rest', () => {
+      const next = patchSnapshot(post, index, 'post-1', 'gallery', [
+        { _id: 'a', url: 'https://cdn/w_400/a.jpg' },
+      ]) as typeof post;
+      expect(next.Post.gallery).toEqual([
+        { _id: 'a', url: 'https://cdn/w_400/a.jpg' },
+        { _id: 'b', url: 'https://cdn/b.jpg' },
+        { _id: 'c', url: 'https://cdn/c.jpg' },
+      ]);
+    });
+
+    it('keeps the list as it is when a push only reorders kept assets', () => {
+      const next = patchSnapshot(post, index, 'post-1', 'gallery', [
+        { _id: 'c', url: 'https://cdn/c.jpg' },
+        { _id: 'a', url: 'https://cdn/a.jpg' },
+      ]) as typeof post;
+      expect(next.Post.gallery.map((asset) => asset._id)).toEqual([
+        'c',
+        'b',
+        'a',
+      ]);
+    });
+
+    it('replaces a cleared asset with the one picked next', () => {
+      const cleared = patchSnapshot(post, index, 'post-1', 'cover', null);
+      const picked = patchSnapshot(
+        cleared,
+        indexSnapshot(cleared),
+        'post-1',
+        'cover',
+        {
+          url: 'https://cdn/w_800/new.jpg',
+          width: 1200,
+        },
+      ) as typeof post;
+      expect(picked.Post.cover).toEqual({
+        url: 'https://cdn/w_800/new.jpg',
+        width: 1200,
+      });
+    });
+
+    it('still clears values that are not assets', () => {
+      const title = patchSnapshot(post, index, 'post-1', 'title', null) as {
+        Post: { title: unknown };
       };
-      expect(cleared.Post.cover_image).toBeNull();
+      expect(title.Post.title).toBeNull();
+      const author = patchSnapshot(post, index, 'post-1', 'author', null) as {
+        Post: { author: unknown };
+      };
+      expect(author.Post.author).toBeNull();
     });
   });
 });

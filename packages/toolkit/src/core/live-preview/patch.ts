@@ -69,12 +69,58 @@ function shapeLike(
   return out;
 }
 
+/** An image or file as the API returns it: its `url`, or typed `Asset`. */
+function isAsset(value: unknown): boolean {
+  return (
+    isPlainObject(value) &&
+    (typeof value.url === 'string' || value.__typename === 'Asset')
+  );
+}
+
+function hasId(list: unknown[], entry: Record<string, unknown>): boolean {
+  return (
+    entry._id !== undefined &&
+    list.some((c) => isPlainObject(c) && c._id === entry._id)
+  );
+}
+
+function isAssetValue(value: unknown): boolean {
+  return Array.isArray(value)
+    ? value.length > 0 && value.every(isAsset)
+    : isAsset(value);
+}
+
+/**
+ * `next` with the assets of `current` that the editor no longer lists put
+ * back where they were. Matched by `_id`; without one, nothing is put back.
+ */
+function keepRemovedAssets(current: unknown[], next: unknown[]): unknown[] {
+  const listed = new Set<unknown>();
+  for (const entry of next) {
+    if (isPlainObject(entry) && entry._id !== undefined) listed.add(entry._id);
+  }
+  let out = next;
+  current.forEach((entry, position) => {
+    if (!isPlainObject(entry) || entry._id === undefined) return;
+    if (listed.has(entry._id)) return;
+    if (out === next) out = [...next];
+    out.splice(Math.min(position, out.length), 0, entry);
+  });
+  return out;
+}
+
 /**
  * New value for a structured field. Tolerates a list for a single value and
  * the reverse, since the editor and the query may disagree on cardinality.
+ *
+ * Assets the editor removes stay in place: an image disappearing while the
+ * editor picks its replacement would shift the layout under the pointer.
+ * They go once another asset is picked for the field, or once the item is
+ * saved and the page loads stored content.
  */
 function mergeStructured(current: unknown, incoming: LiveValue): unknown {
   if (incoming === null || (Array.isArray(incoming) && !incoming.length)) {
+    if (isAssetValue(current)) return current;
     if (Array.isArray(current)) return current.length ? [] : current;
     return null;
   }
@@ -84,7 +130,7 @@ function mergeStructured(current: unknown, incoming: LiveValue): unknown {
   if (current === null || current === undefined) return incoming;
   if (Array.isArray(current)) {
     const template = current.find(isPlainObject);
-    return list.map((entry) => {
+    const next = list.map((entry) => {
       const match = current.find(
         (c) => isPlainObject(c) && c._id !== undefined && c._id === entry._id,
       );
@@ -92,6 +138,21 @@ function mergeStructured(current: unknown, incoming: LiveValue): unknown {
       // A key the editor did not send is null, not the first entry's value.
       return isPlainObject(template) ? shapeLike(template, entry) : entry;
     });
+    // A newly picked asset ends the wait: the list then shows what the
+    // editor sends.
+    if (
+      !isAssetValue(current) ||
+      list.some((entry) => !hasId(current, entry))
+    ) {
+      return next;
+    }
+    const kept = keepRemovedAssets(current, next);
+    // Unchanged entries in the same order keep the list itself, so a push
+    // that only removed assets changes nothing.
+    return kept.length === current.length &&
+      kept.every((entry, i) => entry === current[i])
+      ? current
+      : kept;
   }
   if (isPlainObject(current)) return mergeObject(current, list[0]);
   return current;
