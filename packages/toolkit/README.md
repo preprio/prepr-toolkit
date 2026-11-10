@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@preprio/toolkit.svg)](https://www.npmjs.com/package/@preprio/toolkit)
 [![npm downloads](https://img.shields.io/npm/dm/@preprio/toolkit.svg)](https://www.npmjs.com/package/@preprio/toolkit)
-[![license](https://img.shields.io/npm/l/@preprio/toolkit.svg)](https://github.com/preprio/prepr-toolkit/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/@preprio/toolkit.svg)](./LICENSE)
 
 Preview, visual editing, live preview and personalization for [Prepr CMS](https://prepr.io), for Next.js, Nuxt, Astro, SvelteKit, React and any other stack. One framework-free core with a thin wrapper per framework.
 
@@ -40,16 +40,16 @@ npm install @preprio/toolkit
 
 ## Choose your entry point
 
-| You use              | Import from                  | Guide                                                                                                               |
-| -------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Next.js              | `@preprio/toolkit/nextjs`    | [Next.js](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/nextjs.md)                       |
-| Astro                | `@preprio/toolkit/astro`     | [Astro](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/astro.md)                          |
-| SvelteKit            | `@preprio/toolkit/sveltekit` | [SvelteKit](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/sveltekit.md)                  |
-| Nuxt                 | `@preprio/toolkit/nuxt`      | [Nuxt](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/nuxt.md)                            |
-| React, no framework  | `@preprio/toolkit/react`     | [React](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/react.md)                          |
-| Express, Hono, other | `@preprio/toolkit`           | [Any other framework](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/other-frameworks.md) |
+| You use              | Import from                  | Guide                                             |
+| -------------------- | ---------------------------- | ------------------------------------------------- |
+| Next.js              | `@preprio/toolkit/nextjs`    | [Next.js](./docs/nextjs.md)                       |
+| Astro                | `@preprio/toolkit/astro`     | [Astro](./docs/astro.md)                          |
+| SvelteKit            | `@preprio/toolkit/sveltekit` | [SvelteKit](./docs/sveltekit.md)                  |
+| Nuxt                 | `@preprio/toolkit/nuxt`      | [Nuxt](./docs/nuxt.md)                            |
+| React, no framework  | `@preprio/toolkit/react`     | [React](./docs/react.md)                          |
+| Express, Hono, other | `@preprio/toolkit`           | [Any other framework](./docs/other-frameworks.md) |
 
-Coming from `@preprio/prepr-nextjs`? See the [migration guide](https://github.com/preprio/prepr-toolkit/blob/main/MIGRATION.md).
+Coming from `@preprio/prepr-nextjs`? See the [migration guide](../../MIGRATION.md).
 
 ## How it fits together
 
@@ -67,7 +67,7 @@ Two rules hold everywhere:
 
 ## Quick start (Next.js)
 
-Other frameworks follow the same steps: [Astro](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/astro.md), [SvelteKit](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/sveltekit.md), [Nuxt](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/nuxt.md).
+Other frameworks follow the same steps: [Astro](./docs/astro.md), [SvelteKit](./docs/sveltekit.md), [Nuxt](./docs/nuxt.md).
 
 **1. Add your GraphQL URL to `.env`.** The name is yours.
 
@@ -147,7 +147,7 @@ const response = await fetch(process.env.PREPR_GRAPHQL_URL!, {
 2. Pick a segment. The page updates with that segment's content.
 3. Open a content item's preview in Prepr and click text on the page. Prepr opens the field.
 
-Nothing showing? See [Troubleshooting](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/troubleshooting.md).
+Nothing showing? See [Troubleshooting](./docs/troubleshooting.md).
 
 ## Set up live preview
 
@@ -179,7 +179,7 @@ const config = {
 };
 ```
 
-No Codegen? See [the other two ways](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/live-preview.md#preparing-your-queries).
+No Codegen? See [the other two ways](./docs/live-preview.md#preparing-your-queries).
 
 **5. Run your query results through the live preview helper**, with your preview flag as `enabled`:
 
@@ -190,29 +190,29 @@ No Codegen? See [the other two ways](https://github.com/preprio/prepr-toolkit/bl
 | SvelteKit | `normalizedQuery(GetPageDocument, data.result, { enabled: data.preview, onSave: invalidateAll })` from `@preprio/toolkit/sveltekit/live`                                                   |
 | Nuxt      | `useNormalizedQuery(GetPageDocument, data, { enabled: preview, onSave: refresh })` from `@preprio/toolkit/nuxt/live`                                                                       |
 
-Full snippets per framework: [Next.js](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/nextjs.md#live-preview) · [Astro](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/astro.md#live-preview) · [SvelteKit](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/sveltekit.md#live-preview) · [Nuxt](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/nuxt.md#live-preview).
+Full snippets per framework: [Next.js](./docs/nextjs.md#live-preview) · [Astro](./docs/astro.md#live-preview) · [SvelteKit](./docs/sveltekit.md#live-preview) · [Nuxt](./docs/nuxt.md#live-preview).
 
 **6. Verify it works.** Open a content item and its preview in Prepr, and type in a text field. The page shows the text before you save.
 
-Not updating? Check, in this order: `enabled` is true, the page is served over HTTPS, the browser console shows no `Refused to frame` error, and the query selects `_id`. More in [Troubleshooting](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/troubleshooting.md#live-preview-does-not-update).
+Not updating? Check, in this order: `enabled` is true, the page is served over HTTPS, the browser console shows no `Refused to frame` error, and the query selects `_id`. More in [Troubleshooting](./docs/troubleshooting.md#live-preview-does-not-update).
 
-The [live preview guide](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/live-preview.md) covers how it works, every option, the cookies involved and the security model.
+The [live preview guide](./docs/live-preview.md) covers how it works, every option, the cookies involved and the security model.
 
 ## Documentation
 
-| Topic                                                                                                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Framework guides                                                                                               | [Next.js](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/nextjs.md) · [Astro](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/astro.md) · [SvelteKit](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/sveltekit.md) · [Nuxt](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/nuxt.md) · [React](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/react.md) · [Other](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/other-frameworks.md) |
-| [Live preview](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/live-preview.md)       | Checklist, preparing queries, options, security, cookies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| [Visual editing](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/visual-editing.md)   | How click-to-edit picks elements, and marking content by hand                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| [Configuration](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/configuration.md)     | Middleware and preview options, feature flags, headless preview, theming, languages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| [API reference](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/api-reference.md)     | Every entry point, helper and component                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| [Troubleshooting](https://github.com/preprio/prepr-toolkit/blob/main/packages/toolkit/docs/troubleshooting.md) | Toolbar, click-to-edit, headers, live preview, cookies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| [Examples](https://github.com/preprio/prepr-toolkit/tree/main/examples)                                        | Runnable Next.js, Astro, SvelteKit, Nuxt and Express apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Topic                                        |                                                                                                                                                                                     |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework guides                             | [Next.js](./docs/nextjs.md) · [Astro](./docs/astro.md) · [SvelteKit](./docs/sveltekit.md) · [Nuxt](./docs/nuxt.md) · [React](./docs/react.md) · [Other](./docs/other-frameworks.md) |
+| [Live preview](./docs/live-preview.md)       | Checklist, preparing queries, options, security, cookies                                                                                                                            |
+| [Visual editing](./docs/visual-editing.md)   | How click-to-edit picks elements, and marking content by hand                                                                                                                       |
+| [Configuration](./docs/configuration.md)     | Middleware and preview options, feature flags, headless preview, theming, languages                                                                                                 |
+| [API reference](./docs/api-reference.md)     | Every entry point, helper and component                                                                                                                                             |
+| [Troubleshooting](./docs/troubleshooting.md) | Toolbar, click-to-edit, headers, live preview, cookies                                                                                                                              |
+| [Examples](../../examples)                   | Runnable Next.js, Astro, SvelteKit, Nuxt and Express apps                                                                                                                           |
 
 ## Versioning
 
-The package follows semver. Minor and patch releases never break the public API; a breaking change ships as a major version with a migration entry. An API on its way out is marked `@deprecated` and keeps working until the next major. See the [changelog](https://github.com/preprio/prepr-toolkit/blob/main/CHANGELOG.md).
+The package follows semver. Minor and patch releases never break the public API; a breaking change ships as a major version with a migration entry. An API on its way out is marked `@deprecated` and keeps working until the next major. See the [changelog](../../CHANGELOG.md).
 
 Cookie names, header names, `data-prepr-*` attributes and the editor's message format are part of that contract.
 

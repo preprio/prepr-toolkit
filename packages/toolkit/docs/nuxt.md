@@ -87,7 +87,7 @@ const navigation = {
 </template>
 ```
 
-See the runnable example at [`examples/nuxt`](https://github.com/preprio/prepr-toolkit/tree/main/examples/nuxt) for the full source.
+See the runnable example at [`examples/nuxt`](../../../examples/nuxt) for the full source.
 
 ## Verify it works
 

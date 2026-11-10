@@ -48,7 +48,7 @@ const controller = createPreprPreview({ props: toolbarProps });
 // later: controller.destroy()
 ```
 
-Serialize the server-computed props into the page — a `<script type="application/json">` tag works well — and read them back on the client. See the runnable example at [`examples/express`](https://github.com/preprio/prepr-toolkit/tree/main/examples/express) for the full source.
+Serialize the server-computed props into the page — a `<script type="application/json">` tag works well — and read them back on the client. See the runnable example at [`examples/express`](../../../examples/express) for the full source.
 
 ## Live preview
 

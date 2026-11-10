@@ -202,7 +202,7 @@ https://393qibegr87z.b-cdn.net/w_800,h_600,fx_75,fy_67/b7ijwafd586-photo.jpg
 
 The loader rewrites `w_` to the width Next asks for and scales `h_` alongside it, holding the emitted ratio — for a cropped asset that ratio is the authored crop box, so the crop survives the resize. Focal points (`fx`/`fy`) are percentages and carry through unchanged, as does any other option in the segment. Quality is not a CDN option and is ignored. URLs with no transform segment pass through untouched — set `unoptimized` on those `<Image>`s.
 
-See the runnable example at [`examples/nextjs`](https://github.com/preprio/prepr-toolkit/tree/main/examples/nextjs) for the full source.
+See the runnable example at [`examples/nextjs`](../../../examples/nextjs) for the full source.
 
 ## Live preview
 

@@ -99,7 +99,7 @@ By default a segment or variant switch does a full page load. Pass `navigation` 
 />
 ```
 
-See the runnable example at [`examples/sveltekit`](https://github.com/preprio/prepr-toolkit/tree/main/examples/sveltekit) for the full source.
+See the runnable example at [`examples/sveltekit`](../../../examples/sveltekit) for the full source.
 
 ## Verify it works
 

@@ -65,7 +65,7 @@ const headers = getPreprHeaders(Astro.request.headers);
 
 The `.astro` components ship as source, compiled by your own Astro/Vite pipeline. They use full-page navigation by default, matching Astro's MPA model — switching segment or variant re-runs the server-rendered output.
 
-See the runnable example at [`examples/astro`](https://github.com/preprio/prepr-toolkit/tree/main/examples/astro) for the full source.
+See the runnable example at [`examples/astro`](../../../examples/astro) for the full source.
 
 ## Verify it works
 
