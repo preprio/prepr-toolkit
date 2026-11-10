@@ -1,12 +1,7 @@
-import type {
-  LiveBridge,
-  LivePatch,
-  LiveStore,
-  applyPatchLog,
-} from '../core/live-preview';
+import type { LivePatch, applyPatchLog } from '../core/live-preview';
 import type { QueryInput } from '../core/live-preview/query-document';
 import { annotateEditLinks } from '../core/live-preview/edit-links';
-import { onTestReset } from '../core/live-preview/test-reset';
+import { createLiveStarter, isFramed } from '../core/live-preview/starter';
 
 export interface NormalizedQueryOptions {
   /**
@@ -30,15 +25,24 @@ export interface NormalizedQueryStore<T> {
   subscribe(run: (value: T) => void): () => void;
 }
 
-let starting: Promise<void> | null = null;
-let store: LiveStore | null = null;
-let bridge: LiveBridge | null = null;
 let applyLog: typeof applyPatchLog | null = null;
 let log: LivePatch[] = [];
-let allowedEditorOrigins: string[] | undefined;
-let strictMode: boolean | undefined;
 const logListeners = new Set<() => void>();
-const startListeners = new Set<(store: LiveStore) => void>();
+
+const live = createLiveStarter({
+  onStart(store, runtime) {
+    applyLog = runtime.applyPatchLog;
+    store.onLogChange((next) => {
+      log = next;
+      logListeners.forEach((listener) => listener());
+    });
+  },
+  onReset() {
+    applyLog = null;
+    log = [];
+    logListeners.clear();
+  },
+});
 
 function constant<T>(value: T): NormalizedQueryStore<T> {
   return {
@@ -47,41 +51,6 @@ function constant<T>(value: T): NormalizedQueryStore<T> {
       return () => {};
     },
   };
-}
-
-function isFramed(): boolean {
-  return typeof window !== 'undefined' && window.self !== window.top;
-}
-
-/** Loaded lazily, only when enabled in an iframe, so visitors never download it. */
-function startLive(): void {
-  starting ??= import('../core/live-preview').then(
-    ({ applyPatchLog, createLiveBridge, createLiveStore }) => {
-      applyLog = applyPatchLog;
-      const started = createLiveStore();
-      bridge = createLiveBridge(started, {
-        allowedEditorOrigins: () => allowedEditorOrigins,
-        strictMode: () => strictMode,
-      });
-      bridge.start();
-      started.onLogChange((next) => {
-        log = next;
-        logListeners.forEach((listener) => listener());
-      });
-      store = started;
-      startListeners.forEach((listener) => listener(started));
-      startListeners.clear();
-    },
-  );
-}
-
-function whenLive(listener: (store: LiveStore) => void): () => void {
-  if (store) {
-    listener(store);
-    return () => {};
-  }
-  startListeners.add(listener);
-  return () => startListeners.delete(listener);
 }
 
 /**
@@ -119,11 +88,8 @@ export function normalizedQuery<T>(
   // finds list entries by id.
   const annotated = annotateEditLinks(data, query);
   if (!isFramed()) return constant(annotated);
-  if (options.strictMode) strictMode = true;
-  if (options.allowedEditorOrigins) {
-    allowedEditorOrigins = [...options.allowedEditorOrigins];
-  }
-  startLive();
+  live.configure(options);
+  void live.start();
   // The log only fills once `applyLog` is loaded.
   const current = (): T =>
     log.length && applyLog ? applyLog(query, annotated, log) : annotated;
@@ -136,7 +102,7 @@ export function normalizedQuery<T>(
 
       let offInvalidate: (() => void) | null = null;
       const stopWaiting = options.onSave
-        ? whenLive((started) => {
+        ? live.whenLive((started) => {
             offInvalidate = started.onInvalidate(() => options.onSave?.());
           })
         : () => {};
@@ -149,16 +115,3 @@ export function normalizedQuery<T>(
     },
   };
 }
-
-onTestReset(() => {
-  bridge?.stop();
-  bridge = null;
-  store = null;
-  starting = null;
-  applyLog = null;
-  log = [];
-  logListeners.clear();
-  startListeners.clear();
-  allowedEditorOrigins = undefined;
-  strictMode = undefined;
-});

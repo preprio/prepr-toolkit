@@ -8,15 +8,10 @@ import {
   type Ref,
 } from 'vue';
 
-import type {
-  LiveBridge,
-  LivePatch,
-  LiveStore,
-  applyPatchLog,
-} from '../core/live-preview';
+import type { LivePatch, applyPatchLog } from '../core/live-preview';
 import type { QueryInput } from '../core/live-preview/query-document';
 import { annotateEditLinks } from '../core/live-preview/edit-links';
-import { onTestReset } from '../core/live-preview/test-reset';
+import { createLiveStarter, isFramed } from '../core/live-preview/starter';
 
 export interface UseNormalizedQueryOptions {
   /**
@@ -32,48 +27,21 @@ export interface UseNormalizedQueryOptions {
   strictMode?: boolean;
 }
 
-let starting: Promise<void> | null = null;
-let store: LiveStore | null = null;
-let bridge: LiveBridge | null = null;
 let applyLog: typeof applyPatchLog | null = null;
 const log = shallowRef<LivePatch[]>([]);
-let allowedEditorOrigins: string[] | undefined;
-let strictMode: boolean | undefined;
-const startListeners = new Set<(store: LiveStore) => void>();
 
-function isFramed(): boolean {
-  return typeof window !== 'undefined' && window.self !== window.top;
-}
-
-/** Loaded lazily, only when enabled in an iframe, so visitors never download it. */
-function startLive(): void {
-  starting ??= import('../core/live-preview').then(
-    ({ applyPatchLog, createLiveBridge, createLiveStore }) => {
-      applyLog = applyPatchLog;
-      const started = createLiveStore();
-      bridge = createLiveBridge(started, {
-        allowedEditorOrigins: () => allowedEditorOrigins,
-        strictMode: () => strictMode,
-      });
-      bridge.start();
-      started.onLogChange((next) => {
-        log.value = next;
-      });
-      store = started;
-      startListeners.forEach((listener) => listener(started));
-      startListeners.clear();
-    },
-  );
-}
-
-function whenLive(listener: (store: LiveStore) => void): () => void {
-  if (store) {
-    listener(store);
-    return () => {};
-  }
-  startListeners.add(listener);
-  return () => startListeners.delete(listener);
-}
+const live = createLiveStarter({
+  onStart(store, runtime) {
+    applyLog = runtime.applyPatchLog;
+    store.onLogChange((next) => {
+      log.value = next;
+    });
+  },
+  onReset() {
+    applyLog = null;
+    log.value = [];
+  },
+});
 
 /**
  * Show the Prepr editor's unsaved changes in a Nuxt page, applied in the
@@ -99,15 +67,12 @@ export function useNormalizedQuery<T>(
   // finds list entries by id.
   const annotated = computed(() => annotateEditLinks(unref(data) as T, query));
   if (!isFramed()) return annotated;
-  if (options.strictMode) strictMode = true;
-  if (options.allowedEditorOrigins) {
-    allowedEditorOrigins = [...options.allowedEditorOrigins];
-  }
-  startLive();
+  live.configure(options);
+  void live.start();
   if (options.onSave && getCurrentScope()) {
     const onSave = options.onSave;
     let offInvalidate: (() => void) | null = null;
-    const stopWaiting = whenLive((started) => {
+    const stopWaiting = live.whenLive((started) => {
       offInvalidate = started.onInvalidate(() => onSave());
     });
     onScopeDispose(() => {
@@ -123,15 +88,3 @@ export function useNormalizedQuery<T>(
       : value;
   });
 }
-
-onTestReset(() => {
-  bridge?.stop();
-  bridge = null;
-  store = null;
-  starting = null;
-  applyLog = null;
-  startListeners.clear();
-  log.value = [];
-  allowedEditorOrigins = undefined;
-  strictMode = undefined;
-});

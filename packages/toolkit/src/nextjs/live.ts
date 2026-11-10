@@ -3,10 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import type { LiveBridge, LiveFetcher, LiveStore } from '../core/live-preview';
+import type { LiveFetcher, LiveStore } from '../core/live-preview';
 import type { LivePatch } from '../core/live-preview/normalize-query';
 import { createScopedLogger } from '../core/utils';
-import { onTestReset } from '../core/live-preview/test-reset';
+import { createLiveStarter, isFramed } from '../core/live-preview/starter';
 import { syncPreprLiveLog } from './live-action';
 
 const debug = createScopedLogger('live-preview:next');
@@ -42,51 +42,18 @@ export interface UseLiveOptions {
   variables?: Record<string, unknown>;
 }
 
-let starting: Promise<LiveStore> | null = null;
-let store: LiveStore | null = null;
-let bridge: LiveBridge | null = null;
-let allowedEditorOrigins: string[] | undefined;
-let strictMode = false;
-const startListeners = new Set<(store: LiveStore) => void>();
-
-function isFramed(): boolean {
-  return typeof window !== 'undefined' && window.self !== window.top;
-}
-
-/**
- * Loads the runtime lazily, only when enabled, so visitors never download it
- * and a framed production page never takes changes from anyone.
- */
-function startLive(): Promise<LiveStore> {
-  starting ??= import('../core/live-preview').then(
-    ({ createLiveBridge, createLiveStore }) => {
-      const skipped = new Set(quarantined());
-      const started = createLiveStore({
-        accept: (patch) => !skipped.has(patchKey(patch)),
-      });
-      watchClientRenders(started);
-      bridge = createLiveBridge(started, {
-        allowedEditorOrigins: () => allowedEditorOrigins,
-        strictMode: () => strictMode,
-      });
-      bridge.start();
-      store = started;
-      startListeners.forEach((listener) => listener(started));
-      startListeners.clear();
-      return started;
-    },
-  );
-  return starting;
-}
-
-function whenLive(listener: (store: LiveStore) => void): () => void {
-  if (store) {
-    listener(store);
-    return () => {};
-  }
-  startListeners.add(listener);
-  return () => startListeners.delete(listener);
-}
+// Enabled only by the caller's preview flag, so a framed production page
+// never takes changes from anyone.
+const starter = createLiveStarter({
+  storeOptions() {
+    const skipped = new Set(quarantined());
+    return { accept: (patch) => !skipped.has(patchKey(patch)) };
+  },
+  onStart: (store) => watchClientRenders(store),
+  onReset() {
+    recovering = false;
+  },
+});
 
 /**
  * Turn live preview on for `useLive`. Call once on the client with your
@@ -95,12 +62,9 @@ function whenLive(listener: (store: LiveStore) => void): () => void {
  */
 export function initLivePreview(config: LivePreviewConfig = {}): void {
   if (!config.enabled || !isFramed()) return;
-  if (config.strictMode) strictMode = true;
-  if (config.allowedEditorOrigins) {
-    allowedEditorOrigins = [...config.allowedEditorOrigins];
-  }
+  starter.configure(config);
   const { fetcher } = config;
-  void startLive().then((started) => {
+  void starter.start().then((started) => {
     if (fetcher) started.setFetcher(fetcher);
   });
 }
@@ -117,7 +81,7 @@ export function useLive<T>(data: T, opts?: UseLiveOptions): T {
   useEffect(() => {
     if (!isFramed()) return;
     let unregister: (() => void) | null = null;
-    const stopWaiting = whenLive((started) => {
+    const stopWaiting = starter.whenLive((started) => {
       const registration = started.register(data, opts);
       setLive(registration.getSnapshot() as T);
       const unsubscribe = registration.subscribe(() =>
@@ -157,12 +121,14 @@ export function PreprRefresh({
 
   useEffect(() => {
     if (!enabled || !isFramed()) return;
-    if (strict) strictMode = true;
-    if (originsKey) allowedEditorOrigins = originsKey.split(' ');
+    starter.configure({
+      strictMode: strict,
+      allowedEditorOrigins: originsKey?.split(' '),
+    });
     const sync = createLogSync();
     let unsubscribe: (() => void) | null = null;
     let active = true;
-    void startLive().then((started) => {
+    void starter.start().then((started) => {
       if (!active) return;
       const offLog = started.onLogChange((log) => {
         if (log.length) sync.schedule(log);
@@ -361,14 +327,3 @@ function createLogSync() {
     },
   };
 }
-
-onTestReset(() => {
-  bridge?.stop();
-  bridge = null;
-  store = null;
-  starting = null;
-  recovering = false;
-  startListeners.clear();
-  allowedEditorOrigins = undefined;
-  strictMode = false;
-});

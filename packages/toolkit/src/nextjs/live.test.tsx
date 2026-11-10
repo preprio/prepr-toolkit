@@ -8,7 +8,6 @@ import { resetForTests } from '../core/live-preview/test-reset';
 import { initLivePreview, PreprRefresh, useLive } from './live';
 
 declare global {
-  // eslint-disable-next-line no-var
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

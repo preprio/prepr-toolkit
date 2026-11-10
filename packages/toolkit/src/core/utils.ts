@@ -100,13 +100,6 @@ class DebugLogger {
     const prefix = this.options.prefix;
     console.warn(`${prefix} ${message}`, ...args);
   }
-
-  error(message: string, ...args: DebugArg[]): void {
-    if (!this.isEnabled()) return;
-
-    const prefix = this.options.prefix;
-    console.error(`${prefix} ${message}`, ...args);
-  }
 }
 
 export function initDebugLogger(enabled: boolean = false): void {
@@ -118,72 +111,4 @@ export function createScopedLogger(scopeName: string): DebugLogger {
   return new DebugLogger({
     prefix: `[Prepr][${scopeName}]`,
   });
-}
-
-export interface ThrottledFunction<T extends (...args: any[]) => any> {
-  (...args: Parameters<T>): void;
-  cancel(): void;
-}
-
-/** Leading-edge throttle; trailing call is scheduled for the remaining delay. */
-export function throttle<T extends (...args: any[]) => any>(
-  func: T,
-  delay: number,
-): ThrottledFunction<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let lastExecTime = 0;
-
-  const throttledFunc = ((...args: Parameters<T>) => {
-    const currentTime = Date.now();
-    const timeSinceLastExec = currentTime - lastExecTime;
-
-    if (timeSinceLastExec >= delay) {
-      func(...args);
-      lastExecTime = currentTime;
-    } else {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      timeoutId = setTimeout(() => {
-        func(...args);
-        lastExecTime = Date.now();
-        timeoutId = null;
-      }, delay - timeSinceLastExec);
-    }
-  }) as ThrottledFunction<T>;
-
-  throttledFunc.cancel = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-  };
-
-  return throttledFunc;
-}
-
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  delay: number,
-): ThrottledFunction<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  const debouncedFunc = ((...args: Parameters<T>) => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      func(...args);
-      timeoutId = null;
-    }, delay);
-  }) as ThrottledFunction<T>;
-
-  debouncedFunc.cancel = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-  };
-
-  return debouncedFunc;
 }
