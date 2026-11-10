@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startHtmlLivePreview, type HtmlLivePreview } from './html-live';
 
 function post(data: unknown, origin = 'https://editor.prepr.io'): void {
-  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: window.parent }),
+  );
 }
 
 describe('startHtmlLivePreview', () => {

@@ -11,7 +11,9 @@ import { normalizedQuery, type NormalizedQueryStore } from './live';
 const QUERY = '{ Post { _id title } }';
 
 function post(data: unknown, origin = 'https://editor.prepr.io'): void {
-  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: window.parent }),
+  );
 }
 
 /** Subscribes like `$store` does, keeping the latest value. */

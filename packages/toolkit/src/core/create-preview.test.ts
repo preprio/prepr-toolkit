@@ -7,6 +7,9 @@ import {
 } from './create-preview';
 import type { PreprNavigationAdapter } from './create-preview';
 import type { PreprPreviewController } from './create-preview';
+import { createLiveBridge } from './live-preview/bridge-events';
+import type { LiveStore } from './live-preview/live-store';
+import { resetSharedState } from './shared-state';
 import type { ToolbarStore } from './store';
 import type { PreprToolbarProps } from './types';
 
@@ -53,7 +56,9 @@ function stegaStyle(): HTMLStyleElement | null {
 const PARENT_ORIGIN = 'https://editor.prepr.io';
 
 function postFromParent(data: unknown, origin = PARENT_ORIGIN): void {
-  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: window.parent }),
+  );
 }
 
 /**
@@ -128,6 +133,7 @@ describe('createPreprPreview', () => {
     // sendPreprEvent targets the parent only once the handshake has run.
     window.dispatchEvent(
       new MessageEvent('message', {
+        source: window.parent,
         data: { event: 'prepr:initVE' },
         origin: 'https://acme.prepr.io',
       }),
@@ -168,6 +174,7 @@ describe('createPreprPreview', () => {
     const controller = createPreprPreview({ props: PROPS });
     window.dispatchEvent(
       new MessageEvent('message', {
+        source: window.parent,
         data: { event: 'prepr:initVE', itemId: 'item-1' },
         origin: 'https://acme.prepr.io',
       }),
@@ -202,12 +209,14 @@ describe('createPreprPreview', () => {
     const controller = createPreprPreview({ props: PROPS });
     window.dispatchEvent(
       new MessageEvent('message', {
+        source: window.parent,
         data: { event: 'prepr:initVE', itemId: 'item-1' },
         origin: 'https://acme.prepr.io',
       }),
     );
     window.dispatchEvent(
       new MessageEvent('message', {
+        source: window.parent,
         data: { event: 'prepr:references', referencedIds: [] },
         origin: 'https://acme.prepr.io',
       }),
@@ -254,6 +263,7 @@ describe('createPreprPreview', () => {
       });
       window.dispatchEvent(
         new MessageEvent('message', {
+          source: window.parent,
           data: { event: 'prepr:initVE', itemId: 'item-1', ...handshake },
           origin: 'https://acme.prepr.io',
         }),
@@ -324,6 +334,7 @@ describe('createPreprPreview', () => {
     const controller = createPreprPreview({ props: PROPS });
     window.dispatchEvent(
       new MessageEvent('message', {
+        source: window.parent,
         data: { event: 'prepr:initVE', scrollPosition: 640 },
         origin: 'https://editor.prepr.io',
       }),
@@ -642,6 +653,75 @@ describe('createPreprPreview', () => {
 
   // Top-level throughout: in an iframe the element is skipped anyway, so these
   // would pass without `ui` doing any work.
+  it('names the default segment in the toolbar language', () => {
+    const controller = createPreprPreview({
+      props: PROPS,
+      options: { locale: 'nl' },
+    });
+
+    expect(storeOf(controller).get().segments[0]).toEqual({
+      _id: 'all_other_users',
+      name: 'Alle andere gebruikers',
+    });
+    controller.destroy();
+  });
+
+  describe('strictMode', () => {
+    function liveReadyMessages(): unknown[] {
+      return postMessageSpy.mock.calls
+        .map(([message]) => message as { event?: string })
+        .filter((message) => message.event === 'live_ready');
+    }
+
+    afterEach(() => resetSharedState());
+
+    it('reaches a live preview that starts after the toolbar', () => {
+      const controller = createPreprPreview({
+        props: PROPS,
+        options: { strictMode: true },
+      });
+      const bridge = createLiveBridge({} as LiveStore);
+      bridge.start();
+
+      expect(liveReadyMessages()).toEqual([
+        expect.objectContaining({ strictMode: true }),
+      ]);
+      bridge.stop();
+      controller.destroy();
+    });
+
+    it('is announced again when live preview started before the toolbar', () => {
+      const bridge = createLiveBridge({} as LiveStore);
+      bridge.start();
+      const controller = createPreprPreview({
+        props: PROPS,
+        options: { strictMode: true },
+      });
+
+      expect(liveReadyMessages()).toEqual([
+        expect.not.objectContaining({ strictMode: true }),
+        expect.objectContaining({ strictMode: true }),
+      ]);
+      bridge.stop();
+      controller.destroy();
+    });
+
+    it('is not announced twice when live preview already said so', () => {
+      const bridge = createLiveBridge({} as LiveStore, {
+        strictMode: () => true,
+      });
+      bridge.start();
+      const controller = createPreprPreview({
+        props: PROPS,
+        options: { strictMode: true },
+      });
+
+      expect(liveReadyMessages()).toHaveLength(1);
+      bridge.stop();
+      controller.destroy();
+    });
+  });
+
   describe('ui: false', () => {
     it('mounts no element but keeps the machinery wired', () => {
       stubTopLevel();

@@ -3,7 +3,9 @@ import { createIframeBridge } from './iframe-bridge';
 
 /** Deliver a message event as if it came from `origin`. */
 function postFrom(origin: string, data: unknown): void {
-  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: window.parent }),
+  );
 }
 
 const EDITOR = 'https://editor.prepr.io';

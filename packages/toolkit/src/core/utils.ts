@@ -1,3 +1,4 @@
+import { sharedState } from './shared-state';
 import type { PreprEventType, ResolvedPreprFeatures } from './types';
 
 export interface PreprEventData {
@@ -10,20 +11,14 @@ export interface PreprEventData {
     string | boolean | number | ResolvedPreprFeatures | undefined;
 }
 
-/**
- * Origin validated by the editor handshake, set by `createIframeBridge`.
- * `null` until the handshake completes.
- */
-let trustedParentOrigin: string | null = null;
-
 /** @internal Set by the iframe bridge once an editor origin is allowlisted. */
 export function setTrustedParentOrigin(origin: string | null): void {
-  trustedParentOrigin = origin;
+  sharedState().trustedParentOrigin = origin;
 }
 
 /** @internal The allowlisted editor origin, or `null` before the handshake. */
 export function getTrustedParentOrigin(): string | null {
-  return trustedParentOrigin;
+  return sharedState().trustedParentOrigin;
 }
 
 /**
@@ -55,6 +50,7 @@ export function sendPreprEvent(
     // The same-window CustomEvent above always fires — in-page listeners are
     // not a cross-origin surface. Only the postMessage hop is gated.
     if (window.parent && window.parent !== window) {
+      const trustedParentOrigin = getTrustedParentOrigin();
       if (trustedParentOrigin) {
         window.parent.postMessage(message, trustedParentOrigin);
       } else if (options?.allowUntrustedTarget) {
@@ -81,14 +77,14 @@ class DebugLogger {
     };
   }
 
-  // A local `enabled` wins; otherwise defer to the global logger so scoped
+  // A local `enabled` wins; otherwise defer to the shared flag so scoped
   // loggers created before initDebugLogger() still pick up the setting.
   private isEnabled(): boolean {
     if (this.options.enabled !== undefined) {
       return this.options.enabled;
     }
 
-    return globalDebugLogger?.options?.enabled ?? false;
+    return sharedState().debugEnabled ?? false;
   }
 
   log(message: string, ...args: DebugArg[]): void {
@@ -113,10 +109,8 @@ class DebugLogger {
   }
 }
 
-let globalDebugLogger: DebugLogger | null = null;
-
 export function initDebugLogger(enabled: boolean = false): void {
-  globalDebugLogger = new DebugLogger({ enabled });
+  sharedState().debugEnabled = enabled;
 }
 
 export function createScopedLogger(scopeName: string): DebugLogger {

@@ -303,6 +303,9 @@ export function createIframeBridge(
   };
 
   const onMessage = (evt: MessageEvent): void => {
+    // Only the framing editor may drive the preview: an allowed origin opened
+    // in another frame or popup is not the editor of this page.
+    if (evt.source !== window.parent) return;
     const data = evt?.data as EditorMessage | undefined;
     if (data?.event === 'prepr:initVE' && !parentOrigin) {
       // Validate BEFORE touching the store: this branch enables preview and

@@ -30,7 +30,9 @@ function stubFramed(): void {
 }
 
 function post(data: unknown, origin = 'https://editor.prepr.io'): void {
-  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: window.parent }),
+  );
 }
 
 async function render(ui: React.ReactElement) {

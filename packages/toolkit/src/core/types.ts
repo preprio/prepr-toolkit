@@ -76,7 +76,8 @@ export interface PreprPreviewOptions extends PreprToolbarOptions {
    * Set when your preview token uses GraphQL strict mode, where required
    * fields are never null. The editor then holds back new entries until
    * their required fields are filled, and never sends a cleared required
-   * field as null.
+   * field as null. Applies to live preview on the same page as well, so the
+   * live preview helpers do not need their own `strictMode`.
    */
   strictMode?: boolean;
   /**

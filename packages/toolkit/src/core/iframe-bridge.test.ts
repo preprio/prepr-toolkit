@@ -4,7 +4,9 @@ import { createToolbarStore } from './store';
 
 /** Deliver a message event as if it came from `origin`. */
 function postFrom(origin: string, data: unknown): void {
-  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: window.parent }),
+  );
 }
 
 const EDITOR = 'https://editor.prepr.io';
@@ -598,6 +600,24 @@ describe('createIframeBridge — navigation guard', () => {
       href: `/${'x'.repeat(9000)}`,
     });
     expect(onAllowNavigation).not.toHaveBeenCalled();
+    bridge.stop();
+  });
+
+  it('ignores an allowed origin that is not the framing window', () => {
+    const store = createToolbarStore();
+    const bridge = createIframeBridge(store);
+    bridge.start();
+
+    // A popup or sibling frame on an allowed origin: right origin, wrong window.
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { event: 'prepr:initVE', editMode: true },
+        origin: EDITOR,
+        source: {} as MessageEventSource,
+      }),
+    );
+
+    expect(store.get().previewMode).toBe(false);
     bridge.stop();
   });
 });

@@ -17,7 +17,9 @@ function mockStore(): LiveStore {
 
 /** happy-dom delivers constructed MessageEvents synchronously. */
 function post(data: unknown, origin = 'https://editor.prepr.io'): void {
-  window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: window.parent }),
+  );
 }
 
 describe('createLiveBridge', () => {
@@ -215,5 +217,26 @@ describe('createLiveBridge', () => {
       { _id: 'a' },
       { _id: 'tmp:1', __typename: 'Text', body: '<p>x</p>', format: null },
     ]);
+  });
+
+  it('ignores an allowed origin that is not the framing window', () => {
+    const from = (data: unknown): void => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data,
+          origin: 'https://editor.prepr.io',
+          source: {} as MessageEventSource,
+        }),
+      );
+    };
+    from({ event: 'prepr:initVE' });
+    from({
+      event: 'prepr:fieldChange',
+      itemId: 'a',
+      field: 'title',
+      value: 'x',
+    });
+
+    expect(store.pushPatch).not.toHaveBeenCalled();
   });
 });

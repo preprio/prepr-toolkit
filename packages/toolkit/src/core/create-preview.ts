@@ -32,6 +32,7 @@ import {
   definePreprToolbar,
   type PreprToolbarElement,
 } from './ui/toolbar-element';
+import { sharedState } from './shared-state';
 import { createScopedLogger, initDebugLogger, sendPreprEvent } from './utils';
 import { createVisualEditor, type VisualEditor } from './visual-editor';
 
@@ -109,9 +110,19 @@ export function safeEditUrl(href: string): string | null {
   }
 }
 
-// "all_other_users" is synthetic — the API never returns it.
-function buildSegments(data: readonly PreprSegment[]): PreprSegment[] {
-  return [{ _id: 'all_other_users', name: 'All other users' }, ...data];
+// "all_other_users" is synthetic — the API never returns it — so its name is
+// the toolbar's to translate.
+function buildSegments(
+  data: readonly PreprSegment[],
+  locale: Locale,
+): PreprSegment[] {
+  return [
+    {
+      _id: 'all_other_users',
+      name: translate('adaptiveContent.allOtherUsers', locale),
+    },
+    ...data,
+  ];
 }
 
 /** Explicit option wins; otherwise the first supported browser language; else 'en'. */
@@ -159,6 +170,22 @@ export function createPreprPreview(
     return noop();
   }
 
+  // Live preview announces strict mode to the editor in `live_ready`. It may
+  // already have done so from another entry point before this toolbar was
+  // created, so announce again when the earlier message lacked it.
+  if (options?.strictMode) {
+    const shared = sharedState();
+    shared.strictMode = true;
+    if (shared.liveAnnouncedStrict === false) {
+      sendPreprEvent(
+        'live_ready',
+        { strictMode: true },
+        { allowUntrustedTarget: true },
+      );
+      shared.liveAnnouncedStrict = true;
+    }
+  }
+
   const isIframe = window.parent !== window;
   const search = new URLSearchParams(window.location.search);
   const hideBar = search.get(PARAM_HIDE_BAR) === 'true';
@@ -194,7 +221,7 @@ export function createPreprPreview(
     locale,
     features,
     segments: features.segments
-      ? buildSegments(props?.segments ?? props?.data ?? [])
+      ? buildSegments(props?.segments ?? props?.data ?? [], locale)
       : [],
     selectedSegment: features.segments
       ? (props?.activeSegment ?? cookieSegment ?? null)

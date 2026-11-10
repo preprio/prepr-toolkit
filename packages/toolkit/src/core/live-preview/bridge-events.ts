@@ -4,6 +4,7 @@ import {
   sendPreprEvent,
 } from '../utils';
 import { isAllowedEditorOrigin } from '../iframe-bridge';
+import { sharedState } from '../shared-state';
 import type { LiveStore } from './live-store';
 import {
   isLiveFieldChange,
@@ -30,7 +31,10 @@ export interface LiveBridge {
 export interface LiveBridgeOptions {
   /** Same semantics as the toolbar's `allowedEditorOrigins`. */
   allowedEditorOrigins?: () => string[] | undefined;
-  /** Announced in `live_ready`; see the toolbar's `strictMode`. */
+  /**
+   * Announced in `live_ready`. The toolbar's `strictMode` option counts too,
+   * so setting it in either place is enough.
+   */
   strictMode?: () => boolean | undefined;
 }
 
@@ -46,6 +50,9 @@ export function createLiveBridge(
   let parentOrigin: string | null = null;
 
   const onMessage = (evt: MessageEvent): void => {
+    // Only the framing editor may drive the preview: an allowed origin opened
+    // in another frame or popup is not the editor of this page.
+    if (evt.source !== window.parent) return;
     const data = evt?.data as LiveEditorMessage | undefined;
     if (data?.event === 'prepr:initVE' && !parentOrigin) {
       // Pushed values reach rendered HTML and server responses, so any other
@@ -109,14 +116,16 @@ export function createLiveBridge(
       window.addEventListener('message', onMessage);
       // Lets the editor skip reloading the iframe after a save. Carries no
       // content, so it may go out before the handshake.
-      sendPreprEvent(
-        'live_ready',
-        options.strictMode?.() ? { strictMode: true } : undefined,
-        { allowUntrustedTarget: true },
-      );
+      const shared = sharedState();
+      const strict = Boolean(options.strictMode?.() || shared.strictMode);
+      sendPreprEvent('live_ready', strict ? { strictMode: true } : undefined, {
+        allowUntrustedTarget: true,
+      });
+      shared.liveAnnouncedStrict = strict;
     },
     stop(): void {
       window.removeEventListener('message', onMessage);
+      sharedState().liveAnnouncedStrict = undefined;
     },
   };
 }
