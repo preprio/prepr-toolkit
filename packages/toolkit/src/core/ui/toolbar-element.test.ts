@@ -564,4 +564,18 @@ describe('definePreprToolbar', () => {
     // Later writes must not touch the detached DOM.
     expect(() => store.set({ toolbarOpen: true })).not.toThrow();
   });
+
+  it('follows the store again after being detached and re-attached', () => {
+    const store = createToolbarStore({});
+    const el = mount(store);
+    const panel = (): HTMLElement =>
+      el.shadowRoot!.querySelector<HTMLElement>('[data-prepr="panel"]')!;
+
+    el.remove();
+    document.body.appendChild(el);
+    const before = panel().outerHTML;
+    store.set({ toolbarOpen: true });
+
+    expect(panel().outerHTML).not.toBe(before);
+  });
 });

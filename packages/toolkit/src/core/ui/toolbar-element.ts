@@ -98,6 +98,14 @@ export class PreprToolbarElement extends HTMLElementBase {
     this.renderPanel(store.get());
   }
 
+  /**
+   * Re-wires a toolbar that was detached and attached again, e.g. when a
+   * framework replaces `<body>` on navigation and the element is moved back.
+   */
+  connectedCallback(): void {
+    if (this.store && !this.unsubscribe) this.connect(this.store, this.t);
+  }
+
   disconnectedCallback(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;

@@ -20,6 +20,7 @@ type DecodeFn = (str: string | null) => StegaDecodedData | null;
 export class StegaElements {
   private elements: NodeListOf<Element> | undefined;
   private observer: MutationObserver | null = null;
+  private rescanTimer: ReturnType<typeof setTimeout> | null = null;
   private decode: DecodeFn;
 
   constructor(decode: DecodeFn = decodeStega) {
@@ -76,12 +77,9 @@ export class StegaElements {
 
   /** `onUpdate` fires after each debounced batch, for refreshing derived state. */
   setupMutationObserver(onUpdate?: () => void): void {
-    if (this.observer) {
-      this.observer.disconnect();
-    }
+    this.disconnectObserver();
 
     let pending: MutationRecord[] = [];
-    let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const processMutations = () => {
       const addedNodes = new Set<Node>();
@@ -106,8 +104,8 @@ export class StegaElements {
 
     this.observer = new MutationObserver((mutations) => {
       pending.push(...mutations);
-      if (debounceTimeout) clearTimeout(debounceTimeout);
-      debounceTimeout = setTimeout(processMutations, 100);
+      if (this.rescanTimer) clearTimeout(this.rescanTimer);
+      this.rescanTimer = setTimeout(processMutations, 100);
     });
     this.observer.observe(document.body, {
       childList: true,
@@ -126,10 +124,16 @@ export class StegaElements {
    * could never be rebuilt when edit mode is turned back on.
    */
   disconnect(): void {
-    if (this.observer) {
-      this.observer.disconnect();
-      this.observer = null;
-    }
+    this.disconnectObserver();
     this.elements = undefined;
+  }
+
+  // A rescan already scheduled must not run after the observer stopped: it
+  // would tag elements and call `onUpdate` on a controller that was shut down.
+  private disconnectObserver(): void {
+    this.observer?.disconnect();
+    this.observer = null;
+    if (this.rescanTimer) clearTimeout(this.rescanTimer);
+    this.rescanTimer = null;
   }
 }

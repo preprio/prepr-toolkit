@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { vercelStegaCombine } from '@vercel/stega';
 
 import { StegaElements } from './elements';
@@ -68,5 +68,25 @@ describe('StegaElements tagging targets', () => {
     new StegaElements().scanDocument();
 
     expect(document.querySelectorAll('[data-prepr-encoded]').length).toBe(0);
+  });
+
+  it('does not rescan after disconnect, even with a rescan already scheduled', async () => {
+    vi.useFakeTimers();
+    try {
+      const elements = new StegaElements();
+      const onUpdate = vi.fn();
+      elements.setupMutationObserver(onUpdate);
+
+      document.body.innerHTML = `<p>${encode('Added later')}</p>`;
+      // Lets the MutationObserver deliver, which schedules the rescan.
+      await Promise.resolve();
+      elements.disconnect();
+      vi.advanceTimersByTime(500);
+
+      expect(onUpdate).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-prepr-encoded]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
