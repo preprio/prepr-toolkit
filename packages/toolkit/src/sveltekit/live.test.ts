@@ -35,6 +35,31 @@ describe('normalizedQuery', () => {
     expect(seen.value).toBe(data);
   });
 
+  it('uses the named operation of a document that holds several', async () => {
+    vi.stubGlobal('top', {} as Window);
+    const document =
+      'query List { Posts { _id } } query Detail { Post { _id heading: title } }';
+    const data = { Post: { _id: 'p', heading: 'Old' } };
+    const { seen, unsubscribe } = read(
+      normalizedQuery(document, data, {
+        enabled: true,
+        operationName: 'Detail',
+      }),
+    );
+    await vi.dynamicImportSettled();
+
+    post({ event: 'prepr:initVE' });
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'p',
+      field: 'title',
+      value: 'New',
+    });
+
+    expect(seen.value.Post.heading).toBe('New');
+    unsubscribe();
+  });
+
   it("shows the editor's unsaved changes while they type", async () => {
     vi.stubGlobal('top', {} as Window);
     const data = { Post: { _id: 'p', title: 'Old' } };

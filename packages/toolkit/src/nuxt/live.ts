@@ -25,6 +25,8 @@ export interface UseNormalizedQueryOptions {
   allowedEditorOrigins?: string[];
   /** See the toolbar's `strictMode`. */
   strictMode?: boolean;
+  /** Which operation to use when the query document holds more than one. */
+  operationName?: string;
 }
 
 let applyLog: typeof applyPatchLog | null = null;
@@ -65,7 +67,10 @@ export function useNormalizedQuery<T>(
   if (!options.enabled) return computed(() => unref(data) as T);
   // On the server too, so the hydrated page matches: click-to-edit then
   // finds list entries by id.
-  const annotated = computed(() => annotateEditLinks(unref(data) as T, query));
+  const { operationName } = options;
+  const annotated = computed(() =>
+    annotateEditLinks(unref(data) as T, query, operationName),
+  );
   if (!isFramed()) return annotated;
   live.configure(options);
   void live.start();
@@ -84,7 +89,7 @@ export function useNormalizedQuery<T>(
   return computed(() => {
     const value = annotated.value;
     return log.value.length && applyLog
-      ? applyLog(query, value, log.value)
+      ? applyLog(query, value, log.value, operationName)
       : value;
   });
 }

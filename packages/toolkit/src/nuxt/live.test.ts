@@ -54,6 +54,33 @@ describe('useNormalizedQuery', () => {
     scope.stop();
   });
 
+  it('uses the named operation of a document that holds several', async () => {
+    vi.stubGlobal('top', {} as Window);
+    const document =
+      'query List { Posts { _id } } query Detail { Post { _id heading: title } }';
+    const data = ref({ Post: { _id: 'p', heading: 'Old' } });
+    const scope = effectScope();
+    const page = scope.run(() =>
+      useNormalizedQuery(document, data, {
+        enabled: true,
+        operationName: 'Detail',
+      }),
+    )!;
+    await vi.dynamicImportSettled();
+
+    post({ event: 'prepr:initVE' });
+    post({
+      event: 'prepr:fieldChange',
+      itemId: 'p',
+      field: 'title',
+      value: 'New',
+    });
+    await nextTick();
+
+    expect(page.value.Post.heading).toBe('New');
+    scope.stop();
+  });
+
   it('takes no changes inside an iframe unless enabled', async () => {
     vi.stubGlobal('top', {} as Window);
     const data = ref({ Post: { _id: 'p', title: 'Old' } });

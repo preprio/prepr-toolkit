@@ -8,7 +8,20 @@
    */
   import { onMount } from 'svelte';
   import { createPreprPreview } from '@preprio/toolkit';
-  import type { PreprToolbarComponentProps } from '@preprio/toolkit';
+  import type {
+    PreprNavigationAdapter,
+    PreprToolbarComponentProps,
+  } from '@preprio/toolkit';
+
+  interface Props extends PreprToolbarComponentProps {
+    /**
+     * How the toolbar changes the URL when a segment or variant is picked.
+     * Defaults to a full page load; pass the app's router for a soft
+     * navigation, e.g. `{ navigate: (url) => goto(url, { invalidateAll: true }),
+     * currentPath: () => page.url.pathname + page.url.search }`.
+     */
+    navigation?: PreprNavigationAdapter;
+  }
 
   let {
     activeSegment,
@@ -16,12 +29,14 @@
     data,
     segments,
     options,
-  }: PreprToolbarComponentProps = $props();
+    navigation,
+  }: Props = $props();
 
   onMount(() => {
     const controller = createPreprPreview({
       props: { activeSegment, activeVariant, data, segments },
       options,
+      navigation,
     });
     return () => controller.destroy();
   });

@@ -8,7 +8,10 @@
  */
 import { onMounted, onUnmounted } from 'vue';
 import { createPreprPreview } from '@preprio/toolkit';
-import type { PreprToolbarComponentProps } from '@preprio/toolkit';
+import type {
+  PreprNavigationAdapter,
+  PreprToolbarComponentProps,
+} from '@preprio/toolkit';
 
 const props = defineProps<{
   activeSegment?: PreprToolbarComponentProps['activeSegment'];
@@ -16,6 +19,13 @@ const props = defineProps<{
   segments?: PreprToolbarComponentProps['segments'];
   data?: PreprToolbarComponentProps['data'];
   options?: PreprToolbarComponentProps['options'];
+  /**
+   * How the toolbar changes the URL when a segment or variant is picked.
+   * Defaults to a full page load; pass the app's router for a soft
+   * navigation, e.g. `{ navigate: (url) => navigateTo(url), currentPath: () =>
+   * useRoute().fullPath }`.
+   */
+  navigation?: PreprNavigationAdapter;
 }>();
 
 let controller: ReturnType<typeof createPreprPreview> | null = null;
@@ -29,6 +39,7 @@ onMounted(() => {
       data: props.data,
     },
     options: props.options,
+    navigation: props.navigation,
   });
 });
 

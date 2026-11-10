@@ -15,6 +15,8 @@ export interface NormalizedQueryOptions {
   allowedEditorOrigins?: string[];
   /** See the toolbar's `strictMode`. */
   strictMode?: boolean;
+  /** Which operation to use when the query document holds more than one. */
+  operationName?: string;
 }
 
 /**
@@ -86,13 +88,16 @@ export function normalizedQuery<T>(
   if (!options.enabled) return constant(data);
   // On the server too, so the hydrated page matches: click-to-edit then
   // finds list entries by id.
-  const annotated = annotateEditLinks(data, query);
+  const { operationName } = options;
+  const annotated = annotateEditLinks(data, query, operationName);
   if (!isFramed()) return constant(annotated);
   live.configure(options);
   void live.start();
   // The log only fills once `applyLog` is loaded.
   const current = (): T =>
-    log.length && applyLog ? applyLog(query, annotated, log) : annotated;
+    log.length && applyLog
+      ? applyLog(query, annotated, log, operationName)
+      : annotated;
 
   return {
     subscribe(run) {
