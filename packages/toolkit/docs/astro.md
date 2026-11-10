@@ -83,7 +83,11 @@ First work through the [live preview checklist](./live-preview.md#checklist). Th
 ---
 import { normalizeQuery } from '@preprio/toolkit/astro';
 
-const data = await fetchFromPrepr(GetPageDocument, { slug }); // any client
+// The same flag you pass to `onPreprRequest` in the middleware.
+const preview = import.meta.env.DEV;
+
+// Fetch with any client; forward `getPreprHeaders(Astro.request.headers)`.
+const data = await fetchFromPrepr(GetPageDocument, { slug });
 const page = normalizeQuery(GetPageDocument, data, {
   enabled: preview,
   locals: Astro.locals,
