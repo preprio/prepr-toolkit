@@ -23,7 +23,7 @@ const props = defineProps<{
    * How the toolbar changes the URL when a segment or variant is picked.
    * Defaults to a full page load; pass the app's router for a soft
    * navigation, e.g. `{ navigate: (url) => navigateTo(url), currentPath: () =>
-   * useRoute().fullPath }`.
+   * route.fullPath }` with `route` from `useRoute()`.
    */
   navigation?: PreprNavigationAdapter;
 }>();

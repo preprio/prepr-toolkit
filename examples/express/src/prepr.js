@@ -42,6 +42,10 @@ export function preprMiddleware({ preview, features } = {}) {
       res.cookie(cookie.name, cookie.value, {
         maxAge: cookie.maxAge * 1000,
         path: cookie.path,
+        // Preview cookies carry `SameSite=None; Secure` on HTTPS. Without
+        // them the browser drops the cookies inside the Prepr editor's iframe.
+        ...(cookie.sameSite && { sameSite: cookie.sameSite.toLowerCase() }),
+        ...(cookie.secure && { secure: true }),
       });
     }
     res.locals.preprHeaders = requestHeaders;

@@ -59,9 +59,9 @@ export interface PreprTrackingPixelProps {
 /**
  * Loads Prepr's CDN tracking pixel on mount. Renders nothing.
  *
- * The pixel queues a single `pageload` event when it installs. Client-side
- * route changes emit nothing on their own — call `trackEvent('pageload')` from
- * the router to count them.
+ * The pixel counts a view for the content item named by the page's
+ * `<meta property="prepr:id">` tag, and a new one when a client-side route
+ * change points that tag at another item.
  */
 export function PreprTrackingPixel({
   id,
