@@ -1,4 +1,4 @@
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { print } from 'graphql';
 import { error } from '@sveltejs/kit';
 import { Prepr } from '#lib/prepr.server.js';
