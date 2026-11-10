@@ -1,5 +1,6 @@
 import { decodeStega } from './stega/clean';
 
+/** The field an element shows, for `previewAttrs`. */
 export interface PreviewAttrsTarget {
   /** `_id` of the content item or component that owns the field. */
   id: string | null | undefined;
@@ -11,6 +12,7 @@ export interface PreviewAttrsTarget {
   entryId?: string | null;
 }
 
+/** Options of `previewAttrs`. */
 export interface PreviewAttrsOptions {
   /**
    * Whether to emit the attributes at all. Pass `true` only for preview or
@@ -47,6 +49,7 @@ export function previewAttrs(
   return attrs;
 }
 
+/** Options of `stegaTarget`. */
 export interface StegaTargetOptions {
   /**
    * A field next to the encoded one, in the same item or component, to target

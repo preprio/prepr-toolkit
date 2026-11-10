@@ -12,6 +12,7 @@ const COMPLETE_DOCUMENT = /<\/html>\s*$/i;
 /** Coalesces bursts of keystrokes into one server render. */
 const SYNC_DEBOUNCE_MS = 150;
 
+/** Options of `startHtmlLivePreview`. */
 export interface HtmlLivePreviewOptions {
   /**
    * Replace the `*.prepr.io` editor-origin wildcard with an exact list, as
@@ -22,7 +23,9 @@ export interface HtmlLivePreviewOptions {
   strictMode?: boolean;
 }
 
+/** Handle on a running HTML live preview. */
 export interface HtmlLivePreview {
+  /** Stops listening to the editor; the page keeps its current content. */
   stop(): void;
 }
 

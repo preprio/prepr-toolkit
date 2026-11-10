@@ -41,11 +41,14 @@ import { createVisualEditor, type VisualEditor } from './visual-editor';
 const debug = createScopedLogger('create-preview');
 
 /**
- * Navigation seam that keeps the controller framework-free. Next.js/Astro inject
- * their router here; the default uses `window.location`.
+ * How the toolbar changes the URL when a segment or variant is picked. The
+ * default does a full page load through `window.location`; pass the app's
+ * router for a soft navigation.
  */
 export interface PreprNavigationAdapter {
+  /** Go to `url`, a path with query string on the current origin. */
   navigate(url: string): void;
+  /** The current path including its query string. */
   currentPath(): string;
   /**
    * Refresh after a preview-mode toggle. Defaults to `window.location.reload()`;
@@ -54,6 +57,7 @@ export interface PreprNavigationAdapter {
   reload?(): void;
 }
 
+/** Arguments of `createPreprPreview`. */
 export interface CreatePreprPreviewOptions {
   /**
    * Toolbar data. Optional: a headless preview (`ui: false`) that only wants
@@ -61,10 +65,13 @@ export interface CreatePreprPreviewOptions {
    */
   props?: PreprToolbarProps;
   options?: PreprPreviewOptions;
+  /** Defaults to full page loads through `window.location`. */
   navigation?: PreprNavigationAdapter;
 }
 
+/** Handle on a running preview, returned by `createPreprPreview`. */
 export interface PreprPreviewController {
+  /** Removes the toolbar and every listener the preview added. */
   destroy(): void;
 }
 

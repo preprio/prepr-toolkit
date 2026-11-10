@@ -13,6 +13,9 @@ function isEnabled(config: PreprFeatureConfig | undefined): boolean {
  * Resolve a `PreprFeatures` bag to plain booleans, defaulting every omitted key
  * to enabled. Shared by the toolbar and the middleware so both sides agree on
  * what a given config means.
+ *
+ * Low-level: only needed when building on `processPreprRequest` or the
+ * toolbar store directly.
  */
 export function resolveFeatures(
   features?: PreprFeatures,

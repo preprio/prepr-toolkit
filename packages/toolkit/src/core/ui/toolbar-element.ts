@@ -19,12 +19,16 @@ const HTMLElementBase: typeof HTMLElement =
 
 /**
  * `<prepr-toolbar>` — the toolbar UI, in a shadow root so its CSS neither leaks
- * into nor is affected by the host page. Markup is Preact JSX in `panel.tsx`.
+ * into nor is affected by the host page.
+ *
+ * Low-level: `createPreprPreview` and the framework components create, connect
+ * and remove this element for you. Use it directly only to drive the toolbar
+ * from your own `ToolbarStore`.
  *
  * This element is the controller: it owns interaction state (listbox open,
  * keyboard nav, tooltip positioning, outside-click) and writes back ONLY via
- * `store.set(...)`. Cookies/postMessage/navigation belong to create-preview.ts,
- * which subscribes to the same store.
+ * `store.set(...)`. Cookies, postMessage and navigation belong to
+ * `createPreprPreview`, which subscribes to the same store.
  *
  * State reaches `<Panel>` as a prop rather than internal Preact state, so every
  * `render()` diffs synchronously against the shadow root.
@@ -340,7 +344,10 @@ export class PreprToolbarElement extends HTMLElementBase {
   }
 }
 
-/** Idempotent, including across bundles that each try to define the element. */
+/**
+ * Registers the `<prepr-toolbar>` custom element. Idempotent, including across
+ * bundles that each try to define it. `createPreprPreview` calls it for you.
+ */
 export function definePreprToolbar(): void {
   if (typeof customElements === 'undefined') return;
   if (!customElements.get(TOOLBAR_TAG)) {

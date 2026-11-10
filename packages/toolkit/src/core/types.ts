@@ -1,5 +1,6 @@
 import type { Locale } from './i18n';
 
+/** A segment from Prepr, as listed in the toolbar's segment picker. */
 export interface PreprSegment {
   readonly _id: string;
   readonly name: string;
@@ -36,8 +37,14 @@ export interface ResolvedPreprFeatures {
   readonly editMode: boolean;
 }
 
+/** Options shared by the toolbar and the preview runtime. */
 export interface PreprToolbarOptions {
+  /** Log what the toolkit does to the browser console. Default `false`. */
   debug?: boolean;
+  /**
+   * Language of the toolbar and the visual editor labels. Defaults to the
+   * first supported browser language, then English.
+   */
   locale?: Locale;
   /** Disable features app-wide. Pass the same object to the middleware. */
   features?: PreprFeatures;
@@ -96,6 +103,10 @@ export interface PreprPreviewOptions extends PreprToolbarOptions {
   autoClean?: boolean;
 }
 
+/**
+ * The data the toolbar shows. `getToolbarProps` builds it on the server from
+ * the request headers.
+ */
 export interface PreprToolbarProps {
   /**
    * Server-resolved active segment. Optional: omit it with `segments`
@@ -123,7 +134,11 @@ export interface PreprToolbarComponentProps extends PreprToolbarProps {
   options?: PreprPreviewOptions;
 }
 
-// Header names the Prepr API expects — casing must match exactly.
+/**
+ * Header names the Prepr API expects; the casing must match exactly.
+ *
+ * @deprecated Unused by the toolkit; use the keys of `PreprHeaders`.
+ */
 export type PreprHeaderName =
   | 'prepr-customer-id'
   | 'Prepr-Segments'
@@ -132,10 +147,16 @@ export type PreprHeaderName =
   // Accepted for backward compatibility; the API reads `User-Agent`.
   | 'Prepr-User-Agent';
 
+/** The two sides of an A/B test. */
 export type PreprVariant = 'A' | 'B';
 
+/** @deprecated Unused by the toolkit; kept so existing imports compile. */
 export type PreprEnvironment = 'preview' | 'production';
 
+/**
+ * Events the preview announces: as a `prepr_preview_bar` `CustomEvent` on
+ * `window`, and to the Prepr editor when the page runs inside it.
+ */
 // Wire protocol shared with the Prepr editor. The mixed snake_case/camelCase is
 // frozen — renaming any member breaks the editor integration.
 export type PreprEventType =
@@ -149,6 +170,11 @@ export type PreprEventType =
   | 'live_ready'
   | 'navigation_blocked';
 
+/**
+ * The headers to send with a Prepr GraphQL request so the API personalizes
+ * the response for this visitor. `getPreprHeaders` returns them; spread them
+ * into the request's `headers`.
+ */
 export interface PreprHeaders {
   readonly 'prepr-customer-id'?: string;
   readonly 'Prepr-Segments'?: string;
@@ -170,6 +196,7 @@ export interface PreprHeaders {
   readonly 'Prepr-Package'?: string;
 }
 
+/** Why a `PreprError` was thrown; read it from `error.code`. */
 export type PreprErrorCode =
   | 'INVALID_TOKEN'
   | 'MISSING_TOKEN'

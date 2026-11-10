@@ -38,6 +38,7 @@ export { parsePatchLog, type LivePatch } from './patch-log';
 
 const debug = createScopedLogger('live-preview:normalize');
 
+/** Options of `normalizeQuery`. */
 export interface NormalizeQueryOptions {
   /**
    * The editor's unsaved changes, oldest first. Treated as hostile: malformed

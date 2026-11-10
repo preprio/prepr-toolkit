@@ -17,11 +17,16 @@ import { VERSION } from '../version';
 const PIXEL_SCRIPT_URL = 'https://cdn.tracking.prepr.io/js/prepr.min.js';
 const CACHE_BUST_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-/** Config accepted by the CDN pixel. */
+/** Config for the Prepr tracking pixel, passed to `loadTrackingPixel`. */
 export interface PreprPixelConfig {
   destinations?: {
+    /** Also push tracked events to Google Tag Manager's `dataLayer`. */
     googleTagManager?: boolean;
   };
+  /**
+   * How much of a personalized or A/B element must be in view to count as an
+   * impression, as the pixel defines it.
+   */
   variantImpressionThreshold?: number;
 }
 

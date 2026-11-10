@@ -19,6 +19,7 @@ export type {
 } from './core/types';
 export { resolveFeatures } from './core/features';
 export type { ToolbarState, ToolbarStore } from './core/store';
+export type { Locale } from './core/i18n';
 
 // --- Preview runtime + UI ---------------------------------------------------
 export {
@@ -33,7 +34,13 @@ export {
 } from './core/ui/toolbar-element';
 export { createToolbarStore } from './core/store';
 
-export type { IframeBridgeOptions } from './core/iframe-bridge';
+export type {
+  IframeBridgeOptions,
+  EditorAsset,
+  EditorHandshake,
+  EditorReference,
+  ScrollToFieldMessage,
+} from './core/iframe-bridge';
 
 // --- Stega ------------------------------------------------------------------
 export { stegaClean } from './core/stega';
@@ -49,9 +56,16 @@ export {
 export {
   normalizeQuery,
   parsePatchLog,
+  type LiveEditTarget,
   type LivePatch,
   type NormalizeQueryOptions,
 } from './core/live-preview/normalize-query';
+export type {
+  LiveListEntry,
+  LiveObject,
+  LiveScalar,
+  LiveValue,
+} from './core/live-preview/patch';
 export type { QueryInput } from './core/live-preview/query-document';
 export { annotateEditLinks } from './core/live-preview/edit-links';
 export {

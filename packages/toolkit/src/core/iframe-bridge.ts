@@ -224,6 +224,10 @@ export function isAllowedEditorOrigin(
   return label.length > 0 && !label.includes('.');
 }
 
+/**
+ * Options of the bridge between the preview and the Prepr editor that frames
+ * it. `createPreprPreview` runs the bridge; the type is exported for reference.
+ */
 export interface IframeBridgeOptions {
   /**
    * Replace the `*.prepr.io` wildcard with an exact origin list. Intended for

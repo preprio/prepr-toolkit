@@ -21,9 +21,17 @@ const UTM_PARAMS = [
   'utm_campaign',
 ] as const;
 
+/**
+ * A cookie the Prepr middleware wants set on the response. The framework
+ * wrappers write these for you; with `processPreprRequest` you write them
+ * yourself, and must carry over `sameSite` and `secure` or the preview cookies
+ * are dropped inside the Prepr editor's iframe.
+ */
 export interface CookieSpec {
   name: string;
+  /** Unencoded; apply `encodeURIComponent` when writing the header. */
   value: string;
+  /** Lifetime in seconds. */
   maxAge: number;
   path: string;
   /**
@@ -83,8 +91,11 @@ function sanitizeHeaderValue(value: string): string {
     : stripped;
 }
 
+/** What `processPreprRequest` computed for one request. */
 export interface PreprMiddlewareResult {
+  /** The request's headers plus the Prepr headers; forward these downstream. */
   requestHeaders: Headers;
+  /** Cookies to set on the response. */
   responseCookies: CookieSpec[];
 }
 
@@ -112,6 +123,7 @@ export function serializeCookie(cookie: CookieSpec): string {
   return parts.join('; ');
 }
 
+/** Options for the Prepr middleware of every framework. */
 export interface PreprMiddlewareOptions {
   /** Enable preview-mode headers (segment/AB overrides, preview bar). */
   preview?: boolean;

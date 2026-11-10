@@ -6,6 +6,11 @@ import type {
   ResolvedPreprFeatures,
 } from './types';
 
+/**
+ * Everything the toolbar shows and the preview runtime acts on. Part of the
+ * low-level toolbar API; a site that mounts the toolbar through
+ * `createPreprPreview` or a framework component never touches it.
+ */
 export interface ToolbarState {
   locale: Locale;
   segments: PreprSegment[];
@@ -34,16 +39,22 @@ const DEFAULT_STATE: ToolbarState = {
   features: ALL_FEATURES_ENABLED,
 };
 
+/** Holds a `ToolbarState` and notifies subscribers of every change. */
 export interface ToolbarStore {
   get(): ToolbarState;
+  /** Merges `patch` into the state; subscribers run only on a real change. */
   set(patch: Partial<ToolbarState>): void;
+  /** Returns a function that removes the subscription. */
   subscribe(fn: (s: ToolbarState) => void): () => void;
 }
 
 /**
  * Framework-free store for toolbar state. Deliberately pure: it holds state and
  * notifies subscribers, nothing else. Cookies, postMessage and reloads are side
- * effects owned by the mount controller (create-preview.ts).
+ * effects owned by `createPreprPreview`.
+ *
+ * Low-level: only needed to drive a `PreprToolbarElement` by hand.
+ * `createPreprPreview` creates and wires one for you.
  */
 export function createToolbarStore(
   initial: Partial<ToolbarState> = {},
