@@ -303,3 +303,14 @@ describe('server helpers (Astro-friendly re-exports)', () => {
     }
   });
 });
+
+describe('token helpers', () => {
+  it('are exported, as from the other framework entry points', async () => {
+    const astro = await import('./index');
+
+    expect(astro.extractAccessToken('https://graphql.prepr.io/abc123')).toBe(
+      'abc123',
+    );
+    expect(() => astro.validatePreprToken('')).toThrow(astro.PreprError);
+  });
+});

@@ -14,14 +14,12 @@
  * from '@preprio/toolkit'` would fail to resolve in the browser. See
  * `PreprToolbar.astro` for the full explanation.
  */
+import type { PreprPixelConfig } from '@preprio/toolkit';
 import { serializeForScriptTag } from '@preprio/toolkit/json-script';
 
 interface Props {
   id: string;
-  config?: {
-    destinations?: { googleTagManager?: boolean };
-    variantImpressionThreshold?: number;
-  };
+  config?: PreprPixelConfig;
 }
 
 const { id, config } = Astro.props as Props;

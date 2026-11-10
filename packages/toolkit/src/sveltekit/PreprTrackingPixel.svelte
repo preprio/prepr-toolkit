@@ -5,13 +5,11 @@
    */
   import { onMount } from 'svelte';
   import { loadTrackingPixel } from '@preprio/toolkit';
+  import type { PreprPixelConfig } from '@preprio/toolkit';
 
   interface Props {
     id: string;
-    config?: {
-      destinations?: { googleTagManager?: boolean };
-      variantImpressionThreshold?: number;
-    };
+    config?: PreprPixelConfig;
   }
 
   let { id, config }: Props = $props();

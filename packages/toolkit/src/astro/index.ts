@@ -89,6 +89,12 @@ export {
   getToolbarProps,
 } from '../core/request-helpers';
 
+export {
+  validatePreprToken,
+  extractAccessToken,
+  PreprError,
+} from '../core/server';
+
 export interface AstroNormalizeQueryOptions {
   /**
    * Whether this render may show unsaved editor changes. Pass your preview

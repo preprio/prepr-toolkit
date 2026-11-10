@@ -5,13 +5,11 @@
  */
 import { onMounted } from 'vue';
 import { loadTrackingPixel } from '@preprio/toolkit';
+import type { PreprPixelConfig } from '@preprio/toolkit';
 
 const props = defineProps<{
   id: string;
-  config?: {
-    destinations?: { googleTagManager?: boolean };
-    variantImpressionThreshold?: number;
-  };
+  config?: PreprPixelConfig;
 }>();
 
 onMounted(() => {
