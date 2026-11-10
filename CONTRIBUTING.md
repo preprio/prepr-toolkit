@@ -73,8 +73,8 @@ Add or update tests for anything that changes behaviour. The suites live next to
 code they cover (`src/core/*.test.ts`, `src/nextjs/nextjs.test.ts`, and so on), run
 under Vitest, and are fast enough to run constantly.
 
-**There is no CI on pull requests.** Nothing checks your branch automatically, so
-run the checks yourself before pushing:
+The `CI` workflow runs these checks on every pull request. Run them yourself
+before pushing to catch failures early:
 
 ```bash
 pnpm check:all
@@ -98,7 +98,9 @@ git commit -m "fix: clear segment cookie when preview mode is turned off"
 ```
 
 Use `feat:`, `fix:`, `chore:`, or `docs:`. Release notes are generated from commit
-subjects, so a clear subject line ends up in the changelog verbatim.
+subjects, so a clear subject line ends up in the GitHub release verbatim. For a
+change a consumer will notice, also add a line to [`CHANGELOG.md`](./CHANGELOG.md)
+under the upcoming version.
 
 ### 4. Open a pull request against `develop`
 

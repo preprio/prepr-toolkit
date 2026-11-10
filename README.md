@@ -73,7 +73,7 @@ pnpm --filter @preprio/toolkit test
 
 The toolbar's CSS is compiled from `.css` sources into `*.generated.ts` files by `scripts/compile-css.mjs`. This runs automatically before build, test, and typecheck — the generated files are gitignored, so a fresh clone has none until you run one of those commands.
 
-There is no CI on pushes or pull requests: checks run only when you push a `v*` tag, as the first half of the `Release` workflow. Nothing verifies a branch for you, so run `pnpm check:all` locally before you push — a mistake that reaches `main` stays invisible until someone cuts a release.
+The `CI` workflow runs lint, format, typecheck, tests and the builds on every pull request and on pushes to `main` and `develop`. Run `pnpm check:all` locally before you push to catch failures early.
 
 ## Releasing
 

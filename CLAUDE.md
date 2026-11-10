@@ -11,9 +11,9 @@ Monorepo for `@preprio/toolkit` — preview, visual editing, and A/B testing for
 ## Workflow
 
 - **Work on `develop`.** `main` only moves through PRs from `develop`. Never commit directly to `main`.
-- **No CI on pushes or PRs.** The only automated checks run in the tag-triggered `Release` workflow. Run `pnpm check:all` locally before pushing — nothing else verifies your branch.
+- **CI runs on PRs and on pushes to `main`/`develop`** (`.github/workflows/ci.yml`): lint, format, typecheck, tests, e2e, and the example builds. Run `pnpm check:all` locally before pushing.
 - **Releases**: push a `v*` tag; the workflow lints, tests, builds, and publishes. The version lives in **two places** that must match: `packages/toolkit/package.json` and `packages/toolkit/src/version.ts`. Full process in [`RELEASING.md`](RELEASING.md).
-- Conventional-commit subjects (`fix:`, `feat:`, `chore:`) — release notes are generated from them.
+- Conventional-commit subjects (`fix:`, `feat:`, `chore:`) — release notes are generated from them. A change a consumer will notice also gets a line in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Commands
 

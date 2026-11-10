@@ -28,11 +28,11 @@ Publisher. It is already set up; you should not need to touch it.
 The publish step uses `npm publish`, not `pnpm publish`. Trusted Publishing is
 implemented in the npm CLI and requires npm >= 11.5.1; `pnpm@9.15.0`, which this repo
 pins, has no OIDC support in its own publish path. The runner's Node 22 ships npm
-10.x, still below the threshold, so the workflow installs a current npm for that step
+10.x, still below the threshold, so the workflow installs npm 11 for that step
 alone.
 
 If this repo moves to a newer pnpm, check whether that version publishes via OIDC on
-its own — if it does, the `npm install -g npm@latest` step can go and the publish can
+its own — if it does, the `npm install -g npm@11` step can go and the publish can
 go back to `pnpm publish --filter @preprio/toolkit`.
 
 After a release, confirm what landed — the registry is the only source of truth for
@@ -45,21 +45,27 @@ npm view @preprio/toolkit dist-tags --json
 
 ## Version policy
 
-The package follows plain semver. Every release publishes to `latest`, so
-`npm install @preprio/toolkit` just works. The `0.x` version number does not signal
-instability: the public API is held stable across minor and patch releases, and a
-breaking change only ships as a major bump.
+The package follows plain semver. Every stable release publishes to `latest`, so
+`npm install @preprio/toolkit` just works. The public API is held stable across
+minor and patch releases, and a breaking change only ships as a major bump.
+
+The public API is everything a consumer can depend on: exports and their types,
+option names and defaults, cookie and header names, `data-prepr-*` attributes, CSS
+custom properties, and the message format shared with the Prepr editor.
 
 | Change                                                                       | Bump      | Example           |
 | ---------------------------------------------------------------------------- | --------- | ----------------- |
-| Breaking change — an export removed, renamed, or narrowed; a default changed | **major** | `0.3.5` → `1.0.0` |
-| New feature, backward compatible                                             | **minor** | `0.3.5` → `0.4.0` |
-| Bugfix                                                                       | **patch** | `0.3.5` → `0.3.6` |
+| Breaking change — an export removed, renamed, or narrowed; a default changed | **major** | `1.2.3` → `2.0.0` |
+| New feature, backward compatible                                             | **minor** | `1.2.3` → `1.3.0` |
+| Bugfix                                                                       | **patch** | `1.2.3` → `1.2.4` |
 
 Every breaking change gets an entry in [Breaking changes](#breaking-changes), newest
 first, with the diff a consumer needs to apply. That section is the migration guide.
-Prefer a deprecation cycle (keep the old export working for one minor, warn, then
-remove in the major) over an outright removal.
+Prefer a deprecation cycle over an outright removal: mark the old API `@deprecated`
+in a minor, keep it working, and remove it in the next major.
+
+Every release that a consumer will notice gets an entry in
+[`CHANGELOG.md`](./CHANGELOG.md), written before the version bump.
 
 ## Cutting a release
 
@@ -151,9 +157,9 @@ log. `ENEEDAUTH` means OIDC did not authenticate (check that Trusted Publishing 
 npmjs.com still points at `release.yml`, and that the workflow kept its
 `id-token: write` permission).
 
-These checks run nowhere else — there is no CI on pushes or PRs — so step 2 is the
-first time anything is verified. Run `pnpm check:all` before tagging and it will not
-surprise you.
+The `CI` workflow runs the same checks on every pull request and on `main`, so a
+green `main` should release cleanly. `pnpm check:all` before tagging confirms it
+locally.
 
 ## Prerelease versions
 
@@ -199,6 +205,13 @@ candidate; that is harmless, but it can be removed with
 A breaking change ships as a **major** bump (see [Version policy](#version-policy)).
 Every one gets an entry here, newest first, with the diff a consumer applies to
 upgrade. Entries from before `v0.4.0` predate this policy and shipped as minors.
+
+### 1.0.0 — no breaking changes
+
+`1.0.0` is `0.4.3` plus live preview, the visual editor and fixes. Nothing was
+removed, renamed or narrowed, and no default changed; upgrading from any `0.4.x` or
+`0.5.0-rc.x` is a version bump. The `PreprEnvironment` and `PreprHeaderName` types are
+deprecated and stay exported until `2.0.0`. See [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### 0.3.3 — no breaking changes
 
@@ -309,9 +322,10 @@ version. Deprecate instead.
 
 ## Things to know
 
-- **Version bumps are manual.** If a second publishable package ever lands in
-  `packages/*`, switch to [Changesets](https://github.com/changesets/changesets) for
-  per-package versioning, changelogs, and release PRs.
+- **Version bumps and the changelog are manual.** If a second publishable package
+  ever lands in `packages/*`, consider
+  [Changesets](https://github.com/changesets/changesets) for per-package versioning,
+  changelogs, and release PRs.
 - **Release notes come from commit subjects.** Write conventional-commit style
   subjects (`fix:`, `feat:`, `chore:`) and the generated notes come out readable for
   free.

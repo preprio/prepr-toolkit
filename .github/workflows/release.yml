@@ -29,12 +29,14 @@ jobs:
           [ "$PKG" = "$TAG" ] || { echo "Tag $TAG != package.json $PKG"; exit 1; }
 
       - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
 
       # Trusted Publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.x.
-      - run: npm install -g npm@latest
+      # Pinned to a major so a new npm major cannot change a release unreviewed.
+      - run: npm install -g npm@11
 
       # A version with a hyphen is a prerelease -> publish under its prerelease
       # identifier as dist-tag (0.5.0-rc.1 -> "rc", 0.1.0-beta.2 -> "beta") so
