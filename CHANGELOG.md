@@ -5,6 +5,13 @@ All notable changes to `@preprio/toolkit`. The format follows
 [semantic versioning](https://semver.org/). Releases before 1.0.0 are listed on the
 [GitHub releases page](https://github.com/preprio/prepr-toolkit/releases).
 
+## 1.0.0-rc.2
+
+### Documentation
+
+- The README and the guides link to each other with relative paths instead of
+  full GitHub URLs.
+
 ## 1.0.0-rc.1
 
 First release candidate of 1.0.0. **No breaking changes since 0.4.3**: every
