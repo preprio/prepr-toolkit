@@ -21,3 +21,27 @@ export const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 // Marks the request a live-preview page re-render sends with the editor's
 // unsaved changes in its body.
 export const HEADER_LIVE_RENDER = 'x-prepr-live';
+
+// DOM contract with consumer markup and the Prepr editor: `previewAttrs` and
+// the stega scanner write these attributes, the visual editor reads them.
+export const ATTR_ENCODED = 'data-prepr-encoded';
+export const ATTR_ID = 'data-prepr-id';
+export const ATTR_FIELD = 'data-prepr-field';
+export const ATTR_LOCALE = 'data-prepr-locale';
+export const ATTR_HREF = 'data-prepr-href';
+export const ENCODED_SELECTOR = `[${ATTR_ENCODED}]`;
+
+export const TOOLBAR_TAG = 'prepr-toolbar';
+
+// The synthetic segment the toolbar lists first; the API never returns it.
+export const SEGMENT_ALL_OTHER_USERS = 'all_other_users';
+
+// Messages the Prepr editor posts into its preview iframe.
+export const EVENT_INIT = 'prepr:initVE';
+export const EVENT_REFERENCES = 'prepr:references';
+export const EVENT_GET_SCROLL_POSITION = 'prepr:getScrollPosition';
+export const EVENT_SCROLL_TO_FIELD = 'prepr:scrollToField';
+export const EVENT_ALLOW_NAVIGATION = 'prepr:allowNavigation';
+export const EVENT_ITEM_CHANGED = 'prepr:itemChanged';
+export const EVENT_FIELD_CHANGE = 'prepr:fieldChange';
+export const EVENT_LIST_CHANGE = 'prepr:listChange';

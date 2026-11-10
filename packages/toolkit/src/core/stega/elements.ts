@@ -1,3 +1,4 @@
+import { ATTR_ENCODED, ENCODED_SELECTOR } from '../constants';
 import { createScopedLogger } from '../utils';
 import { decodeStega, type StegaDecodedData } from './clean';
 import {
@@ -27,7 +28,7 @@ export class StegaElements {
 
   getElements(): NodeListOf<Element> {
     if (!this.elements) {
-      this.elements = document.querySelectorAll('[data-prepr-encoded]');
+      this.elements = document.querySelectorAll(ENCODED_SELECTOR);
     }
     return this.elements;
   }
@@ -37,7 +38,7 @@ export class StegaElements {
     const decoded = this.decode(node.textContent);
     if (!decoded?.href) return false;
     const target = resolveEditTarget(node);
-    if (!target || target.hasAttribute('data-prepr-encoded')) return false;
+    if (!target || target.hasAttribute(ATTR_ENCODED)) return false;
     tagEncodedElement(target, decoded);
     return true;
   }
@@ -57,7 +58,7 @@ export class StegaElements {
    */
   scanDocument(skipIfTagged = false): void {
     if (skipIfTagged) {
-      const existing = document.querySelectorAll('[data-prepr-encoded]');
+      const existing = document.querySelectorAll(ENCODED_SELECTOR);
       if (existing.length > 0) {
         this.elements = existing;
         return;
@@ -70,7 +71,7 @@ export class StegaElements {
     });
 
     debug.log('document scan complete, encoded', encodedCount, 'elements');
-    this.elements = document.querySelectorAll('[data-prepr-encoded]');
+    this.elements = document.querySelectorAll(ENCODED_SELECTOR);
   }
 
   /** `onUpdate` fires after each debounced batch, for refreshing derived state. */
@@ -99,7 +100,7 @@ export class StegaElements {
         if (node.isConnected) this.scanNode(node);
       });
       pending = [];
-      this.elements = document.querySelectorAll('[data-prepr-encoded]');
+      this.elements = document.querySelectorAll(ENCODED_SELECTOR);
       onUpdate?.();
     };
 

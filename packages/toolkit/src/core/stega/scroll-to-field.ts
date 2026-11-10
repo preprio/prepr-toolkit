@@ -1,3 +1,4 @@
+import { ATTR_FIELD, ATTR_ID, ENCODED_SELECTOR } from '../constants';
 import { createScopedLogger } from '../utils';
 
 const debug = createScopedLogger('stega:scroll');
@@ -37,13 +38,11 @@ export function scrollToField(request: ScrollToFieldRequest): boolean {
   // identifiers rather than quoted attribute values. Only the fixed
   // `[data-prepr-encoded]` part is a selector; the untrusted values are
   // compared as strings.
-  const candidates = document.querySelectorAll<HTMLElement>(
-    '[data-prepr-encoded]',
-  );
+  const candidates = document.querySelectorAll<HTMLElement>(ENCODED_SELECTOR);
   let target: HTMLElement | null = null;
   for (const candidate of candidates) {
-    if (candidate.getAttribute('data-prepr-field') !== field) continue;
-    if (id && candidate.getAttribute('data-prepr-id') !== id) continue;
+    if (candidate.getAttribute(ATTR_FIELD) !== field) continue;
+    if (id && candidate.getAttribute(ATTR_ID) !== id) continue;
     target = candidate;
     break;
   }

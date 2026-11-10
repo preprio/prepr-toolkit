@@ -1,3 +1,4 @@
+import { ATTR_FIELD, ENCODED_SELECTOR } from '../constants';
 import { createScopedLogger } from '../utils';
 import type { Locale } from '../i18n';
 import { VisualEditorOverlay } from '../visual-editor/overlay';
@@ -7,8 +8,6 @@ import { StegaElements } from './elements';
 import { injectStegaStyles, removeStegaStyles } from './styles';
 
 const debug = createScopedLogger('stega:scan');
-
-const ENCODED_SELECTOR = '[data-prepr-encoded]';
 
 const PRESENCE_FADE_MS = 400;
 
@@ -25,7 +24,7 @@ export interface StegaControllerOptions {
   locale?: Locale;
 }
 
-const EDITOR_MODE_STYLES = '[data-prepr-encoded]{cursor:pointer}';
+const EDITOR_MODE_STYLES = `${ENCODED_SELECTOR}{cursor:pointer}`;
 
 export interface StegaController {
   start(): void;
@@ -83,9 +82,7 @@ export function createStegaController(
         : null;
     overlay.setHover(
       encoded,
-      encoded
-        ? fieldLabel(encoded.getAttribute('data-prepr-field'), locale)
-        : '',
+      encoded ? fieldLabel(encoded.getAttribute(ATTR_FIELD), locale) : '',
     );
   };
 

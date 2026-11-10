@@ -1,3 +1,4 @@
+import { ATTR_ENCODED } from '../constants';
 import { vercelStegaSplit } from '@vercel/stega';
 
 import { createScopedLogger } from '../utils';
@@ -94,7 +95,7 @@ export function createStegaAutoClean(
         return false;
       }
       pendingHidden.delete(textNode);
-      if (shown.hasAttribute('data-prepr-encoded')) return false;
+      if (shown.hasAttribute(ATTR_ENCODED)) return false;
       return tagEncodedElement(shown, info.decoded);
     }
 

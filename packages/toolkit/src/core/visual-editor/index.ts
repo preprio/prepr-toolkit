@@ -1,3 +1,9 @@
+import {
+  ATTR_ENCODED,
+  ATTR_FIELD,
+  ATTR_ID,
+  ENCODED_SELECTOR,
+} from '../constants';
 import { readEditPayload, type StegaEditPayload } from '../stega/dom';
 import { createScopedLogger } from '../utils';
 import { fieldLabel, findFieldElement, type FieldLookup } from './field-path';
@@ -15,7 +21,6 @@ import { createNavigationGuard, leavingLinkHref } from './navigation-guard';
 
 const debug = createScopedLogger('visual-editor');
 
-const ENCODED_SELECTOR = '[data-prepr-encoded]';
 /** Marks where the page renders a linked item; its value is that item's id. */
 const REFERENCE_ATTR = 'data-prepr-reference';
 const REFERENCE_SELECTOR = `[${REFERENCE_ATTR}]`;
@@ -64,7 +69,7 @@ const LAYOUT_MUTATIONS: MutationObserverInit = {
     'style',
     'hidden',
     'open',
-    'data-prepr-encoded',
+    ATTR_ENCODED,
     // An image swapped by a carousel or lazy loader can show another asset.
     ...ASSET_SOURCE_ATTRIBUTES,
   ],
@@ -221,7 +226,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
       : null;
 
   const labelFor = (el: HTMLElement): string =>
-    fieldLabel(el.getAttribute('data-prepr-field'), locale);
+    fieldLabel(el.getAttribute(ATTR_FIELD), locale);
 
   // Referencing field per linked item id; null until the editor sends one.
   let references: Map<string, string> | null = null;
@@ -232,7 +237,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
   // keeps the open item's behaviour.
   const isCurrentItem = (el: HTMLElement): boolean => {
     if (currentItemId === null) return true;
-    const id = el.getAttribute('data-prepr-id');
+    const id = el.getAttribute(ATTR_ID);
     return !id || id === currentItemId || ownComponents.has(id);
   };
 
@@ -258,7 +263,7 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
    */
   const linkedIdOf = (el: HTMLElement): string | null => {
     if (!references) return null;
-    const id = el.getAttribute('data-prepr-id') ?? '';
+    const id = el.getAttribute(ATTR_ID) ?? '';
     if (references.has(id)) return id;
     let container = el.closest<HTMLElement>(REFERENCE_SELECTOR);
     while (container) {
@@ -472,8 +477,8 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
     const entryId = field.getAttribute('data-prepr-entry-id');
     selection = {
       lookup: {
-        field: field.getAttribute('data-prepr-field') ?? '',
-        id: field.getAttribute('data-prepr-id') ?? undefined,
+        field: field.getAttribute(ATTR_FIELD) ?? '',
+        id: field.getAttribute(ATTR_ID) ?? undefined,
         ...(entryId && { entryId }),
         ...(block !== undefined && { block }),
       },

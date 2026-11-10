@@ -4,6 +4,8 @@ import {
   COOKIE_TOOLBAR_OPEN,
   COOKIE_VARIANT,
   PARAM_HIDE_BAR,
+  SEGMENT_ALL_OTHER_USERS,
+  TOOLBAR_TAG,
 } from './constants';
 import { getCookie } from './cookies';
 import { resolveFeatures } from './features';
@@ -118,7 +120,7 @@ function buildSegments(
 ): PreprSegment[] {
   return [
     {
-      _id: 'all_other_users',
+      _id: SEGMENT_ALL_OTHER_USERS,
       name: translate('adaptiveContent.allOtherUsers', locale),
     },
     ...data,
@@ -236,7 +238,7 @@ export function createPreprPreview(
   let el: PreprToolbarElement | null = null;
   if (mountUi) {
     definePreprToolbar();
-    el = document.createElement('prepr-toolbar') as PreprToolbarElement;
+    el = document.createElement(TOOLBAR_TAG) as PreprToolbarElement;
     document.body.appendChild(el);
     el.connect(store, (key) => translate(key, locale));
   }

@@ -1,3 +1,4 @@
+import { TOOLBAR_TAG } from '../constants';
 import { h, render } from 'preact';
 
 import type { ToolbarState, ToolbarStore } from '../store';
@@ -5,8 +6,6 @@ import { Panel } from './panel';
 import type { PanelHandlers } from './panel';
 
 type Translate = (key: string) => string;
-
-const TAG_NAME = 'prepr-toolbar';
 
 // `class X extends HTMLElement` evaluates HTMLElement at module load, so
 // importing this under Node/SSR (Next.js server render, or the RSC pass that
@@ -336,7 +335,7 @@ export class PreprToolbarElement extends HTMLElementBase {
 /** Idempotent, including across bundles that each try to define the element. */
 export function definePreprToolbar(): void {
   if (typeof customElements === 'undefined') return;
-  if (!customElements.get(TAG_NAME)) {
-    customElements.define(TAG_NAME, PreprToolbarElement);
+  if (!customElements.get(TOOLBAR_TAG)) {
+    customElements.define(TOOLBAR_TAG, PreprToolbarElement);
   }
 }

@@ -1,3 +1,10 @@
+import {
+  ATTR_ENCODED,
+  ATTR_FIELD,
+  ATTR_HREF,
+  ATTR_ID,
+  ATTR_LOCALE,
+} from '../constants';
 import type { StegaDecodedData } from './clean';
 
 // Single owner of the text-node walk + attribute-tagging contract shared by
@@ -160,16 +167,16 @@ export function tagEncodedElement(
   decoded: StegaDecodedData,
 ): boolean {
   if (isSiteTagged(element)) return false;
-  element.setAttribute('data-prepr-encoded', '');
-  element.setAttribute('data-prepr-href', decoded.href);
+  element.setAttribute(ATTR_ENCODED, '');
+  element.setAttribute(ATTR_HREF, decoded.href);
   element.setAttribute('data-prepr-origin', decoded.origin);
 
   const { id, field, locale, entry } = parseEditHref(decoded.href);
-  setOrRemove(element, 'data-prepr-id', id);
+  setOrRemove(element, ATTR_ID, id);
   const fieldHint =
     element.getAttribute('data-prepr-edit-target')?.trim() || undefined;
-  setOrRemove(element, 'data-prepr-field', field ?? fieldHint);
-  setOrRemove(element, 'data-prepr-locale', locale);
+  setOrRemove(element, ATTR_FIELD, field ?? fieldHint);
+  setOrRemove(element, ATTR_LOCALE, locale);
 
   // The entry id from the link, unless the site set its own on the element.
   const siteEntry =
@@ -187,10 +194,7 @@ export function tagEncodedElement(
  * {@link tagEncodedElement} sets `data-prepr-href`.
  */
 function isSiteTagged(element: Element): boolean {
-  return (
-    element.hasAttribute('data-prepr-encoded') &&
-    !element.hasAttribute('data-prepr-href')
-  );
+  return element.hasAttribute(ATTR_ENCODED) && !element.hasAttribute(ATTR_HREF);
 }
 
 /**
@@ -199,11 +203,11 @@ function isSiteTagged(element: Element): boolean {
  */
 export function readEditPayload(element: Element): StegaEditPayload {
   return {
-    href: element.getAttribute('data-prepr-href') ?? '',
+    href: element.getAttribute(ATTR_HREF) ?? '',
     origin: element.getAttribute('data-prepr-origin') ?? '',
-    id: element.getAttribute('data-prepr-id') ?? undefined,
-    field: element.getAttribute('data-prepr-field') ?? undefined,
-    locale: element.getAttribute('data-prepr-locale') ?? undefined,
+    id: element.getAttribute(ATTR_ID) ?? undefined,
+    field: element.getAttribute(ATTR_FIELD) ?? undefined,
+    locale: element.getAttribute(ATTR_LOCALE) ?? undefined,
     entryId: element.getAttribute('data-prepr-entry-id') || undefined,
   };
 }

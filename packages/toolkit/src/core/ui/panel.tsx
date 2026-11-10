@@ -1,3 +1,4 @@
+import { SEGMENT_ALL_OTHER_USERS } from '../constants';
 import type { VNode } from 'preact';
 
 import type { ToolbarState } from '../store';
@@ -341,7 +342,7 @@ function StatusPill({
 }): VNode {
   const { features } = state;
   const defaultSegmentName =
-    state.segments.find((s) => s._id === 'all_other_users')?.name ??
+    state.segments.find((s) => s._id === SEGMENT_ALL_OTHER_USERS)?.name ??
     t('adaptiveContent.allOtherUsers');
 
   // With segments off there is no segment to name, so the pill falls back to

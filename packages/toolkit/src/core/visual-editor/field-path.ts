@@ -1,3 +1,4 @@
+import { ATTR_FIELD, ATTR_ID, ENCODED_SELECTOR } from '../constants';
 import { t, type Locale } from '../i18n';
 const INDEX_SEGMENT = /^\d+$/;
 const WORD_SEPARATORS = /[_-]+/g;
@@ -70,9 +71,7 @@ export interface FieldLookup {
  */
 export function findFieldElement(lookup: FieldLookup): HTMLElement | null {
   if (!lookup.field) return null;
-  const candidates = document.querySelectorAll<HTMLElement>(
-    '[data-prepr-encoded]',
-  );
+  const candidates = document.querySelectorAll<HTMLElement>(ENCODED_SELECTOR);
   if (lookup.entryId) {
     for (const candidate of candidates) {
       if (candidate.getAttribute('data-prepr-entry-id') === lookup.entryId) {
@@ -84,9 +83,9 @@ export function findFieldElement(lookup: FieldLookup): HTMLElement | null {
     if (!path) continue;
     const wanted = normalizeFieldPath(path);
     for (const candidate of candidates) {
-      const field = candidate.getAttribute('data-prepr-field');
+      const field = candidate.getAttribute(ATTR_FIELD);
       if (!field || normalizeFieldPath(field) !== wanted) continue;
-      if (lookup.id && candidate.getAttribute('data-prepr-id') !== lookup.id) {
+      if (lookup.id && candidate.getAttribute(ATTR_ID) !== lookup.id) {
         continue;
       }
       return candidate;

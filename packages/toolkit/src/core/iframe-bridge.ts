@@ -1,3 +1,11 @@
+import {
+  EVENT_ALLOW_NAVIGATION,
+  EVENT_GET_SCROLL_POSITION,
+  EVENT_INIT,
+  EVENT_ITEM_CHANGED,
+  EVENT_REFERENCES,
+  EVENT_SCROLL_TO_FIELD,
+} from './constants';
 import { isLocale, type Locale } from './i18n';
 import type { ToolbarStore } from './store';
 import {
@@ -307,7 +315,7 @@ export function createIframeBridge(
     // in another frame or popup is not the editor of this page.
     if (evt.source !== window.parent) return;
     const data = evt?.data as EditorMessage | undefined;
-    if (data?.event === 'prepr:initVE' && !parentOrigin) {
+    if (data?.event === EVENT_INIT && !parentOrigin) {
       // Validate BEFORE touching the store: this branch enables preview and
       // edit mode, so an unvalidated sender must not reach it.
       if (!isAllowedEditorOrigin(evt.origin, allowedOrigins)) {
@@ -354,7 +362,7 @@ export function createIframeBridge(
       }
     }
     if (!parentOrigin || evt.origin !== parentOrigin) return;
-    if (data?.event === 'prepr:references') {
+    if (data?.event === EVENT_REFERENCES) {
       const assets = parseAssets(data.assets);
       if (assets) {
         try {
@@ -371,12 +379,12 @@ export function createIframeBridge(
         debug.warn('references handler failed', error as object);
       }
     }
-    if (data?.event === 'prepr:getScrollPosition') {
+    if (data?.event === EVENT_GET_SCROLL_POSITION) {
       const currentScrollY =
         window.scrollY || document.documentElement.scrollTop;
       sendPreprEvent('getScrollPosition', { value: currentScrollY });
     }
-    if (data?.event === 'prepr:scrollToField') {
+    if (data?.event === EVENT_SCROLL_TO_FIELD) {
       // Both values reach a DOM selector, so a non-string is dropped here
       // rather than stringified further down.
       if (typeof data.field !== 'string' || !data.field) return;
@@ -407,7 +415,7 @@ export function createIframeBridge(
         debug.warn('scrollToField handler failed', error as object);
       }
     }
-    if (data?.event === 'prepr:allowNavigation') {
+    if (data?.event === EVENT_ALLOW_NAVIGATION) {
       const href = data.href;
       if (typeof href !== 'string' || !href || href.length > MAX_HREF_LENGTH) {
         return;
@@ -418,7 +426,7 @@ export function createIframeBridge(
         debug.warn('allowNavigation handler failed', error as object);
       }
     }
-    if (data?.event === 'prepr:itemChanged') {
+    if (data?.event === EVENT_ITEM_CHANGED) {
       if (typeof data.itemId !== 'string' || !data.itemId) return;
       try {
         onItemChanged?.(data.itemId);

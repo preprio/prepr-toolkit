@@ -1,3 +1,9 @@
+import {
+  ATTR_ENCODED,
+  ATTR_FIELD,
+  ATTR_ID,
+  ENCODED_SELECTOR,
+} from '../constants';
 import type { EditorAsset } from '../iframe-bridge';
 
 const MAX_URL_LENGTH = 4096;
@@ -27,9 +33,9 @@ export const ASSET_SOURCE_ATTRIBUTES = [
   ...SOURCE_SET_ATTRIBUTES,
 ];
 const TAG_ATTRIBUTES = [
-  'data-prepr-encoded',
-  'data-prepr-id',
-  'data-prepr-field',
+  ATTR_ENCODED,
+  ATTR_ID,
+  ATTR_FIELD,
   'data-prepr-entry-id',
   ASSET_ATTR,
   REMOVED_ATTR,
@@ -178,7 +184,7 @@ export function untagAssetImage(img: Element): void {
 }
 
 // Field text the site's own markup or the stega pass tagged, not images.
-const TEXT_FIELD_SELECTOR = `[data-prepr-encoded]:not([${ASSET_ATTR}])`;
+const TEXT_FIELD_SELECTOR = `${ENCODED_SELECTOR}:not([${ASSET_ATTR}])`;
 
 /**
  * Whether the closest block around `img` that shows any field text shows only
@@ -239,7 +245,7 @@ export function tagAssetImages(
       match = matchAsset(img, removed, keys);
       isRemoved = match !== undefined;
     }
-    if (!ours && img.hasAttribute('data-prepr-encoded')) {
+    if (!ours && img.hasAttribute(ATTR_ENCODED)) {
       const mark = isRemoved && (!isCurrentItem || isCurrentItem(img));
       setIfChanged(img, REMOVED_ATTR, mark ? '' : null);
       showsRemoved ||= mark;
@@ -253,10 +259,10 @@ export function tagAssetImages(
       if (ours) untagAssetImage(img);
       continue;
     }
-    setIfChanged(img, 'data-prepr-encoded', '');
+    setIfChanged(img, ATTR_ENCODED, '');
     setIfChanged(img, ASSET_ATTR, '');
-    setIfChanged(img, 'data-prepr-id', itemId);
-    setIfChanged(img, 'data-prepr-field', asset.field);
+    setIfChanged(img, ATTR_ID, itemId);
+    setIfChanged(img, ATTR_FIELD, asset.field);
     setIfChanged(img, 'data-prepr-entry-id', asset.entryId ?? null);
     setIfChanged(img, REMOVED_ATTR, isRemoved ? '' : null);
     showsRemoved ||= isRemoved;

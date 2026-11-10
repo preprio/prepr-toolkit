@@ -39,7 +39,7 @@ function isSkipped(node: Node): boolean {
   return (
     node.nodeType === Node.ELEMENT_NODE &&
     ((node as Element).hasAttribute(SKIP_ATTR) ||
-      (node as Element).localName === 'prepr-toolbar')
+      (node as Element).localName === TOOLBAR_TAG)
   );
 }
 
@@ -98,3 +98,4 @@ function adopt(node: Node, parent: Element): Node {
   }
   return copy;
 }
+import { TOOLBAR_TAG } from '../constants';

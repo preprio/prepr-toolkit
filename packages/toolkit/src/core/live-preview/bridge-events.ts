@@ -1,4 +1,10 @@
 import {
+  EVENT_FIELD_CHANGE,
+  EVENT_INIT,
+  EVENT_ITEM_CHANGED,
+  EVENT_LIST_CHANGE,
+} from '../constants';
+import {
   createScopedLogger,
   getTrustedParentOrigin,
   sendPreprEvent,
@@ -54,7 +60,7 @@ export function createLiveBridge(
     // in another frame or popup is not the editor of this page.
     if (evt.source !== window.parent) return;
     const data = evt?.data as LiveEditorMessage | undefined;
-    if (data?.event === 'prepr:initVE' && !parentOrigin) {
+    if (data?.event === EVENT_INIT && !parentOrigin) {
       // Pushed values reach rendered HTML and server responses, so any other
       // page framing the site must be ignored.
       if (isAllowedEditorOrigin(evt.origin, options.allowedEditorOrigins?.())) {
@@ -69,7 +75,7 @@ export function createLiveBridge(
     const trusted = parentOrigin ?? getTrustedParentOrigin();
     if (!trusted || evt.origin !== trusted) return;
 
-    if (data?.event === 'prepr:fieldChange') {
+    if (data?.event === EVENT_FIELD_CHANGE) {
       if (
         typeof data.itemId === 'string' &&
         typeof data.field === 'string' &&
@@ -85,7 +91,7 @@ export function createLiveBridge(
       return;
     }
 
-    if (data?.event === 'prepr:listChange') {
+    if (data?.event === EVENT_LIST_CHANGE) {
       const list = parseListEntries(data.entries);
       if (
         typeof data.itemId === 'string' &&
@@ -100,7 +106,7 @@ export function createLiveBridge(
       return;
     }
 
-    if (data?.event === 'prepr:itemChanged') {
+    if (data?.event === EVENT_ITEM_CHANGED) {
       // Always the id of the item open in the editor, never a component
       // instance id.
       if (typeof data.itemId === 'string') {

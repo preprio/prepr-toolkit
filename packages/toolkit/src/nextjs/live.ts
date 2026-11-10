@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { ENCODED_SELECTOR } from '../core/constants';
 import type { LiveFetcher, LiveStore } from '../core/live-preview';
 import type { LivePatch } from '../core/live-preview/normalize-query';
 import { createScopedLogger } from '../core/utils';
@@ -161,7 +162,7 @@ const RENDER_POLL_MS = 100;
  */
 function showsPreprContent(): boolean {
   return (
-    document.querySelector('[data-prepr-encoded]') !== null ||
+    document.querySelector(ENCODED_SELECTOR) !== null ||
     // Visible text only: inline scripts carry the route's data, edit links
     // included, even when the route rendered its error page.
     STEGA_CHARS.test(document.body?.innerText ?? '')
