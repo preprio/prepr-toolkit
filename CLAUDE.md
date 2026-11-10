@@ -6,7 +6,7 @@ Monorepo for `@preprio/toolkit` — preview, visual editing, and A/B testing for
 
 - `packages/toolkit` — the published npm package. Only this ships; everything in it is public surface.
 - `examples/*` — one integration example per framework. Never in the release path; a broken example must not block a release.
-- Docs: [`packages/toolkit/README.md`](packages/toolkit/README.md) is the user-facing documentation (quick starts, API reference — keep it in sync with actual exports). [`README.md`](README.md) covers repo setup. [`RELEASING.md`](RELEASING.md) is the release walkthrough.
+- Docs: [`packages/toolkit/README.md`](packages/toolkit/README.md) is the entry point of the user-facing documentation (overview, quick start, live preview setup); [`packages/toolkit/docs/`](packages/toolkit/docs) holds the per-framework guides, configuration, API reference and troubleshooting — keep both in sync with actual exports. [`README.md`](README.md) covers repo setup. [`RELEASING.md`](RELEASING.md) is the release walkthrough.
 
 ## Workflow
 

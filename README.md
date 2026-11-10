@@ -2,7 +2,7 @@
 
 A framework-agnostic TypeScript library that provides preview functionality, visual editing, and A/B testing for [Prepr CMS](https://prepr.io). One vanilla core, with thin wrappers for React, Next.js, Nuxt, Astro, and SvelteKit.
 
-This is the monorepo. The published package lives in [`packages/toolkit`](./packages/toolkit) — its [README](./packages/toolkit/README.md) is the user-facing documentation: quick start, per-framework guides, and the complete API reference.
+This is the monorepo. The published package lives in [`packages/toolkit`](./packages/toolkit) — its [README](./packages/toolkit/README.md) is the entry point of the user-facing documentation, and [`packages/toolkit/docs`](./packages/toolkit/docs) holds the per-framework guides, the live preview guide and the API reference.
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ This is the monorepo. The published package lives in [`packages/toolkit`](./pack
 npm install @preprio/toolkit
 ```
 
-Then follow the [Quick Start](./packages/toolkit/README.md#quick-start-nextjs) for your framework: [Next.js](./packages/toolkit/README.md#nextjs), [Astro](./packages/toolkit/README.md#astro), [SvelteKit](./packages/toolkit/README.md#sveltekit), [Nuxt](./packages/toolkit/README.md#nuxt), [React](./packages/toolkit/README.md#react-no-framework), or [anything else](./packages/toolkit/README.md#any-other-framework).
+Then follow the guide for your framework: [Next.js](./packages/toolkit/docs/nextjs.md), [Astro](./packages/toolkit/docs/astro.md), [SvelteKit](./packages/toolkit/docs/sveltekit.md), [Nuxt](./packages/toolkit/docs/nuxt.md), [React](./packages/toolkit/docs/react.md), or [anything else](./packages/toolkit/docs/other-frameworks.md). To set up live preview, see [Set up live preview](./packages/toolkit/README.md#set-up-live-preview).
 
 Upgrading from the old Next.js-only `@preprio/prepr-nextjs` package? See the [migration guide](./MIGRATION.md).
 
