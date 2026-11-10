@@ -1,9 +1,7 @@
 import { isScalar } from './guards';
-import {
-  vercelStegaCombine,
-  vercelStegaDecode,
-  vercelStegaSplit,
-} from '@vercel/stega';
+import { editLinks, editLinksFor, type EditLinks } from './entry-edit-links';
+import { parsePatchLog, type LivePatch } from './patch-log';
+import { vercelStegaSplit } from '@vercel/stega';
 
 import { createScopedLogger } from '../utils';
 import {
@@ -33,33 +31,12 @@ import {
   type QueryInput,
   type QuerySelection,
 } from './query-document';
-import {
-  isLiveFieldChange,
-  isPlainRecord,
-  parseEditTarget,
-  parseListEntries,
-  type LiveEditTarget,
-} from './validate';
+import { isPlainRecord } from './validate';
 
 export type { LiveEditTarget } from './validate';
+export { parsePatchLog, type LivePatch } from './patch-log';
 
 const debug = createScopedLogger('live-preview:normalize');
-
-/**
- * One unsaved change from the Prepr editor: the `_id` of the item (or stack
- * entry) that owns the field, and the field's API name or a dotted path below
- * it (`content.headline_style`, `content.3.body`).
- */
-export type LivePatch =
-  | {
-      type: 'field';
-      itemId: string;
-      field: string;
-      value: LiveValue;
-      /** Edit-link target for text that has none yet (an unsaved entry). */
-      edit?: LiveEditTarget;
-    }
-  | { type: 'list'; itemId: string; field: string; entries: LiveListEntry[] };
 
 export interface NormalizeQueryOptions {
   /**
@@ -71,47 +48,9 @@ export interface NormalizeQueryOptions {
   operationName?: string;
 }
 
-const MAX_LOG_ENTRIES = 500;
-const MAX_LOG_SOURCE_LENGTH = 1_000_000;
 const INDEX_SEGMENT = /^\d+$/;
 const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
 const ENVELOPE_KEYS = new Set(['data', 'errors', 'extensions']);
-
-/**
- * Validate a patch log from an untrusted source (a request body, a cookie).
- * Accepts the array or its JSON text, drops malformed entries, never throws.
- */
-export function parsePatchLog(raw: unknown): LivePatch[] {
-  let value = raw;
-  if (typeof value === 'string') {
-    if (!value || value.length > MAX_LOG_SOURCE_LENGTH) return [];
-    try {
-      value = JSON.parse(value);
-    } catch {
-      return [];
-    }
-  }
-  if (!Array.isArray(value)) return [];
-  const log: LivePatch[] = [];
-  for (const entry of value.slice(-MAX_LOG_ENTRIES)) {
-    if (!isPlainRecord(entry)) continue;
-    const { type, itemId, field } = entry;
-    if (typeof itemId !== 'string' || !itemId) continue;
-    if (typeof field !== 'string' || !field) continue;
-    if (type === 'field' && isLiveFieldChange(field, entry.value)) {
-      const edit = parseEditTarget(entry.edit);
-      log.push(
-        edit
-          ? { type, itemId, field, value: entry.value, edit }
-          : { type, itemId, field, value: entry.value },
-      );
-    } else if (type === 'list') {
-      const entries = parseListEntries(entry.entries);
-      if (entries) log.push({ type, itemId, field, entries });
-    }
-  }
-  return log;
-}
 
 /**
  * Apply the Prepr editor's unsaved changes to a GraphQL result, so the page
@@ -566,10 +505,6 @@ function fillNested(
   return value === undefined ? null : one(value);
 }
 
-interface EditLinks {
-  encode(text: string, field: string): string;
-}
-
 /** What building a new entry needs besides the query and the values. */
 interface BuildContext {
   links: EditLinks | null;
@@ -615,83 +550,4 @@ function listKeysIn(
     }
     return byType.get(typename) ?? NO_KEYS;
   };
-}
-
-const EDIT_PATH = /\/content\/edit\/[^/?#]+/;
-
-/**
- * Edit links for a new entry's text, so it is click-to-edit before save.
- * Host and locale are copied from an edit link the result already carries;
- * without one (edit mode off) or without `__edit` hints, values stay plain.
- */
-function editLinks(result: unknown, entry: LiveListEntry): EditLinks | null {
-  const edit = entry.fields?.__edit;
-  if (!isPlainRecord(edit) || typeof edit.item !== 'string') return null;
-  return editLinksFor(result, edit.item);
-}
-
-// Prepr item ids. Anything else could rewrite the edit link's path.
-const ITEM_ID = /^[A-Za-z0-9_-]+$/;
-
-function editLinksFor(result: unknown, item: string): EditLinks | null {
-  if (!ITEM_ID.test(item)) return null;
-  const template = findEditLink(result);
-  if (!template) return null;
-  return {
-    encode(text, field) {
-      if (vercelStegaSplit(text).encoded) return text;
-      let href: URL;
-      try {
-        href = new URL(template.href);
-      } catch {
-        return text;
-      }
-      href.pathname = href.pathname.replace(
-        EDIT_PATH,
-        () => `/content/edit/${item}`,
-      );
-      href.searchParams.set('field', field);
-      // The editor reads the path with dots and slashes as written.
-      const link = href.toString().replace(/%2E/gi, '.').replace(/%2F/gi, '/');
-      return vercelStegaCombine(text, { origin: template.origin, href: link });
-    },
-  };
-}
-
-const linkCache = new WeakMap<
-  object,
-  { origin: string; href: string } | null
->();
-
-function findEditLink(root: unknown): { origin: string; href: string } | null {
-  if (root === null || typeof root !== 'object') return null;
-  if (linkCache.has(root)) return linkCache.get(root) ?? null;
-  let found: { origin: string; href: string } | null = null;
-  const seen = new WeakSet<object>();
-  const walk = (node: unknown): void => {
-    if (found) return;
-    if (typeof node === 'string') {
-      if (!vercelStegaSplit(node).encoded) return;
-      try {
-        const decoded = vercelStegaDecode(node) as
-          { origin?: unknown; href?: unknown } | undefined;
-        if (
-          typeof decoded?.origin === 'string' &&
-          typeof decoded.href === 'string' &&
-          EDIT_PATH.test(decoded.href)
-        ) {
-          found = { origin: decoded.origin, href: decoded.href };
-        }
-      } catch {
-        // Not a Prepr edit link.
-      }
-      return;
-    }
-    if (node === null || typeof node !== 'object' || seen.has(node)) return;
-    seen.add(node);
-    for (const value of Object.values(node)) walk(value);
-  };
-  walk(root);
-  linkCache.set(root, found);
-  return found;
 }
