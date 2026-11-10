@@ -78,4 +78,13 @@ describe('stegaTarget', () => {
     });
     expect(previewAttrs(stegaTarget('plain'), { enabled: true })).toEqual({});
   });
+
+  it('returns null instead of throwing on a malformed edit link', () => {
+    const broken = vercelStegaCombine('Home', {
+      origin: 'prepr.io',
+      href: 'https://acme.prepr.io/content/edit/%zz?field=title',
+    });
+
+    expect(stegaTarget(broken)).toBeNull();
+  });
 });

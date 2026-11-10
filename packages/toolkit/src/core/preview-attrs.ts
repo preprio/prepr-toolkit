@@ -81,12 +81,13 @@ export function stegaTarget(
   const decoded = value ? decodeStega(value) : null;
   if (!decoded) return null;
   let url: URL;
+  let id: string;
   try {
     url = new URL(decoded.href, URL_BASE);
+    id = decodeURIComponent(url.pathname.split('/').pop() ?? '');
   } catch {
     return null;
   }
-  const id = decodeURIComponent(url.pathname.split('/').pop() ?? '');
   const field = url.searchParams.get('field');
   if (!id || !field) return null;
   return {

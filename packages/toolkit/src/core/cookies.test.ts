@@ -131,4 +131,10 @@ describe('cookies', () => {
       configurable: true,
     });
   });
+
+  it('returns a malformed cookie value as is instead of throwing', () => {
+    vi.spyOn(document, 'cookie', 'get').mockReturnValue('__prepr_uid=%zz');
+
+    expect(getCookie('__prepr_uid')).toBe('%zz');
+  });
 });

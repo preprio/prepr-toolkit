@@ -27,7 +27,12 @@ export function getCookie(name: string): string | null {
   if (!match) return null;
 
   const value = match.slice(name.length + 1);
-  return decodeURIComponent(value);
+  // Cookies are visitor-controlled; a stray `%` must not throw.
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 export function setCookie(
