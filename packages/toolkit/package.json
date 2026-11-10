@@ -35,76 +35,146 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./react": {
-      "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.js",
-      "require": "./dist/react/index.cjs"
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
     },
     "./react/components": {
-      "types": "./dist/react/components.d.ts",
-      "import": "./dist/react/components.js",
-      "require": "./dist/react/components.cjs"
+      "import": {
+        "types": "./dist/react/components.d.ts",
+        "default": "./dist/react/components.js"
+      },
+      "require": {
+        "types": "./dist/react/components.d.cts",
+        "default": "./dist/react/components.cjs"
+      }
     },
     "./nextjs": {
-      "types": "./dist/nextjs/index.d.ts",
-      "import": "./dist/nextjs/index.js",
-      "require": "./dist/nextjs/index.cjs"
+      "import": {
+        "types": "./dist/nextjs/index.d.ts",
+        "default": "./dist/nextjs/index.js"
+      },
+      "require": {
+        "types": "./dist/nextjs/index.d.cts",
+        "default": "./dist/nextjs/index.cjs"
+      }
     },
     "./json-script": {
-      "types": "./dist/json-script.d.ts",
-      "import": "./dist/json-script.js",
-      "require": "./dist/json-script.cjs"
+      "import": {
+        "types": "./dist/json-script.d.ts",
+        "default": "./dist/json-script.js"
+      },
+      "require": {
+        "types": "./dist/json-script.d.cts",
+        "default": "./dist/json-script.cjs"
+      }
     },
     "./nextjs/components": {
-      "types": "./dist/nextjs/components.d.ts",
-      "import": "./dist/nextjs/components.js",
-      "require": "./dist/nextjs/components.cjs"
+      "import": {
+        "types": "./dist/nextjs/components.d.ts",
+        "default": "./dist/nextjs/components.js"
+      },
+      "require": {
+        "types": "./dist/nextjs/components.d.cts",
+        "default": "./dist/nextjs/components.cjs"
+      }
     },
     "./nextjs/image-loader": {
-      "types": "./dist/nextjs/image-loader.d.ts",
-      "import": "./dist/nextjs/image-loader.js",
-      "require": "./dist/nextjs/image-loader.cjs"
+      "import": {
+        "types": "./dist/nextjs/image-loader.d.ts",
+        "default": "./dist/nextjs/image-loader.js"
+      },
+      "require": {
+        "types": "./dist/nextjs/image-loader.d.cts",
+        "default": "./dist/nextjs/image-loader.cjs"
+      }
     },
     "./nextjs/live": {
-      "types": "./dist/nextjs/live.d.ts",
-      "import": "./dist/nextjs/live.js",
-      "require": "./dist/nextjs/live.cjs"
+      "import": {
+        "types": "./dist/nextjs/live.d.ts",
+        "default": "./dist/nextjs/live.js"
+      },
+      "require": {
+        "types": "./dist/nextjs/live.d.cts",
+        "default": "./dist/nextjs/live.cjs"
+      }
     },
     "./astro": {
-      "types": "./dist/astro/index.d.ts",
-      "import": "./dist/astro/index.js",
-      "require": "./dist/astro/index.cjs"
+      "import": {
+        "types": "./dist/astro/index.d.ts",
+        "default": "./dist/astro/index.js"
+      },
+      "require": {
+        "types": "./dist/astro/index.d.cts",
+        "default": "./dist/astro/index.cjs"
+      }
     },
     "./astro/components/*": "./src/astro/*.astro",
     "./codegen": {
-      "types": "./dist/codegen/index.d.ts",
-      "import": "./dist/codegen/index.js",
-      "require": "./dist/codegen/index.cjs"
+      "import": {
+        "types": "./dist/codegen/index.d.ts",
+        "default": "./dist/codegen/index.js"
+      },
+      "require": {
+        "types": "./dist/codegen/index.d.cts",
+        "default": "./dist/codegen/index.cjs"
+      }
     },
     "./sveltekit": {
-      "types": "./dist/sveltekit/index.d.ts",
-      "import": "./dist/sveltekit/index.js",
-      "require": "./dist/sveltekit/index.cjs"
+      "import": {
+        "types": "./dist/sveltekit/index.d.ts",
+        "default": "./dist/sveltekit/index.js"
+      },
+      "require": {
+        "types": "./dist/sveltekit/index.d.cts",
+        "default": "./dist/sveltekit/index.cjs"
+      }
     },
     "./sveltekit/live": {
-      "types": "./dist/sveltekit/live.d.ts",
-      "import": "./dist/sveltekit/live.js",
-      "require": "./dist/sveltekit/live.cjs"
+      "import": {
+        "types": "./dist/sveltekit/live.d.ts",
+        "default": "./dist/sveltekit/live.js"
+      },
+      "require": {
+        "types": "./dist/sveltekit/live.d.cts",
+        "default": "./dist/sveltekit/live.cjs"
+      }
     },
     "./sveltekit/components/*": "./src/sveltekit/*.svelte",
     "./nuxt": {
-      "types": "./dist/nuxt/index.d.ts",
-      "import": "./dist/nuxt/index.js",
-      "require": "./dist/nuxt/index.cjs"
+      "import": {
+        "types": "./dist/nuxt/index.d.ts",
+        "default": "./dist/nuxt/index.js"
+      },
+      "require": {
+        "types": "./dist/nuxt/index.d.cts",
+        "default": "./dist/nuxt/index.cjs"
+      }
     },
     "./nuxt/live": {
-      "types": "./dist/nuxt/live.d.ts",
-      "import": "./dist/nuxt/live.js",
-      "require": "./dist/nuxt/live.cjs"
+      "import": {
+        "types": "./dist/nuxt/live.d.ts",
+        "default": "./dist/nuxt/live.js"
+      },
+      "require": {
+        "types": "./dist/nuxt/live.d.cts",
+        "default": "./dist/nuxt/live.cjs"
+      }
     },
     "./nuxt/components/*": "./src/nuxt/*.vue"
   },
