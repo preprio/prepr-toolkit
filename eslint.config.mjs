@@ -8,10 +8,8 @@ import tseslint from 'typescript-eslint';
 // demos with their own generated GraphQL code and framework conventions;
 // linting them here would mostly police codegen output.
 //
-// The rule set is deliberately small: it exists to enforce the rules the source
-// already has `eslint-disable` comments for (react-hooks/exhaustive-deps,
-// react/no-danger, no-var), which until now silenced nothing because no config
-// existed.
+// The rule set is deliberately small: correctness only. Formatting belongs to
+// Prettier.
 export default tseslint.config(
   {
     ignores: [
@@ -49,12 +47,26 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react/no-danger': 'warn',
 
-      // The codebase leans on inferred return types for locals and on `any` in
-      // a few deliberate structural-typing spots; neither is worth churning.
-      '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+
+  // Type-aware rules for the shipped source: a dropped promise here is an
+  // unhandled rejection on a consumer's page or server.
+  {
+    files: ['packages/*/src/**/*.{ts,tsx}'],
+    ignores: ['packages/**/*.test.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: { projectService: true },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': [
+        'error',
+        { checksVoidReturn: { attributes: false } },
       ],
     },
   },

@@ -6,7 +6,7 @@
     "build": "turbo build --filter='./packages/*'",
     "test": "turbo test --filter='./packages/*'",
     "typecheck": "turbo typecheck --filter='./packages/*'",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "build:examples": "turbo build --filter='./examples/*'",
     "typecheck:examples": "turbo typecheck --filter='./examples/*'",
     "check:all": "turbo build test typecheck && pnpm lint && pnpm format:check",
