@@ -5,6 +5,18 @@ import { parsePatchLog, type LivePatch } from './normalize-query';
 const MAX_BODY_BYTES = 1_000_000;
 
 /**
+ * The origin the browser addressed. Behind a TLS-terminating proxy the
+ * request reaches the server as plain HTTP, so `x-forwarded-proto` decides
+ * the scheme when present, as it does for the preview cookies.
+ */
+function requestOrigin(request: Request): string {
+  const url = new URL(request.url);
+  const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
+  return url.origin;
+}
+
+/**
  * The editor's unsaved changes carried by a live-preview re-render request
  * (sent by `startHtmlLivePreview`), or an empty list for any other request.
  *
@@ -21,7 +33,7 @@ export async function readLiveLogFromRequest(
     if (request.method !== 'POST') return [];
     if (request.headers.get(HEADER_LIVE_RENDER) !== '1') return [];
     const origin = request.headers.get('origin');
-    if (!origin || origin !== new URL(request.url).origin) return [];
+    if (!origin || origin !== requestOrigin(request)) return [];
     const type = request.headers.get('content-type') ?? '';
     if (!type.toLowerCase().startsWith('application/json')) return [];
     const length = Number(request.headers.get('content-length') ?? '0');

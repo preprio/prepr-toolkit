@@ -77,4 +77,34 @@ describe('readLiveLogFromRequest', () => {
       ),
     ).toEqual([{ type: 'field', itemId: 'p', field: '__proto__', value: 1 }]);
   });
+
+  it('reads the log behind a proxy that terminates TLS', async () => {
+    const request = new Request('http://site.example/page', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-prepr-live': '1',
+        origin: 'https://site.example',
+        'x-forwarded-proto': 'https',
+      },
+      body: JSON.stringify({ log: LOG }),
+    });
+
+    expect(await readLiveLogFromRequest(request)).toEqual(LOG);
+  });
+
+  it('still rejects another site behind that proxy', async () => {
+    const request = new Request('http://site.example/page', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-prepr-live': '1',
+        origin: 'https://attacker.example',
+        'x-forwarded-proto': 'https',
+      },
+      body: JSON.stringify({ log: LOG }),
+    });
+
+    expect(await readLiveLogFromRequest(request)).toEqual([]);
+  });
 });
