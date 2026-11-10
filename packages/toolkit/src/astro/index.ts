@@ -1,20 +1,8 @@
 import {
-  getActiveSegmentFromHeaders,
-  getActiveVariantFromHeaders,
-  getPreprHeadersFromHeaders,
-  getPreprUUIDFromHeaders,
-  getToolbarPropsFromHeaders,
-} from '../core/server';
-import {
   processFrameworkRequest,
   serializeCookie,
   type PreprMiddlewareOptions,
 } from '../core/middleware';
-import type {
-  PreprFeatures,
-  PreprHeaders,
-  PreprToolbarProps,
-} from '../core/types';
 import {
   normalizeQuery as applyPatchLog,
   type LivePatch,
@@ -93,43 +81,13 @@ export async function onPreprRequest(
   return response;
 }
 
-// --- Server helpers (Astro-friendly names, take a standard Headers) --------
-
-/** Prepr Customer ID for this request, from `Astro.request.headers`. */
-export function getPreprUUID(headers: Headers): string | null {
-  return getPreprUUIDFromHeaders(headers);
-}
-
-/** Active segment for this request, from `Astro.request.headers`. */
-export function getActiveSegment(headers: Headers): string | null {
-  return getActiveSegmentFromHeaders(headers);
-}
-
-/** Active A/B variant for this request, from `Astro.request.headers`. */
-export function getActiveVariant(headers: Headers): string | null {
-  return getActiveVariantFromHeaders(headers);
-}
-
-/** All Prepr headers for this request, from `Astro.request.headers`. */
-export function getPreprHeaders(headers: Headers): PreprHeaders {
-  return getPreprHeadersFromHeaders(headers);
-}
-
-/**
- * Props needed to mount `PreprToolbar.astro`, from `Astro.request.headers`
- * plus a Prepr GraphQL token.
- *
- * Ungated: call it only when your app is in preview mode. Resolve that however
- * your deployment already does — the toolkit reads no environment variables of
- * its own.
- */
-export async function getToolbarProps(
-  headers: Headers,
-  token: string,
-  features?: PreprFeatures,
-): Promise<PreprToolbarProps> {
-  return getToolbarPropsFromHeaders(headers, token, features);
-}
+export {
+  getActiveSegment,
+  getActiveVariant,
+  getPreprHeaders,
+  getPreprUUID,
+  getToolbarProps,
+} from '../core/request-helpers';
 
 export interface AstroNormalizeQueryOptions {
   /**

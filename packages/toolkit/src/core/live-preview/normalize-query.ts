@@ -1,3 +1,4 @@
+import { isScalar } from './guards';
 import {
   vercelStegaCombine,
   vercelStegaDecode,
@@ -524,7 +525,7 @@ function fillObject(
           : fillNested(doc, field.selections, value, ctx);
     } else {
       const value = valueOf(field.name);
-      if (Array.isArray(value) && value.every(isScalarItem)) {
+      if (Array.isArray(value) && value.every(isScalar)) {
         out[field.key] = value;
         continue;
       }
@@ -573,14 +574,6 @@ interface EditLinks {
 interface BuildContext {
   links: EditLinks | null;
   lists: (typename: string | null) => ReadonlySet<string>;
-}
-
-function isScalarItem(value: unknown): boolean {
-  return (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  );
 }
 
 const NO_KEYS: ReadonlySet<string> = new Set();

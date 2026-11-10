@@ -1,13 +1,8 @@
+import { isScalar } from './guards';
 import type { LiveListEntry, LiveValue } from './patch';
 
 // Editor-supplied values arrive over postMessage or in an HTTP request, so
 // every check here treats the input as hostile.
-
-function isScalar(v: unknown): v is string | number | boolean {
-  return (
-    typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
-  );
-}
 
 const MAX_DEPTH = 3;
 const MAX_ENTRIES = 50;

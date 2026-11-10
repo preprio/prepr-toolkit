@@ -1,3 +1,4 @@
+import { isObject } from './guards';
 import { vercelStegaSplit } from '@vercel/stega';
 
 import {
@@ -23,10 +24,6 @@ export interface LiveObject {
 /** Anything a `prepr:fieldChange` may carry. */
 export type LiveValue = LiveScalar | null | LiveObject | LiveObject[];
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 /**
  * Fold `incoming` into `current` without changing its shape: only keys the
  * query selected are updated, since the pushed value comes from the editor.
@@ -40,7 +37,7 @@ function mergeObject(
   for (const key of Object.keys(current)) {
     if (!(key in incoming) || incoming[key] === undefined) continue;
     const value =
-      isPlainObject(current[key]) && isPlainObject(incoming[key])
+      isObject(current[key]) && isObject(incoming[key])
         ? mergeObject(current[key], incoming[key])
         : incoming[key];
     if (value !== current[key]) {
@@ -62,7 +59,7 @@ function shapeLike(
     out[key] =
       value === undefined
         ? null
-        : isPlainObject(template[key]) && isPlainObject(value)
+        : isObject(template[key]) && isObject(value)
           ? shapeLike(template[key], value)
           : value;
   }
@@ -72,7 +69,7 @@ function shapeLike(
 /** An image or file as the API returns it: its `url`, or typed `Asset`. */
 function isAsset(value: unknown): boolean {
   return (
-    isPlainObject(value) &&
+    isObject(value) &&
     (typeof value.url === 'string' || value.__typename === 'Asset')
   );
 }
@@ -80,7 +77,7 @@ function isAsset(value: unknown): boolean {
 function hasId(list: unknown[], entry: Record<string, unknown>): boolean {
   return (
     entry._id !== undefined &&
-    list.some((c) => isPlainObject(c) && c._id === entry._id)
+    list.some((c) => isObject(c) && c._id === entry._id)
   );
 }
 
@@ -97,11 +94,11 @@ function isAssetValue(value: unknown): boolean {
 function keepRemovedAssets(current: unknown[], next: unknown[]): unknown[] {
   const listed = new Set<unknown>();
   for (const entry of next) {
-    if (isPlainObject(entry) && entry._id !== undefined) listed.add(entry._id);
+    if (isObject(entry) && entry._id !== undefined) listed.add(entry._id);
   }
   let out = next;
   current.forEach((entry, position) => {
-    if (!isPlainObject(entry) || entry._id === undefined) return;
+    if (!isObject(entry) || entry._id === undefined) return;
     if (listed.has(entry._id)) return;
     if (out === next) out = [...next];
     out.splice(Math.min(position, out.length), 0, entry);
@@ -129,14 +126,14 @@ function mergeStructured(current: unknown, incoming: LiveValue): unknown {
   >;
   if (current === null || current === undefined) return incoming;
   if (Array.isArray(current)) {
-    const template = current.find(isPlainObject);
+    const template = current.find(isObject);
     const next = list.map((entry) => {
       const match = current.find(
-        (c) => isPlainObject(c) && c._id !== undefined && c._id === entry._id,
+        (c) => isObject(c) && c._id !== undefined && c._id === entry._id,
       );
-      if (isPlainObject(match)) return mergeObject(match, entry);
+      if (isObject(match)) return mergeObject(match, entry);
       // A key the editor did not send is null, not the first entry's value.
-      return isPlainObject(template) ? shapeLike(template, entry) : entry;
+      return isObject(template) ? shapeLike(template, entry) : entry;
     });
     // A newly picked asset ends the wait: the list then shows what the
     // editor sends.
@@ -154,7 +151,7 @@ function mergeStructured(current: unknown, incoming: LiveValue): unknown {
       ? current
       : kept;
   }
-  if (isPlainObject(current)) return mergeObject(current, list[0]);
+  if (isObject(current)) return mergeObject(current, list[0]);
   return current;
 }
 
@@ -351,11 +348,11 @@ export type LiveEntryBuilder = (
 ) => Record<string, unknown> | undefined;
 
 function listKeysOf(entry: unknown): string[] {
-  if (!isPlainObject(entry)) return [];
+  if (!isObject(entry)) return [];
   const keys: string[] = [];
   if (typeof entry._id === 'string') keys.push(entry._id);
   const first = Array.isArray(entry.items) ? entry.items[0] : null;
-  if (isPlainObject(first) && typeof first._id === 'string') {
+  if (isObject(first) && typeof first._id === 'string') {
     keys.push(first._id);
   }
   return keys;
@@ -408,7 +405,7 @@ function syncList(
     // Also match an assets entry by its first asset's `_id`: the editor and
     // the page may be on different sides of an id change and must still meet.
     for (const key of listKeysOf(c)) byKey.set(key, c);
-    if (isPlainObject(c) && typeof c.__typename === 'string') {
+    if (isObject(c) && typeof c.__typename === 'string') {
       if (!templates.has(c.__typename)) templates.set(c.__typename, c);
     }
   }

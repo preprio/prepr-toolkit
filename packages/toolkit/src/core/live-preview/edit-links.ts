@@ -1,3 +1,4 @@
+import { isObject } from './guards';
 import {
   vercelStegaCombine,
   vercelStegaDecode,
@@ -40,19 +41,15 @@ const TOP_LEVEL_ENTRY = /^[A-Za-z0-9_]+\.\d+$/;
  * entry in dynamic content (which has none) its first asset's.
  */
 function entryIdOf(element: unknown): string | undefined {
-  if (!isRecord(element)) return undefined;
+  if (!isObject(element)) return undefined;
   if (typeof element._id === 'string') return element._id;
   if (element.__typename !== 'Assets' || !Array.isArray(element.items)) {
     return undefined;
   }
   const first: unknown = element.items[0];
-  return isRecord(first) && typeof first._id === 'string'
+  return isObject(first) && typeof first._id === 'string'
     ? first._id
     : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -115,7 +112,7 @@ function walk(
             entryId,
             entryField: ctx.ownerId ? path.join('.') : undefined,
             entryOwnerId: ctx.ownerId,
-            inAssets: isRecord(element) && element._id === undefined,
+            inAssets: isObject(element) && element._id === undefined,
           }
         : {};
       const out = walk(element, selections, { ...ctx, ...entry, path });
@@ -125,7 +122,7 @@ function walk(
     return changed ? next : value;
   }
 
-  if (!isRecord(value)) return value;
+  if (!isObject(value)) return value;
 
   const id = typeof value._id === 'string' ? value._id : undefined;
   const typename =
