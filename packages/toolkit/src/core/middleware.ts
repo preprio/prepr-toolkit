@@ -41,6 +41,21 @@ export interface CookieSpec {
 const MAX_HEADER_VALUE_LENGTH = 2048;
 
 /**
+ * A v4 UUID for a new visitor id. `crypto.randomUUID` is a global from Node 19
+ * on; Node 18 only has `crypto.getRandomValues` there.
+ */
+function randomUUID(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(
+    '',
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
  * Make a request-derived value safe to hand to `Headers.set()`.
  *
  * Every value forwarded to the Prepr API comes from the visitor — query params,
@@ -240,7 +255,7 @@ export function processFrameworkRequest(
   // into the cookie value makes `Headers.set` throw and 500s the request.
   let uid = sanitizeHeaderValue(requestCookies.get(COOKIE_UID) ?? '');
   if (!uid) {
-    uid = crypto.randomUUID();
+    uid = randomUUID();
     responseCookies.push({
       name: COOKIE_UID,
       value: uid,

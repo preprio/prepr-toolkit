@@ -593,4 +593,28 @@ describe('processPreprRequest', () => {
       expect(result.requestHeaders.get('accept')).toBe('text/html');
     });
   });
+
+  describe('visitor id without crypto.randomUUID (Node 18)', () => {
+    it('still issues a v4 UUID', () => {
+      const original = crypto.randomUUID;
+      Object.defineProperty(crypto, 'randomUUID', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+      try {
+        const result = processPreprRequest(makeRequest('https://example.com/'));
+
+        expect(result.requestHeaders.get('Prepr-Customer-Id')).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+      } finally {
+        Object.defineProperty(crypto, 'randomUUID', {
+          value: original,
+          configurable: true,
+          writable: true,
+        });
+      }
+    });
+  });
 });
