@@ -5,6 +5,28 @@ All notable changes to `@preprio/toolkit`. The format follows
 [semantic versioning](https://semver.org/). Releases before 1.0.0 are listed on the
 [GitHub releases page](https://github.com/preprio/prepr-toolkit/releases).
 
+## 1.0.0-rc.3
+
+### Added
+
+- `createPreprIds({ optionalInTypes: true })` types the added `_id` as optional, so
+  test fixtures and mocks written against the generated types keep compiling.
+
+### Changed
+
+- `preprIds` no longer adds `_id` next to a fragment spread on the same type;
+  the fragment selects it. With fragment masking, `makeFragmentData` alone
+  builds the parent again. Code that read `_id` on such a level selects it in
+  the query.
+
+### Documentation
+
+- Live preview: hand-written test data with `preprIds`, several queries on
+  one page, and `normalizeQuery` making a Next.js route dynamic in preview.
+- Troubleshooting: clean invisible characters with `stegaClean`, after
+  `normalizeQuery`.
+- Astro: the live preview snippet defines the preview flag it uses.
+
 ## 1.0.0-rc.2
 
 ### Documentation
