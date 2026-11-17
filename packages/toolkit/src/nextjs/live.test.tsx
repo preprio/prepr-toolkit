@@ -360,6 +360,33 @@ describe('PreprRefresh', () => {
     vi.useRealTimers();
   });
 
+  it('sends the next change as soon as the previous render answered', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    syncPreprLiveLog.mockClear();
+    await render(<PreprRefresh enabled />);
+    await liveStarted();
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      for (const value of ['a', 'ab']) {
+        post({
+          event: 'prepr:fieldChange',
+          itemId: 'p',
+          field: 'title',
+          value,
+        });
+        await vi.advanceTimersByTimeAsync(200);
+      }
+    });
+
+    expect(syncPreprLiveLog).toHaveBeenCalledTimes(2);
+    expect(syncPreprLiveLog).toHaveBeenLastCalledWith([
+      { type: 'field', itemId: 'p', field: 'title', value: 'ab' },
+    ]);
+    vi.useRealTimers();
+  });
+
   it('reloads without the change that broke the page, and leaves it out after', async () => {
     vi.useFakeTimers();
     stubFramed();

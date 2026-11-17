@@ -258,6 +258,7 @@ function watchClientRenders(watched: LiveStore): void {
 /**
  * Sends the latest log after a pause, one request at a time, so renders never
  * pile up behind fast typing and the last state always reaches the server.
+ * The next log goes out as soon as the previous re-render has answered.
  *
  * A component that throws on an unsaved value makes Next.js replace the route
  * with its error page, which a refresh does not undo. When a re-render loses
@@ -271,6 +272,8 @@ function createLogSync() {
   let pending: LivePatch[] | null = null;
   let cancelled = false;
   let lastGood: LivePatch[] = [];
+  // Ends the watch over the previous render, which is still landing.
+  let stopSettling: (() => void) | null = null;
 
   const send = async (incoming: LivePatch[]): Promise<void> => {
     const skipped = new Set(quarantined());
@@ -279,9 +282,13 @@ function createLogSync() {
       : incoming;
     if (!log.length) return;
     inFlight = true;
+    // A render that is still landing may have broken the page since its last
+    // check, so its watch carries over instead of starting from what shows.
+    const watch = stopSettling !== null || showsPreprContent();
+    stopSettling?.();
     // Watched on a timer rather than after the action: when an error page
     // replaces the layout mid-render, the action's promise never settles.
-    const stopWatching = showsPreprContent()
+    const stopWatching = watch
       ? watchUntilSettled(() => recoverFrom(log, lastGood))
       : () => {};
     let failed = false;
@@ -291,12 +298,26 @@ function createLogSync() {
       failed = true;
       debug.log('sending unsaved changes failed', error as object);
     }
-    // Let the render land before the watch ends.
-    await new Promise((resolve) => setTimeout(resolve, RENDER_SETTLE_MS));
-    stopWatching();
     inFlight = false;
-    if (recovering) return;
-    if (!failed) lastGood = log;
+    if (recovering) {
+      stopWatching();
+      return;
+    }
+    // Streamed parts of the render land after the action answers. The watch
+    // stays on for them without holding back the next log; a log only counts
+    // as good once its render went unbroken for the whole window.
+    const settle = setTimeout(() => {
+      stopSettling = null;
+      stopWatching();
+      if (!failed && !recovering) lastGood = log;
+    }, RENDER_SETTLE_MS);
+    stopSettling = watch
+      ? () => {
+          clearTimeout(settle);
+          stopWatching();
+          stopSettling = null;
+        }
+      : null;
     if (pending && !cancelled) {
       const next = pending;
       pending = null;
