@@ -5,6 +5,14 @@ All notable changes to `@preprio/toolkit`. The format follows
 [semantic versioning](https://semver.org/). Releases before 1.0.0 are listed on the
 [GitHub releases page](https://github.com/preprio/prepr-toolkit/releases).
 
+## 1.0.0-rc.4
+
+### Changed
+
+- Next.js live preview: `PreprRefresh` sends the next unsaved change as soon
+  as the previous re-render has answered, instead of a second later, so typing
+  shows up sooner on routes that render slowly.
+
 ## 1.0.0-rc.3
 
 ### Added
