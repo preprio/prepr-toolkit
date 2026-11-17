@@ -223,6 +223,16 @@ const page = await normalizeQuery(GetPageDocument, data, { enabled: preview });
 
 When the document holds more than one operation, name the one to use with `operationName`.
 
+A page that runs several queries, also with different documents or in more
+than one round, calls `normalizeQuery` once per result. Every call in the
+same render applies the same unsaved changes, so an edit shows up in each
+result that contains the item.
+
+With `enabled` on, `normalizeQuery` reads the request on every call, which
+makes the route dynamic. With `enabled` off it does not read the request, so
+static and ISR pages stay as they are. Keep `enabled` tied to your preview
+flag and production pages are not affected.
+
 **2. Mount `PreprRefresh` once in the root layout:**
 
 ```tsx

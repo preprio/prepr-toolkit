@@ -39,6 +39,9 @@ The preview is a cross-site iframe there, and browsers only keep cookies marked 
 
 Preview content carries its edit link as invisible characters inside the text. The toolkit strips them from the page, but a value you read in code still has them: comparisons, `length` and sorting are off. Pass it through `stegaClean(value)` first.
 
+- **Use `stegaClean`, not a general pattern.** A pattern like `\p{Cf}` also removes soft hyphens, the joiners inside emoji and in scripts like Persian, and text direction marks. `stegaClean` removes the edit link only.
+- **Clean after `normalizeQuery`, not before.** Live preview finds content by `_id` and works without the characters, but click-to-edit reads them. A result cleaned before it reaches `normalizeQuery` loses click-to-edit, also on entries an editor adds before saving.
+
 ## Segments switch but content does not change
 
 The toolbar sets the segment; your data fetch decides what to do with it. Check that the fetch forwards `getPreprHeaders()` and is not being served from cache — use `cache: 'no-store'`, or Apollo's `fetchPolicy: 'no-cache'`, on personalized queries.

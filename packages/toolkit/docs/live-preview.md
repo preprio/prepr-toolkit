@@ -91,8 +91,10 @@ added wherever your schema has one: on models and components, and inside
 each member of a dynamic content field. Collections like `Pages` and unions
 themselves never get an `_id`, so the queries stay valid. Your `.graphql`
 files stay as they are; the generated documents and types include the field,
-at no runtime cost. Adding a field never breaks code that compiles today, so
-this is safe to turn on in an existing project.
+at no runtime cost. Code that reads your data keeps compiling. Objects you
+write by hand against the generated types, such as test fixtures and mocks,
+now need an `_id` too; see
+[Hand-written test data](#hand-written-test-data) to avoid that.
 
 ```ts
 // codegen.ts
@@ -122,6 +124,39 @@ generated types: each member of a union is typed on its own, so code that
 reads a union's fields without checking `__typename` first stops compiling.
 Live preview only needs it on dynamic content entries, where you select it
 already to render them.
+
+#### Hand-written test data
+
+The generated types list `_id` as a required field, so a fixture or mock
+typed against them stops compiling until it has one. To keep existing test
+data as it is, type the added `_id` as optional:
+
+```ts
+import { createPreprIds } from '@preprio/toolkit/codegen';
+
+documentTransforms: [createPreprIds({ optionalInTypes: true })],
+```
+
+The field is then selected as `_id @include(if: true)`. The API always
+returns it, and Codegen types a field with `@include` as optional
+(`_id?: string`). Live preview and click-to-edit work the same. The only
+difference is in your own code: an added `_id` you read is
+`string | undefined`. Select `_id` yourself in a query where you need it as
+a plain `string`; fields you select are left as written.
+
+With fragment masking, `_id` lives inside the fragment, not next to the
+place that spreads it. `hero { ...HeroParts }` stays as it is and
+`HeroParts` gets the `_id`, so `makeFragmentData` alone builds the parent:
+
+```ts
+const hero = makeFragmentData(
+  { _id: 'hero-1', title: 'Hi' },
+  HeroPartsFragmentDoc,
+);
+```
+
+A level that spreads a fragment and also needs its own `_id` in your code
+selects it by hand.
 
 ### Option 2: at runtime, without Codegen
 
