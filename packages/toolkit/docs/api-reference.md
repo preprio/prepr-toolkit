@@ -182,6 +182,19 @@ Unlike `getToolbarProps`, `getPreprEnvironmentSegments(token)` throws on failure
 - **`annotateEditLinks(result, query?, operationName?)`** — adds list entry ids to edit links in data fetched outside the live preview helpers.
 - **`previewAttrs(target, { enabled })`** and **`stegaTarget(text, { field })`** — make values without an edit link click-to-edit. See [Visual editing](./visual-editing.md#marking-content-by-hand).
 
+### Codegen
+
+From `@preprio/toolkit/codegen`. See [Preparing your queries](./live-preview.md#preparing-your-queries).
+
+- **`preprIds`** — GraphQL Codegen document transform that selects `_id` wherever your schema has one.
+- **`createPreprIds(options?)`** — the same transform with options.
+- **`addPreprIds(document, schema, options?)`** — the same on one parsed query, for setups without Codegen.
+
+| Option            | Type      | Default | Description                                                                                                                                                                                             |
+| ----------------- | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `typename`        | `boolean` | `false` | Also select `__typename` on every object, interface and union below the root. Changes the generated types of unions.                                                                                    |
+| `optionalInTypes` | `boolean` | `false` | Type the added `_id` as optional (`_id?: string`), so hand-written fixtures and mocks keep compiling. The API still returns it. See [Hand-written test data](./live-preview.md#hand-written-test-data). |
+
 ### Low-level toolbar API
 
 `PreprToolbarElement`, `definePreprToolbar`, `createToolbarStore` and `resolveFeatures` are the building blocks `createPreprPreview` is made of. They are exported for unusual integrations; a site that mounts the toolbar through `createPreprPreview` or a framework component does not need them.

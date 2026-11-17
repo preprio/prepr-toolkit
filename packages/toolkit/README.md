@@ -179,6 +179,8 @@ const config = {
 };
 ```
 
+Test fixtures written by hand against the generated types then need an `_id` too. Use `createPreprIds({ optionalInTypes: true })` instead to type it as optional, see [Hand-written test data](./docs/live-preview.md#hand-written-test-data).
+
 No Codegen? See [the other two ways](./docs/live-preview.md#preparing-your-queries).
 
 **5. Run your query results through the live preview helper**, with your preview flag as `enabled`:
