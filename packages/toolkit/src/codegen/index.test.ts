@@ -2,6 +2,7 @@
 import { buildSchema, parse, print, validate } from 'graphql';
 import { describe, expect, it } from 'vitest';
 
+import { normalizeQuery } from '../core/live-preview/normalize-query';
 import { addPreprIds, createPreprIds, preprIds } from './index';
 
 // The shapes that matter in a Prepr schema: models and components carry
@@ -34,7 +35,7 @@ function run(query: string, typename = true): string {
 }
 
 describe('addPreprIds', () => {
-  it('adds only _id by default, which never changes existing types', () => {
+  it('adds only _id by default, leaving union types as they are', () => {
     const document = addPreprIds(
       parse(`{ Page { sections { ... on Hero { title } } } }`),
       schema,
@@ -132,6 +133,97 @@ describe('addPreprIds', () => {
       ),
     ).toMatch(/fragment HeroParts on Hero \{\n\s+_id\n\s+__typename\n\s+title/);
   });
+
+  // A second `_id` next to the spread sits outside the fragment's masked
+  // type, so `makeFragmentData` alone no longer builds the parent.
+  it('leaves _id to a fragment spread on the same type', () => {
+    expect(
+      run(
+        `fragment PageParts on Page { title } { Page { ...PageParts } }`,
+        false,
+      ),
+    ).toMatchInlineSnapshot(`
+      "fragment PageParts on Page {
+        _id
+        title
+      }
+
+      {
+        Page {
+          ...PageParts
+        }
+      }"
+    `);
+  });
+
+  it('leaves _id to a fragment on an interface the type implements', () => {
+    const out = run(
+      `fragment Ids on Model { __typename } { Page { ...Ids title } }`,
+      false,
+    );
+    expect(out.match(/_id/g)).toHaveLength(1);
+    expect(out).toMatch(/fragment Ids on Model \{\n\s+_id/);
+  });
+
+  it('still adds _id next to a spread that does not cover the type', () => {
+    // Behind a directive the fragment can be left out of the response.
+    expect(
+      run(
+        `fragment PageParts on Page { title }
+         query ($full: Boolean!) { Page { ...PageParts @include(if: $full) } }`,
+        false,
+      ),
+    ).toMatch(/Page \{\n\s+_id\n\s+\.\.\.PageParts/);
+    // A fragment on one member says nothing about the interface.
+    const schemaWithNode = buildSchema(
+      SDL + ` extend type Query { node: Model }`,
+    );
+    const document = addPreprIds(
+      parse(`fragment PageParts on Page { title } { node { ...PageParts } }`),
+      schemaWithNode,
+    );
+    expect(validate(schemaWithNode, document)).toEqual([]);
+    expect(print(document)).toMatch(/node \{\n\s+_id\n\s+\.\.\.PageParts/);
+    // A fragment the document does not define.
+    expect(
+      print(addPreprIds(parse(`{ Page { ...Elsewhere } }`), schema)),
+    ).toMatch(/Page \{\n\s+_id\n\s+\.\.\.Elsewhere/);
+  });
+
+  it('selects an optional _id behind @include(if: true)', () => {
+    const document = addPreprIds(
+      parse(`{ Page { title seo { _id title } } }`),
+      schema,
+      { optionalInTypes: true },
+    );
+    expect(validate(schema, document)).toEqual([]);
+    expect(print(document)).toMatchInlineSnapshot(`
+      "{
+        Page {
+          _id @include(if: true)
+          title
+          seo {
+            _id
+            title
+          }
+        }
+      }"
+    `);
+  });
+
+  it('keeps live preview working on a query with an optional _id', () => {
+    const document = addPreprIds(parse(`{ Page { title } }`), schema, {
+      optionalInTypes: true,
+    });
+    const next = normalizeQuery(
+      document,
+      { Page: { _id: 'p1', title: 'Stored' } },
+      {
+        log: [{ type: 'field', itemId: 'p1', field: 'title', value: 'Typed' }],
+      },
+    );
+    expect(next).toEqual({ Page: { _id: 'p1', title: 'Typed' } });
+  });
 });
 
 describe('preprIds (codegen document transform)', () => {
@@ -154,5 +246,19 @@ describe('preprIds (codegen document transform)', () => {
       schema: parse(SDL),
     });
     expect(print(file!.document!)).toContain('__typename');
+  });
+
+  it('finds the fragment a query spreads in another file', () => {
+    const [query, fragment] = createPreprIds({
+      optionalInTypes: true,
+    }).transform({
+      documents: [
+        { document: parse(`{ Page { ...PageParts } }`) },
+        { document: parse(`fragment PageParts on Page { title }`) },
+      ],
+      schema: parse(SDL),
+    });
+    expect(print(query!.document!)).not.toContain('_id');
+    expect(print(fragment!.document!)).toContain('_id @include(if: true)');
   });
 });
