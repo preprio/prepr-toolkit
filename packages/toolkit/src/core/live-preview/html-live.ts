@@ -21,6 +21,13 @@ export interface HtmlLivePreviewOptions {
   allowedEditorOrigins?: string[];
   /** See the toolbar's `strictMode`. */
   strictMode?: boolean;
+  /**
+   * How long typing must pause, in milliseconds, before the page is
+   * requested with the unsaved changes. Default 150. Lower shows changes
+   * sooner at the cost of more server renders; raise it when a render is
+   * expensive.
+   */
+  syncDebounceMs?: number;
 }
 
 /** Handle on a running HTML live preview. */
@@ -52,6 +59,12 @@ export function startHtmlLivePreview(
   });
   bridge.start();
 
+  const debounceMs =
+    typeof options.syncDebounceMs === 'number' &&
+    Number.isFinite(options.syncDebounceMs) &&
+    options.syncDebounceMs >= 0
+      ? options.syncDebounceMs
+      : SYNC_DEBOUNCE_MS;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight = false;
   let pending: LivePatch[] | null = null;
@@ -100,7 +113,7 @@ export function startHtmlLivePreview(
       timer = null;
       if (inFlight) pending = log;
       else void render(log);
-    }, SYNC_DEBOUNCE_MS);
+    }, debounceMs);
   };
 
   const offLog = store.onLogChange((log) => {

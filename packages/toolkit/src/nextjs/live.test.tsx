@@ -360,6 +360,32 @@ describe('PreprRefresh', () => {
     vi.useRealTimers();
   });
 
+  it('waits for the syncDebounceMs it is given', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    syncPreprLiveLog.mockClear();
+    await render(<PreprRefresh enabled syncDebounceMs={500} />);
+    await liveStarted();
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({
+        event: 'prepr:fieldChange',
+        itemId: 'p',
+        field: 'title',
+        value: 'a',
+      });
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(syncPreprLiveLog).not.toHaveBeenCalled();
+
+    await React.act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(syncPreprLiveLog).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it('sends the next change as soon as the previous render answered', async () => {
     vi.useFakeTimers();
     stubFramed();

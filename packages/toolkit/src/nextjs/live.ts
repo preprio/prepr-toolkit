@@ -14,6 +14,11 @@ const debug = createScopedLogger('live-preview:next');
 
 const LOG_SYNC_DEBOUNCE_MS = 150;
 
+const debounceOf = (value: number | undefined): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : LOG_SYNC_DEBOUNCE_MS;
+
 export interface LivePreviewConfig {
   /**
    * Pass your preview flag; never `true` on a production deployment.
@@ -35,6 +40,12 @@ export interface PreprRefreshProps {
   allowedEditorOrigins?: string[];
   /** Your preview token uses GraphQL strict mode; see the toolbar option. */
   strictMode?: boolean;
+  /**
+   * How long typing must pause, in milliseconds, before the unsaved changes
+   * go to the server. Default 150. Lower shows changes sooner at the cost of
+   * more server renders; raise it when a render is expensive.
+   */
+  syncDebounceMs?: number;
 }
 
 export interface UseLiveOptions {
@@ -115,6 +126,7 @@ export function PreprRefresh({
   enabled = false,
   allowedEditorOrigins: origins,
   strictMode: strict = false,
+  syncDebounceMs,
 }: PreprRefreshProps): null {
   const router = useRouter();
   // Joined so a new array literal each render doesn't restart the effect.
@@ -126,7 +138,7 @@ export function PreprRefresh({
       strictMode: strict,
       allowedEditorOrigins: originsKey?.split(' '),
     });
-    const sync = createLogSync();
+    const sync = createLogSync(debounceOf(syncDebounceMs));
     let unsubscribe: (() => void) | null = null;
     let active = true;
     void starter.start().then((started) => {
@@ -146,7 +158,7 @@ export function PreprRefresh({
       unsubscribe?.();
       sync.cancel();
     };
-  }, [enabled, originsKey, strict, router]);
+  }, [enabled, originsKey, strict, syncDebounceMs, router]);
 
   return null;
 }
@@ -266,7 +278,7 @@ function watchClientRenders(watched: LiveStore): void {
  * the frame reloads, so a live edit never leaves the editor with a broken
  * page.
  */
-function createLogSync() {
+function createLogSync(debounceMs: number) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight = false;
   let pending: LivePatch[] | null = null;
@@ -333,7 +345,7 @@ function createLogSync() {
         timer = null;
         if (inFlight) pending = log;
         else void send(log);
-      }, LOG_SYNC_DEBOUNCE_MS);
+      }, debounceMs);
     },
     cancel(): void {
       cancelled = true;
