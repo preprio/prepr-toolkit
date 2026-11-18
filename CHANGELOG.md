@@ -5,6 +5,23 @@ All notable changes to `@preprio/toolkit`. The format follows
 [semantic versioning](https://semver.org/). Releases before 1.0.0 are listed on the
 [GitHub releases page](https://github.com/preprio/prepr-toolkit/releases).
 
+## 1.0.0-rc.5
+
+### Added
+
+- Next.js: `livePreviewFetch` reuses a query's last response for renders
+  that only show unsaved changes, so typing in the editor does not fetch
+  every query from Prepr again. A page load or a save still fetches.
+- `syncDebounceMs` on `PreprRefresh` and `startHtmlLivePreview`: how long
+  typing must pause before unsaved changes go to the server (default 150).
+
+### Changed
+
+- `annotateEditLinks` (and so `normalizeQuery`) writes the hidden edit link
+  of text in list entries in the compact form Prepr's API uses, about half
+  the bytes per field, and remembers links it has rewritten, so repeated
+  preview renders of the same content skip the decoding.
+
 ## 1.0.0-rc.4
 
 ### Changed
