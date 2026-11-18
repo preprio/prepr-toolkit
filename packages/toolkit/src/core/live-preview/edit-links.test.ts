@@ -57,6 +57,49 @@ describe('annotateEditLinks', () => {
     ).toBe('Welcome');
   });
 
+  it('writes the link as compactly as the API does', () => {
+    const source = page();
+    const out = annotateEditLinks(source);
+    const hidden = (value: unknown) =>
+      vercelStegaSplit(value as string).encoded.length;
+    // Longer link (the entry id), yet fewer hidden characters than the
+    // default encoding of the original.
+    expect(hidden(out.Page.content[0].heading)).toBeLessThan(
+      hidden(source.Page.content[0].heading),
+    );
+  });
+
+  it('gives the same result when the same content comes by again', () => {
+    const first = annotateEditLinks(page());
+    const second = annotateEditLinks(page());
+    expect(second).toEqual(first);
+    expect(link(second.Page.content[1].body).searchParams.get('field')).toBe(
+      'content.1',
+    );
+  });
+
+  it('keeps apart equal links that sit in different entries', () => {
+    const shared = encoded('Same', 'page-1');
+    const out = annotateEditLinks({
+      Page: {
+        _id: 'page-1',
+        content: [
+          { __typename: 'Text', _id: 'text-1', body: shared },
+          { __typename: 'Text', _id: 'text-2', body: shared },
+        ],
+      },
+    });
+    expect(link(out.Page.content[0].body).searchParams.get('entry')).toBe(
+      'text-1',
+    );
+    expect(link(out.Page.content[1].body).searchParams.get('entry')).toBe(
+      'text-2',
+    );
+    expect(link(out.Page.content[1].body).searchParams.get('field')).toBe(
+      'content.1',
+    );
+  });
+
   it('uses the nearest entry for nested lists', () => {
     const out = annotateEditLinks(page());
     const button = link(out.Page.content[0].buttons![0]!.text);

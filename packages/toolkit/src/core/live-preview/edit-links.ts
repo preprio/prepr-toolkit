@@ -1,7 +1,8 @@
 import { isObject } from './guards';
 import {
-  vercelStegaCombine,
+  legacyStegaEncode,
   vercelStegaDecode,
+  vercelStegaEncode,
   vercelStegaSplit,
 } from '@vercel/stega';
 
@@ -53,46 +54,78 @@ function entryIdOf(element: unknown): string | undefined {
 }
 
 /**
- * Rewrites one string's edit link, or returns it unchanged. Adds the entry
- * id, and the entry's field path when the link names no field and points at
- * the entry's owner (a `Text` entry's link carries no field of its own).
+ * Encodes an edit link the way Prepr's API does: two hidden characters per
+ * byte, half of what the default encoding takes. Every text in a list entry
+ * carries one, so the difference adds up in the page's payload. That form
+ * only holds Latin-1; anything else falls back to the default encoding.
  */
-function annotate(value: string, ctx: Context): string {
-  if (!ctx.entryId) return value;
-  const { cleaned, encoded } = vercelStegaSplit(value);
-  if (!encoded) return value;
+function encodeLink(payload: object): string {
+  try {
+    return legacyStegaEncode(payload);
+  } catch {
+    return vercelStegaEncode(payload);
+  }
+}
 
+/**
+ * The hidden link with the entry id added, and the entry's field path when
+ * the link names no field and points at the entry's owner (a `Text` entry's
+ * link carries no field of its own). Empty when the link stays as it is.
+ */
+function rewriteLink(
+  encoded: string,
+  entryId: string,
+  entryField: string,
+  entryOwnerId: string | undefined,
+): string {
   let payload: { href?: unknown; origin?: unknown } | undefined;
   try {
     payload = vercelStegaDecode(encoded) as typeof payload;
   } catch {
-    return value;
+    return '';
   }
-  if (typeof payload?.href !== 'string') return value;
+  if (typeof payload?.href !== 'string') return '';
 
   let url: URL;
   try {
     url = new URL(payload.href);
   } catch {
-    return value;
+    return '';
   }
-  if (url.searchParams.has(ENTRY_PARAM)) return value;
+  if (url.searchParams.has(ENTRY_PARAM)) return '';
 
-  url.searchParams.set(ENTRY_PARAM, ctx.entryId);
+  url.searchParams.set(ENTRY_PARAM, entryId);
   const itemId = decodeURIComponent(url.pathname.split('/').pop() ?? '');
-  if (
-    !url.searchParams.has('field') &&
-    ctx.entryField &&
-    TOP_LEVEL_ENTRY.test(ctx.entryField) &&
-    itemId === ctx.entryOwnerId
-  ) {
-    url.searchParams.set('field', ctx.entryField);
+  if (!url.searchParams.has('field') && entryField && itemId === entryOwnerId) {
+    url.searchParams.set('field', entryField);
   }
-  return vercelStegaCombine(
-    cleaned,
-    { ...payload, href: url.toString() },
-    false,
-  );
+  return encodeLink({ ...payload, href: url.toString() });
+}
+
+// A preview page renders the same content again on every unsaved change, so
+// the same links come by each time. Decoding and encoding one costs far more
+// than looking it up.
+const MAX_REWRITTEN = 10_000;
+const rewritten = new Map<string, string>();
+
+/** Rewrites one string's edit link, or returns it unchanged. */
+function annotate(value: string, ctx: Context): string {
+  if (!ctx.entryId) return value;
+  const { cleaned, encoded } = vercelStegaSplit(value);
+  if (!encoded) return value;
+
+  const entryField =
+    ctx.entryField && TOP_LEVEL_ENTRY.test(ctx.entryField)
+      ? ctx.entryField
+      : '';
+  const key = `${ctx.entryId}\n${entryField}\n${ctx.entryOwnerId ?? ''}\n${encoded}`;
+  let link = rewritten.get(key);
+  if (link === undefined) {
+    link = rewriteLink(encoded, ctx.entryId, entryField, ctx.entryOwnerId);
+    if (rewritten.size >= MAX_REWRITTEN) rewritten.clear();
+    rewritten.set(key, link);
+  }
+  return link ? cleaned + link : value;
 }
 
 function walk(
