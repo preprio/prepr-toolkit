@@ -228,6 +228,29 @@ than one round, calls `normalizeQuery` once per result. Every call in the
 same render applies the same unsaved changes, so an edit shows up in each
 result that contains the item.
 
+**Optional: skip the Prepr request while an editor types.** Every unsaved
+change re-renders the route, and each render fetches its queries again
+although stored content has not changed. Wrap the fetch in
+`livePreviewFetch` to reuse the last response for those renders:
+
+```ts
+import { livePreviewFetch, normalizeQuery } from '@preprio/toolkit/nextjs';
+
+const data = await livePreviewFetch(
+  { query: GetPageDocument, variables: { slug } },
+  () => fetchFromPrepr(GetPageDocument, { slug }),
+  { enabled: preview },
+);
+const page = await normalizeQuery(GetPageDocument, data, { enabled: preview });
+```
+
+A page load and a save always run the fetcher; only renders for unsaved
+changes reuse its last response, per query, variables and Prepr headers
+(segment, A/B variant, visitor). Responses live in the memory of the server
+process for a few minutes, so a render on another instance fetches as usual.
+Include every variable the fetcher uses in the key, and do not modify the
+returned data. Most useful on pages with large or slow queries.
+
 With `enabled` on, `normalizeQuery` reads the request on every call, which
 makes the route dynamic. With `enabled` off it does not read the request, so
 static and ISR pages stay as they are. Keep `enabled` tied to your preview

@@ -57,16 +57,29 @@ export function putLiveLog(log: LivePatch[]): string {
 }
 
 /**
- * The log stored under `token`, removed so it cannot be replayed; an empty
- * list for anything else. Callers memoize the result per render.
+ * The log stored under `token`, handed out once so it cannot be replayed; an
+ * empty list for anything else. Callers memoize the result per render.
  */
 export function takeLiveLog(token: string | undefined): LivePatch[] {
   if (!token || !TOKEN_PATTERN.test(token)) return [];
   const map = slots();
   const slot = map.get(token);
-  map.delete(token);
   const now = Date.now();
   prune(map, now);
   if (!slot || slot.expires <= now) return [];
-  return slot.log;
+  const { log } = slot;
+  // The emptied slot stays until it expires, so the rest of the render can
+  // still tell it is one for unsaved changes.
+  slot.log = [];
+  return log;
+}
+
+/**
+ * Whether `token` belongs to a render for unsaved changes: its log is waiting
+ * or was taken moments ago. Takes nothing.
+ */
+export function hasLiveLog(token: string | undefined): boolean {
+  if (!token || !TOKEN_PATTERN.test(token)) return false;
+  const slot = slots().get(token);
+  return slot !== undefined && slot.expires > Date.now();
 }

@@ -38,7 +38,8 @@ vi.mock('next/navigation', () => ({
 }));
 
 const { syncPreprLiveLog } = await import('./live-action');
-const { normalizeQuery, getPreprLiveLog } = await import('./server');
+const { normalizeQuery, getPreprLiveLog, livePreviewFetch } =
+  await import('./server');
 
 const QUERY = '{ Post { _id title } }';
 const data = { Post: { _id: 'p', title: 'Old' } };
@@ -180,3 +181,142 @@ function entryOf(value: string): string | null {
   };
   return new URL(href).searchParams.get('entry');
 }
+
+describe('livePreviewFetch', () => {
+  const typing = async (value: string) => {
+    requestHeaders = new Headers(PREVIEW_ACTION);
+    await syncPreprLiveLog([
+      { type: 'field', itemId: 'p', field: 'title', value },
+    ]);
+  };
+  // The same visitor's request without unsaved changes: a load or a save.
+  const pageLoad = () => {
+    requestHeaders = new Headers(PREVIEW_ACTION);
+    requestHeaders.delete('Next-Action');
+  };
+
+  beforeEach(() => {
+    jar.clear();
+    pageLoad();
+  });
+
+  it('reuses the last full render for unsaved changes, with the changes on top', async () => {
+    const key = { query: QUERY, variables: { slug: 'reuse' } };
+    const fetcher = vi.fn(async () => ({ Post: { _id: 'p', title: 'Old' } }));
+    const first = await livePreviewFetch(key, fetcher, { enabled: true });
+
+    await typing('New');
+    const again = await livePreviewFetch(key, fetcher, { enabled: true });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(again).toBe(first);
+    const page = await normalizeQuery(QUERY, again, { enabled: true });
+    expect(page.Post.title).toBe('New');
+    // The stored response is untouched for the next keystroke.
+    expect(first.Post.title).toBe('Old');
+    // A later query of the same render, after the log was taken.
+    const other = { query: QUERY, variables: { slug: 'reuse-2' } };
+    pageLoad();
+    await livePreviewFetch(other, fetcher, { enabled: true });
+    await typing('Newer');
+    await normalizeQuery(QUERY, again, { enabled: true });
+    await livePreviewFetch(other, fetcher, { enabled: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetches again on every render without unsaved changes', async () => {
+    const key = { query: QUERY, variables: { slug: 'save' } };
+    const fetcher = vi
+      .fn<() => Promise<typeof data>>()
+      .mockResolvedValueOnce({ Post: { _id: 'p', title: 'Old' } })
+      .mockResolvedValueOnce({ Post: { _id: 'p', title: 'Saved' } });
+    await livePreviewFetch(key, fetcher, { enabled: true });
+    // A save refreshes the route: a render without a log.
+    const saved = await livePreviewFetch(key, fetcher, { enabled: true });
+    expect(saved.Post.title).toBe('Saved');
+
+    await typing('Typed');
+    const typed = await livePreviewFetch(key, fetcher, { enabled: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(typed).toBe(saved);
+  });
+
+  it('keeps variables, queries and Prepr headers apart', async () => {
+    const fetcher = vi.fn(async () => ({ Post: { _id: 'p', title: 'Old' } }));
+    const key = { query: QUERY, variables: { slug: 'apart' } };
+    await livePreviewFetch(key, fetcher, { enabled: true });
+
+    await typing('New');
+    await livePreviewFetch(
+      { query: QUERY, variables: { slug: 'other' } },
+      fetcher,
+      { enabled: true },
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    await typing('New');
+    await livePreviewFetch(
+      { query: { kind: 'Document' as const }, variables: key.variables },
+      fetcher,
+      { enabled: true },
+    );
+    expect(fetcher).toHaveBeenCalledTimes(3);
+
+    await typing('New');
+    requestHeaders.set('Prepr-Segments', 'vip');
+    await livePreviewFetch(key, fetcher, { enabled: true });
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it('runs the fetcher untouched unless enabled, without reading the request', async () => {
+    const key = { query: QUERY, variables: { slug: 'off' } };
+    const fetcher = vi.fn(async () => data);
+    await livePreviewFetch(key, fetcher, { enabled: true });
+    await typing('New');
+    const headersModule = await import('next/headers');
+    const spy = vi.spyOn(headersModule, 'headers');
+    await livePreviewFetch(key, fetcher);
+    await livePreviewFetch(key, fetcher, { enabled: false });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('does not store a failed fetch', async () => {
+    const key = { query: QUERY, variables: { slug: 'fail' } };
+    await expect(
+      livePreviewFetch(key, () => Promise.reject(new Error('down')), {
+        enabled: true,
+      }),
+    ).rejects.toThrow('down');
+    await typing('New');
+    const fetcher = vi.fn(async () => data);
+    await livePreviewFetch(key, fetcher, { enabled: true });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('fetches again once a stored response is too old', async () => {
+    vi.useFakeTimers();
+    const key = { query: QUERY, variables: { slug: 'old' } };
+    const fetcher = vi.fn(async () => data);
+    await livePreviewFetch(key, fetcher, { enabled: true });
+    vi.advanceTimersByTime(6 * 60_000);
+    await typing('New');
+    await livePreviewFetch(key, fetcher, { enabled: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('falls back to the fetcher for variables that cannot name a response', async () => {
+    const loop: Record<string, unknown> = {};
+    loop.self = loop;
+    const fetcher = vi.fn(async () => data);
+    await livePreviewFetch({ query: QUERY, variables: loop }, fetcher, {
+      enabled: true,
+    });
+    await typing('New');
+    await livePreviewFetch({ query: QUERY, variables: loop }, fetcher, {
+      enabled: true,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});

@@ -177,6 +177,7 @@ Unlike `getToolbarProps`, `getPreprEnvironmentSegments(token)` throws on failure
 ### Live preview and visual editing
 
 - **`normalizeQuery(query, result, { log, operationName })`** — applies the editor's unsaved changes to a GraphQL result. See [Live preview](./live-preview.md).
+- **`livePreviewFetch({ query, variables }, fetcher, { enabled })`** (`@preprio/toolkit/nextjs`) — reuses a query's last response for renders that only show unsaved changes, so typing does not fetch from Prepr again. See [Next.js](./nextjs.md#live-preview).
 - **`readLiveLogFromRequest(request)`** — the changes a live re-render request carries, or an empty list.
 - **`startHtmlLivePreview(options?)`** — browser side of live preview for server-rendered HTML.
 - **`annotateEditLinks(result, query?, operationName?)`** — adds list entry ids to edit links in data fetched outside the live preview helpers.
