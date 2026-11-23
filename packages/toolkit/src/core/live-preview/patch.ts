@@ -8,6 +8,7 @@ import {
   TEXT_BODY_FIELDS,
 } from './field-name';
 import type { LivePath, SnapshotIndex } from './index-snapshot';
+import { resolveInternalLinks } from './internal-links';
 
 const INDEX_SEGMENT = /^\d+$/;
 // The field path arrives over postMessage; these would reach the prototype.
@@ -310,7 +311,11 @@ export function writeAtPath(
   } else if (!isPatchable(container[key])) {
     return root;
   } else {
-    next = keepEditLink(container[key], value);
+    const linked =
+      typeof value === 'string'
+        ? resolveInternalLinks(container[key], value)
+        : value;
+    next = keepEditLink(container[key], linked);
   }
   if (container[key] === next) return root;
 

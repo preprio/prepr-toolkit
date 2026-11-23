@@ -5,6 +5,14 @@ All notable changes to `@preprio/toolkit`. The format follows
 [semantic versioning](https://semver.org/). Releases before 1.0.0 are listed on the
 [GitHub releases page](https://github.com/preprio/prepr-toolkit/releases).
 
+## Unreleased
+
+### Fixed
+
+- Live preview: rich text with links to items or assets now updates while
+  the editor types. Those links keep the href the page already shows for
+  them; a link added since the last save shows as its text until save.
+
 ## 1.0.0-rc.5
 
 ### Added
