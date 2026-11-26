@@ -16,6 +16,9 @@ const debug = createScopedLogger('live-preview:next');
 // renders run one at a time, so a second pause here only delays the preview.
 const LOG_SYNC_DEBOUNCE_MS = 0;
 
+// Floor for how long changes may wait while an editor keeps typing.
+const MIN_SYNC_MAX_WAIT_MS = 600;
+
 const debounceOf = (value: number | undefined): number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? value
@@ -47,7 +50,9 @@ export interface PreprRefreshProps {
    * go to the server. Default 0: a change goes out as soon as the editor
    * sends it, which it does after a pause of its own. Renders run one at a
    * time either way; raise this when a render is expensive, to have fewer of
-   * them.
+   * them. While typing continues, changes still go out at least every four
+   * times this value (600 ms at the least), so the preview never stalls
+   * until a pause.
    */
   syncDebounceMs?: number;
 }
@@ -288,6 +293,9 @@ function watchClientRenders(watched: LiveStore): void {
  * page.
  */
 function createLogSync(debounceMs: number) {
+  // Longest a log waits for typing to pause before it is sent anyway.
+  const maxWaitMs = Math.max(debounceMs * 4, MIN_SYNC_MAX_WAIT_MS);
+  let waitingSince: number | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight = false;
   let pending: LivePatch[] | null = null;
@@ -350,15 +358,24 @@ function createLogSync(debounceMs: number) {
     schedule(log: LivePatch[]): void {
       cancelled = false;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = null;
-        if (inFlight) pending = log;
-        else void send(log);
-      }, debounceMs);
+      // Without a cap, an editor who keeps typing faster than the debounce
+      // sees nothing until they stop.
+      waitingSince ??= Date.now();
+      const left = waitingSince + maxWaitMs - Date.now();
+      timer = setTimeout(
+        () => {
+          timer = null;
+          waitingSince = null;
+          if (inFlight) pending = log;
+          else void send(log);
+        },
+        Math.max(0, Math.min(debounceMs, left)),
+      );
     },
     cancel(): void {
       cancelled = true;
       pending = null;
+      waitingSince = null;
       if (timer) clearTimeout(timer);
       timer = null;
     },

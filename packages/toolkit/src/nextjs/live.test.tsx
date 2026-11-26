@@ -385,6 +385,31 @@ describe('PreprRefresh', () => {
     vi.useRealTimers();
   });
 
+  it('still sends changes while an editor keeps typing without a pause', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    syncPreprLiveLog.mockClear();
+    await render(<PreprRefresh enabled syncDebounceMs={150} />);
+    await liveStarted();
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      // A key every 100 ms never leaves the 150 ms pause the debounce waits for.
+      for (let i = 1; i <= 7; i++) {
+        post({
+          event: 'prepr:fieldChange',
+          itemId: 'p',
+          field: 'title',
+          value: 'a'.repeat(i),
+        });
+        await vi.advanceTimersByTimeAsync(100);
+      }
+    });
+
+    expect(syncPreprLiveLog).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it('waits for the syncDebounceMs it is given', async () => {
     vi.useFakeTimers();
     stubFramed();

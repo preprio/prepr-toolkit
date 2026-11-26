@@ -14,6 +14,9 @@ All notable changes to `@preprio/toolkit`. The format follows
   sends it, so the preview updates about 150 ms sooner. Renders still run
   one at a time. Set `syncDebounceMs={150}` to keep the previous wait, for
   example when a render is expensive.
+- Next.js: with `syncDebounceMs` raised, `PreprRefresh` no longer waits for
+  typing to stop. While an editor keeps typing, changes go to the server at
+  least every four times that value, and at least every 600 ms.
 
 ### Fixed
 
