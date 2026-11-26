@@ -6,9 +6,17 @@
  */
 
 const INTERNAL_HREF = /^[pa]uuid#/;
+// Part of every internal href: text without it holds no internal link, which
+// is true of nearly every value an editor types.
+const INTERNAL_MARK = 'uuid#';
 const ANCHOR = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const HREF = /(\shref\s*=\s*)(["'])(.*?)\2/i;
 const TAGS = /<[^>]+>/g;
+
+// Pairing compares every pushed link with every page link. Text with more
+// links than this allows shows its internal links as text until save, which
+// bounds the time and memory one value can take.
+const MAX_PAIRINGS = 250_000;
 
 interface Anchor {
   /** Where the whole `<a …>…</a>` starts and ends in its string. */
@@ -17,6 +25,8 @@ interface Anchor {
   attributes: string;
   inner: string;
   href: string | null;
+  /** The href is an item or asset id rather than a URL. */
+  internal: boolean;
   text: string;
 }
 
@@ -25,31 +35,27 @@ function anchorsIn(html: string): Anchor[] {
   for (const match of html.matchAll(ANCHOR)) {
     const attributes = match[1];
     const inner = match[2];
+    const href = HREF.exec(attributes)?.[3] ?? null;
     out.push({
       start: match.index ?? 0,
       end: (match.index ?? 0) + match[0].length,
       attributes,
       inner,
-      href: HREF.exec(attributes)?.[3] ?? null,
+      href,
+      internal: href !== null && INTERNAL_HREF.test(href),
       text: inner.replace(TAGS, '').trim(),
     });
   }
   return out;
 }
 
-const isInternal = (anchor: Anchor): boolean =>
-  anchor.href !== null && INTERNAL_HREF.test(anchor.href);
-
 /**
- * How well a pushed anchor fits one on the page: an internal link fits any
- * page link, others only the same href. The same link text fits better.
+ * How well a pushed anchor fits one on the page. An internal link fits any
+ * page link but one that is an id itself, since the page link is what the API
+ * made of it; others fit only the same href. The same link text fits better.
  */
 function fit(pushed: Anchor, page: Anchor): number {
-  if (!isInternal(pushed) && pushed.href !== page.href) return 0;
-  // The page link is what the API made of an internal one: an id never
-  // survives as such.
-  if (isInternal(pushed) && page.href !== null && INTERNAL_HREF.test(page.href))
-    return 0;
+  if (pushed.internal ? page.internal : pushed.href !== page.href) return 0;
   return pushed.text === page.text ? 2 : 1;
 }
 
@@ -59,29 +65,30 @@ function fit(pushed: Anchor, page: Anchor): number {
  * link inserted before others leaves their pairing intact.
  */
 function align(pushed: Anchor[], page: Anchor[]): number[] {
-  const rows = pushed.length + 1;
+  const out = new Array<number>(pushed.length).fill(-1);
+  if (!page.length || pushed.length * page.length > MAX_PAIRINGS) return out;
+  // Best total fit of `pushed[i…]` with `page[j…]`, at `i * cols + j`.
   const cols = page.length + 1;
-  const score: number[][] = Array.from({ length: rows }, () =>
-    new Array<number>(cols).fill(0),
-  );
+  const score = new Int32Array((pushed.length + 1) * cols);
   for (let i = pushed.length - 1; i >= 0; i--) {
     for (let j = page.length - 1; j >= 0; j--) {
+      const at = i * cols + j;
       const pair = fit(pushed[i], page[j]);
-      score[i][j] = Math.max(
-        score[i + 1][j],
-        score[i][j + 1],
-        pair ? pair + score[i + 1][j + 1] : 0,
+      score[at] = Math.max(
+        score[at + cols],
+        score[at + 1],
+        pair ? pair + score[at + cols + 1] : 0,
       );
     }
   }
-  const out = new Array<number>(pushed.length).fill(-1);
   let i = 0;
   let j = 0;
   while (i < pushed.length && j < page.length) {
+    const at = i * cols + j;
     const pair = fit(pushed[i], page[j]);
-    if (pair && score[i][j] === pair + score[i + 1][j + 1]) {
+    if (pair && score[at] === pair + score[at + cols + 1]) {
       out[i++] = j++;
-    } else if (score[i + 1][j] >= score[i][j + 1]) {
+    } else if (score[at + cols] >= score[at + 1]) {
       i++;
     } else {
       j++;
@@ -97,15 +104,16 @@ function align(pushed: Anchor[], page: Anchor[]): number[] {
  * Returns `value` itself when it holds no internal links.
  */
 export function resolveInternalLinks(current: unknown, value: string): string {
+  if (!value.includes(INTERNAL_MARK)) return value;
   const pushed = anchorsIn(value);
-  if (!pushed.some(isInternal)) return value;
+  if (!pushed.some((anchor) => anchor.internal)) return value;
   const page = typeof current === 'string' ? anchorsIn(current) : [];
   const pairs = align(pushed, page);
 
   let out = '';
   let cursor = 0;
   pushed.forEach((anchor, i) => {
-    if (!isInternal(anchor)) return;
+    if (!anchor.internal) return;
     out += value.slice(cursor, anchor.start);
     const match = pairs[i] >= 0 ? page[pairs[i]] : null;
     if (match?.href != null) {

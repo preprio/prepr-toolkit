@@ -72,6 +72,19 @@ describe('resolveInternalLinks', () => {
   it('treats a missing current value as a page without links', () => {
     expect(resolveInternalLinks(null, `<a href="${ITEM}">A</a>`)).toBe('A');
   });
+
+  it('leaves an id outside a link as it is', () => {
+    const value = `<p>The id is ${ITEM}, see <a href="/a">A</a></p>`;
+    expect(resolveInternalLinks('<p><a href="/a">A</a></p>', value)).toBe(
+      value,
+    );
+  });
+
+  it('shows internal links as text when there are too many links to pair', () => {
+    const page = '<a href="/a">A</a>'.repeat(600);
+    const pushed = `<a href="${ITEM}">A</a>`.repeat(600);
+    expect(resolveInternalLinks(page, pushed)).toBe('A'.repeat(600));
+  });
 });
 
 describe('writeAtPath with internal links', () => {
