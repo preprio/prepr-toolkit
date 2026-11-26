@@ -122,7 +122,7 @@ loadTrackingPixel(id, {
 
 ## Theming
 
-The toolbar's shadow DOM reads its look from CSS custom properties set on the `prepr-toolbar` host element, or any ancestor — custom properties inherit through the shadow boundary. All have fallbacks, so theming is entirely optional.
+The toolbar's shadow DOM reads its look from CSS custom properties set on the `prepr-toolbar` element itself. Setting them on an ancestor has no effect: the toolbar declares its defaults on `:host`, and a declared value always wins over an inherited one. All have fallbacks, so theming is entirely optional.
 
 | Custom property   | Purpose                                    | Default                                   |
 | ----------------- | ------------------------------------------ | ----------------------------------------- |
