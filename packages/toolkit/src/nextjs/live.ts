@@ -59,7 +59,11 @@ export interface UseLiveOptions {
 const starter = createLiveStarter({
   storeOptions() {
     const skipped = new Set(quarantined());
-    return { accept: (patch) => !skipped.has(patchKey(patch)) };
+    // Looking a change up serializes it, on every keystroke: only worth it
+    // when something was set aside.
+    return skipped.size
+      ? { accept: (patch) => !skipped.has(patchKey(patch)) }
+      : {};
   },
   onStart: (store) => watchClientRenders(store),
   onReset() {
