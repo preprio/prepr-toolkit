@@ -332,11 +332,36 @@ describe('PreprRefresh', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it('sends unsaved changes to the server once typing pauses', async () => {
+  it('sends a change as soon as it arrives by default', async () => {
     vi.useFakeTimers();
     stubFramed();
     syncPreprLiveLog.mockClear();
     await render(<PreprRefresh enabled />);
+    await liveStarted();
+
+    await React.act(async () => {
+      post({ event: 'prepr:initVE' });
+      post({
+        event: 'prepr:fieldChange',
+        itemId: 'p',
+        field: 'title',
+        value: 'a',
+      });
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(syncPreprLiveLog).toHaveBeenCalledTimes(1);
+    expect(syncPreprLiveLog).toHaveBeenCalledWith([
+      { type: 'field', itemId: 'p', field: 'title', value: 'a' },
+    ]);
+    vi.useRealTimers();
+  });
+
+  it('sends unsaved changes once typing pauses for the syncDebounceMs it is given', async () => {
+    vi.useFakeTimers();
+    stubFramed();
+    syncPreprLiveLog.mockClear();
+    await render(<PreprRefresh enabled syncDebounceMs={150} />);
     await liveStarted();
 
     await React.act(async () => {

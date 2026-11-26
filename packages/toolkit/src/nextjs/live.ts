@@ -12,7 +12,9 @@ import { syncPreprLiveLog } from './live-action';
 
 const debug = createScopedLogger('live-preview:next');
 
-const LOG_SYNC_DEBOUNCE_MS = 150;
+// No wait by default: the Prepr editor pauses before it sends a change, and
+// renders run one at a time, so a second pause here only delays the preview.
+const LOG_SYNC_DEBOUNCE_MS = 0;
 
 const debounceOf = (value: number | undefined): number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -42,8 +44,10 @@ export interface PreprRefreshProps {
   strictMode?: boolean;
   /**
    * How long typing must pause, in milliseconds, before the unsaved changes
-   * go to the server. Default 150. Lower shows changes sooner at the cost of
-   * more server renders; raise it when a render is expensive.
+   * go to the server. Default 0: a change goes out as soon as the editor
+   * sends it, which it does after a pause of its own. Renders run one at a
+   * time either way; raise this when a render is expensive, to have fewer of
+   * them.
    */
   syncDebounceMs?: number;
 }
@@ -272,8 +276,9 @@ function watchClientRenders(watched: LiveStore): void {
 }
 
 /**
- * Sends the latest log after a pause, one request at a time, so renders never
- * pile up behind fast typing and the last state always reaches the server.
+ * Sends the latest log after `debounceMs` without a newer one, one request
+ * at a time, so renders never pile up behind fast typing and the last state
+ * always reaches the server.
  * The next log goes out as soon as the previous re-render has answered.
  *
  * A component that throws on an unsaved value makes Next.js replace the route

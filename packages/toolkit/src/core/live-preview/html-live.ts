@@ -9,8 +9,9 @@ const debug = createScopedLogger('live-preview:html');
 
 const COMPLETE_DOCUMENT = /<\/html>\s*$/i;
 
-/** Coalesces bursts of keystrokes into one server render. */
-const SYNC_DEBOUNCE_MS = 150;
+// No wait by default: the Prepr editor pauses before it sends a change, and
+// renders run one at a time, so a second pause here only delays the preview.
+const SYNC_DEBOUNCE_MS = 0;
 
 /** Options of `startHtmlLivePreview`. */
 export interface HtmlLivePreviewOptions {
@@ -23,9 +24,10 @@ export interface HtmlLivePreviewOptions {
   strictMode?: boolean;
   /**
    * How long typing must pause, in milliseconds, before the page is
-   * requested with the unsaved changes. Default 150. Lower shows changes
-   * sooner at the cost of more server renders; raise it when a render is
-   * expensive.
+   * requested with the unsaved changes. Default 0: the page is requested as
+   * soon as the editor sends a change, which it does after a pause of its
+   * own. Requests run one at a time either way; raise this when a render is
+   * expensive, to have fewer of them.
    */
   syncDebounceMs?: number;
 }

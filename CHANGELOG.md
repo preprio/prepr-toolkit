@@ -7,6 +7,14 @@ All notable changes to `@preprio/toolkit`. The format follows
 
 ## Unreleased
 
+### Changed
+
+- `syncDebounceMs` on `PreprRefresh` and `startHtmlLivePreview` defaults to
+  `0` instead of `150`: a change goes to the server as soon as the editor
+  sends it, so the preview updates about 150 ms sooner. Renders still run
+  one at a time. Set `syncDebounceMs={150}` to keep the previous wait, for
+  example when a render is expensive.
+
 ### Fixed
 
 - Live preview: a component or text block added since the last save shows
