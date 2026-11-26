@@ -26,6 +26,7 @@ interface EditorMessage {
   block?: unknown;
   entryId?: unknown;
   fieldById?: unknown;
+  asset?: unknown;
   itemId?: unknown;
   referencedIds?: unknown;
   componentIds?: unknown;
@@ -48,6 +49,11 @@ export interface ScrollToFieldMessage {
    * on entries added before save, whose position changes until then.
    */
   fieldById?: string;
+  /**
+   * URL of the asset the editor focused within the field, for a field that
+   * holds several (a gallery).
+   */
+  asset?: string;
 }
 
 /** A content item the open item links to, and the field that links it. */
@@ -405,6 +411,8 @@ export function createIframeBridge(
         typeof data.fieldById === 'string' && data.fieldById
           ? data.fieldById
           : undefined;
+      const asset =
+        typeof data.asset === 'string' && data.asset ? data.asset : undefined;
       try {
         onScrollToField?.({
           field: data.field,
@@ -412,6 +420,7 @@ export function createIframeBridge(
           block,
           entryId,
           fieldById,
+          asset,
         });
       } catch (error) {
         // A throwing handler must not take down the message listener and with

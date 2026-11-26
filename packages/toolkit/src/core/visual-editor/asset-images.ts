@@ -20,7 +20,11 @@ const ABSOLUTE_HTTP = /^https?:\/\//i;
 const SOURCE_URL_ATTRIBUTES = ['src', 'data-src'];
 const SOURCE_SET_ATTRIBUTES = ['srcset', 'data-srcset'];
 
-/** Marks an image this pass tagged, so it can be untagged again. */
+/**
+ * Marks an image this pass tagged, so it can be untagged again. Its value is
+ * the asset's key, which tells apart the images of one field holding several
+ * assets (a gallery) when the editor focuses one of them.
+ */
 export const ASSET_ATTR = 'data-prepr-asset';
 /**
  * Marks an image showing an asset the editor removed from its field. The
@@ -158,7 +162,7 @@ function matchAsset(
   img: HTMLImageElement,
   index: Map<string, EditorAsset>,
   keys: Map<string, string | null>,
-): EditorAsset | undefined {
+): { asset: EditorAsset; key: string } | undefined {
   for (const url of urlsOf(img)) {
     let key = keys.get(url);
     if (key === undefined) {
@@ -166,7 +170,7 @@ function matchAsset(
       keys.set(url, key);
     }
     const asset = key ? index.get(key) : undefined;
-    if (asset) return asset;
+    if (asset && key) return { asset, key };
   }
   return undefined;
 }
@@ -254,13 +258,13 @@ export function tagAssetImages(
     const asset =
       match && isCurrentItem && besideOtherItem(img, isCurrentItem)
         ? undefined
-        : match;
-    if (!asset) {
+        : match?.asset;
+    if (!asset || !match) {
       if (ours) untagAssetImage(img);
       continue;
     }
     setIfChanged(img, ATTR_ENCODED, '');
-    setIfChanged(img, ASSET_ATTR, '');
+    setIfChanged(img, ASSET_ATTR, match.key);
     setIfChanged(img, ATTR_ID, itemId);
     setIfChanged(img, ATTR_FIELD, asset.field);
     setIfChanged(img, 'data-prepr-entry-id', asset.entryId ?? null);

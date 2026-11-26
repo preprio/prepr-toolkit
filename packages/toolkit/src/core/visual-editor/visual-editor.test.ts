@@ -75,7 +75,7 @@ describe('createVisualEditor', () => {
 
     expect(box('hover').hasAttribute('data-visible')).toBe(true);
     expect(box('hover').textContent).toBe('Title');
-    expect(box('hover').style.transform).toBe('translate3d(37px, 97px, 0)');
+    expect(box('hover').style.transform).toBe('translate3d(34px, 94px, 0)');
   });
 
   it('selects a clicked field and requests the edit, keeping the page from acting on it', () => {
@@ -137,6 +137,67 @@ describe('createVisualEditor', () => {
         }),
       );
       expect(box('selected').textContent).toBe('Image');
+    });
+
+    it('focuses the gallery image of the asset the editor names, not the first one', async () => {
+      const gallery = [
+        'https://demo.stream.prepr.io/a1aaaaaaaaaa/w_800/one.jpg',
+        'https://demo.stream.prepr.io/b2bbbbbbbbbb/w_800/two.jpg',
+        'https://demo.stream.prepr.io/c3cccccccccc/w_800/three.jpg',
+      ];
+      const imgs = gallery.map(image);
+      const rectSpies = imgs.map((img, i) =>
+        vi
+          .spyOn(img, 'getBoundingClientRect')
+          .mockReturnValue(new DOMRect(40, 1000 * (i + 1), 300, 200)),
+      );
+      editor.start();
+      editor.setCurrentItem('product-1');
+      editor.setAssets(
+        gallery.map((url) => ({
+          key: url.replace('w_800', '{format}'),
+          field: 'gallery',
+        })),
+      );
+
+      await expect(
+        editor.focusField({
+          field: 'gallery',
+          id: 'product-1',
+          asset: 'https://demo.stream.prepr.io/b2bbbbbbbbbb/{format}/two.jpg',
+        }),
+      ).resolves.toBe(true);
+
+      // Only the second image was measured to scroll it into view.
+      expect(rectSpies[1]).toHaveBeenCalled();
+      expect(rectSpies[0]).not.toHaveBeenCalled();
+    });
+
+    it('focuses the visible copy of a gallery image, not a hidden stacked one', async () => {
+      // A slider stacks every image in the main viewer and fades out all but
+      // the active one; the thumbnail is the copy an editor can see.
+      const url = 'https://demo.stream.prepr.io/b2bbbbbbbbbb/w_800/two.jpg';
+      const stacked = image(url);
+      stacked.style.opacity = '0';
+      const thumbnail = image(url);
+      const stackedRect = vi
+        .spyOn(stacked, 'getBoundingClientRect')
+        .mockReturnValue(new DOMRect(40, 1000, 300, 200));
+      const thumbnailRect = vi
+        .spyOn(thumbnail, 'getBoundingClientRect')
+        .mockReturnValue(new DOMRect(40, 1300, 80, 80));
+      editor.start();
+      editor.setCurrentItem('product-1');
+      editor.setAssets([
+        { key: url.replace('w_800', '{format}'), field: 'gallery' },
+      ]);
+
+      await expect(
+        editor.focusField({ field: 'gallery', id: 'product-1', asset: url }),
+      ).resolves.toBe(true);
+
+      expect(thumbnailRect).toHaveBeenCalled();
+      expect(stackedRect).not.toHaveBeenCalled();
     });
 
     it('tags images the page renders later', async () => {
@@ -459,7 +520,7 @@ describe('createVisualEditor', () => {
     expect(selected.hasAttribute('data-visible')).toBe(true);
     // The box sits at (37, 97); the menu panel is cut out in its coordinates.
     expect(selected.style.clipPath).toContain(
-      '-17px -57px, 143px -57px, 143px 143px, -17px 143px',
+      '-14px -54px, 146px -54px, 146px 146px, -14px 146px',
     );
     expect(selected.hasAttribute('data-label-covered')).toBe(true);
 
@@ -1064,7 +1125,7 @@ describe('createVisualEditor', () => {
       click(heading);
       await settle();
       expect(box('selected').style.transform).toBe(
-        'translate3d(37px, 97px, 0)',
+        'translate3d(34px, 94px, 0)',
       );
 
       placeAt(heading, 260);
@@ -1072,7 +1133,7 @@ describe('createVisualEditor', () => {
       await settle();
 
       expect(box('selected').style.transform).toBe(
-        'translate3d(37px, 257px, 0)',
+        'translate3d(34px, 254px, 0)',
       );
     });
 
@@ -1087,7 +1148,7 @@ describe('createVisualEditor', () => {
       heading.firstChild!.textContent = 'A much longer headline over lines';
       await settle();
 
-      expect(box('selected').style.height).toBe('102px');
+      expect(box('selected').style.height).toBe('108px');
     });
 
     it('keeps the selection on a field whose element is re-rendered as another tag', async () => {
@@ -1104,9 +1165,51 @@ describe('createVisualEditor', () => {
 
       const selected = box('selected');
       expect(selected.hasAttribute('data-visible')).toBe(true);
-      expect(selected.style.transform).toBe('translate3d(37px, 137px, 0)');
-      expect(selected.style.height).toBe('30px');
+      expect(selected.style.transform).toBe('translate3d(34px, 134px, 0)');
+      expect(selected.style.height).toBe('36px');
       expect(selected.textContent).toBe('Headline');
+    });
+
+    it('keeps a focused gallery image selected when the gallery re-renders', async () => {
+      const urls = [
+        'https://demo.stream.prepr.io/a1aaaaaaaaaa/w_800/one.jpg',
+        'https://demo.stream.prepr.io/b2bbbbbbbbbb/w_800/two.jpg',
+      ];
+      const render = (top: number): HTMLImageElement[] =>
+        urls.map((src, i) => {
+          const img = document.createElement('img');
+          img.setAttribute('src', src);
+          document.body.appendChild(img);
+          placeAt(img, top + i * 300, 200);
+          return img;
+        });
+      const first = render(100);
+      editor.start();
+      editor.setCurrentItem('item-1');
+      editor.setAssets(
+        urls.map((url) => ({
+          key: url.replace('w_800', '{format}'),
+          field: 'gallery',
+        })),
+      );
+      await editor.focusField({
+        field: 'gallery',
+        id: 'item-1',
+        asset: urls[1],
+      });
+      await settle();
+      expect(box('selected').style.transform).toBe(
+        'translate3d(34px, 394px, 0)',
+      );
+
+      for (const img of first) img.remove();
+      render(500);
+      await settle();
+
+      expect(box('selected').hasAttribute('data-visible')).toBe(true);
+      expect(box('selected').style.transform).toBe(
+        'translate3d(34px, 794px, 0)',
+      );
     });
 
     it('hides the selection until the re-rendered element is tagged, then shows it again', async () => {
@@ -1131,7 +1234,7 @@ describe('createVisualEditor', () => {
 
       expect(box('selected').hasAttribute('data-visible')).toBe(true);
       expect(box('selected').style.transform).toBe(
-        'translate3d(37px, 137px, 0)',
+        'translate3d(34px, 134px, 0)',
       );
     });
 
@@ -1171,7 +1274,7 @@ describe('createVisualEditor', () => {
       await settle();
 
       expect(box('hover').hasAttribute('data-visible')).toBe(true);
-      expect(box('hover').style.transform).toBe('translate3d(37px, 87px, 0)');
+      expect(box('hover').style.transform).toBe('translate3d(34px, 84px, 0)');
     });
   });
 });

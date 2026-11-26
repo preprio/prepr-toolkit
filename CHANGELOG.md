@@ -5,6 +5,27 @@ All notable changes to `@preprio/toolkit`. The format follows
 [semantic versioning](https://semver.org/). Releases before 1.0.0 are listed on the
 [GitHub releases page](https://github.com/preprio/prepr-toolkit/releases).
 
+## Unreleased
+
+### Added
+
+- Visual editing: `prepr:scrollToField` accepts an optional `asset` (the
+  asset URL). Clicking the second or third image of a gallery in the editor
+  focuses that image in the preview instead of the first one. Editors that
+  don't send it keep the previous behavior.
+
+### Changed
+
+- Visual editing: outline boxes sit 6 px from the element instead of 3 px,
+  so they no longer cut close to large headings.
+
+### Fixed
+
+- Visual editing: when a page renders the same image more than once, such
+  as a slider that stacks every slide and fades out the inactive ones,
+  focusing it selects a visible copy. A selected gallery image stays
+  selected when the gallery re-renders.
+
 ## 1.0.0-rc.7
 
 ### Changed

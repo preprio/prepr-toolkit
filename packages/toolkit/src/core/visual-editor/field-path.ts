@@ -1,5 +1,6 @@
 import { ATTR_FIELD, ATTR_ID, ENCODED_SELECTOR } from '../constants';
 import { t, type Locale } from '../i18n';
+import { ASSET_ATTR, assetKey } from './asset-images';
 const INDEX_SEGMENT = /^\d+$/;
 const WORD_SEPARATORS = /[_-]+/g;
 
@@ -62,6 +63,27 @@ export interface FieldLookup {
   entryId?: string;
   /** `field` with stack entries named by id; tried when `field` matches nothing. */
   fieldById?: string;
+  /**
+   * URL of one asset in the field. A field holding several assets (a
+   * gallery) renders one image per asset; this picks the image showing it.
+   */
+  asset?: string;
+}
+
+/**
+ * Sliders often render one image several times: stacked in the main viewer,
+ * where all but the active slide are faded out, and again as a thumbnail.
+ * A faded-out copy cannot carry a visible outline, so a visible copy wins.
+ */
+function isShown(el: HTMLElement): boolean {
+  if (typeof el.checkVisibility === 'function') {
+    return el.checkVisibility({
+      opacityProperty: true,
+      visibilityProperty: true,
+    });
+  }
+  const style = getComputedStyle(el);
+  return style.opacity !== '0' && style.visibility !== 'hidden';
 }
 
 /**
@@ -72,6 +94,19 @@ export interface FieldLookup {
 export function findFieldElement(lookup: FieldLookup): HTMLElement | null {
   if (!lookup.field) return null;
   const candidates = document.querySelectorAll<HTMLElement>(ENCODED_SELECTOR);
+  const wantedAsset = lookup.asset ? assetKey(lookup.asset) : null;
+  if (wantedAsset) {
+    const wantedField = normalizeFieldPath(lookup.field);
+    let hidden: HTMLElement | null = null;
+    for (const candidate of candidates) {
+      if (candidate.getAttribute(ASSET_ATTR) !== wantedAsset) continue;
+      const field = candidate.getAttribute(ATTR_FIELD);
+      if (!field || normalizeFieldPath(field) !== wantedField) continue;
+      if (isShown(candidate)) return candidate;
+      hidden ??= candidate;
+    }
+    if (hidden) return hidden;
+  }
   if (lookup.entryId) {
     for (const candidate of candidates) {
       if (candidate.getAttribute('data-prepr-entry-id') === lookup.entryId) {

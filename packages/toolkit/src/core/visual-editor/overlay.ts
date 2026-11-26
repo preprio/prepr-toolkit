@@ -17,7 +17,7 @@ const SCROLL_SETTLE_MS = 120;
 // Room the label needs above a box before it flips inside it.
 const LABEL_SPACE_PX = 22;
 
-const BOX_PADDING_PX = 3;
+const BOX_PADDING_PX = 6;
 
 // Gap between a box and the label above it; matches `.label` margin-bottom.
 const LABEL_MARGIN_PX = 4;

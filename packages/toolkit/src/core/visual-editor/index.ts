@@ -10,6 +10,7 @@ import { fieldLabel, findFieldElement, type FieldLookup } from './field-path';
 import { t, type Locale } from '../i18n';
 import type { EditorAsset, EditorReference } from '../iframe-bridge';
 import {
+  ASSET_ATTR,
   ASSET_SOURCE_ATTRIBUTES,
   createAssetIndex,
   REMOVED_ATTR,
@@ -361,12 +362,16 @@ export function createVisualEditor(opts: VisualEditorOptions): VisualEditor {
    */
   function select(el: HTMLElement, field: HTMLElement, block?: number): void {
     const entryId = field.getAttribute('data-prepr-entry-id');
+    // Several images of one gallery share a field; the asset tells them apart
+    // when a re-render replaces the selected one.
+    const asset = field.getAttribute(ASSET_ATTR);
     selection = {
       lookup: {
         field: field.getAttribute(ATTR_FIELD) ?? '',
         id: field.getAttribute(ATTR_ID) ?? undefined,
         ...(entryId && { entryId }),
         ...(block !== undefined && { block }),
+        ...(asset && { asset }),
       },
       label: field,
     };
