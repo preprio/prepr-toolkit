@@ -2,4 +2,4 @@
  * Package version; must match package.json. Lives in its own leaf module so
  * core can import it without cycling through the barrel.
  */
-export const VERSION = '1.0.0-rc.7';
+export const VERSION = '1.0.0-rc.8';
