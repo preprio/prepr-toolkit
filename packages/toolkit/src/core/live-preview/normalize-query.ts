@@ -15,6 +15,7 @@ import {
   type LivePath,
   type SnapshotIndex,
 } from './index-snapshot';
+import { resolveInternalLinks } from './internal-links';
 import {
   keepEditLink,
   syncListAtPath,
@@ -473,10 +474,14 @@ function fillObject(
         out[field.key] = [];
         continue;
       }
-      const scalar =
+      const sent =
         value === undefined || (value !== null && typeof value === 'object')
           ? null
           : value;
+      // A new entry has no stored text whose hrefs a link to an item or
+      // asset could take, so such a link shows as its text until save.
+      const scalar =
+        typeof sent === 'string' ? resolveInternalLinks(null, sent) : sent;
       const target = typeof scalar === 'string' ? editField(field.name) : null;
       out[field.key] =
         target && links ? links.encode(scalar as string, target) : scalar;

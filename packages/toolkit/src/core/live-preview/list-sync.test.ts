@@ -185,3 +185,43 @@ describe('syncListSnapshot — assets entries', () => {
     expect(byEntry).toBe(data);
   });
 });
+
+describe('syncListSnapshot with links to items and assets', () => {
+  it('shows such a link in a new Text entry as its text, never as its id', () => {
+    const data = {
+      Post: {
+        _id: 'post-1',
+        content: [
+          {
+            __typename: 'Text',
+            _id: 't1',
+            body: '<p>One</p>',
+            html: '<p>One</p>',
+            text: 'One',
+          },
+        ],
+      },
+    };
+    const result = syncListSnapshot(
+      data,
+      indexSnapshot(data),
+      'post-1',
+      'content',
+      [
+        { _id: 't1' },
+        {
+          _id: 'tmp:1',
+          __typename: 'Text',
+          body: '<p>See <a href="puuid#0b0b0b0b-1111-2222-3333-444444444444">this</a></p>',
+        },
+      ],
+    ) as typeof data;
+    expect(result.Post.content[1]).toEqual({
+      __typename: 'Text',
+      _id: 'tmp:1',
+      body: '<p>See this</p>',
+      html: '<p>See this</p>',
+      text: 'See this',
+    });
+  });
+});

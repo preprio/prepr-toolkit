@@ -1388,3 +1388,56 @@ describe('normalizeQuery cleared assets', () => {
     expect(next.data.Post.title).toBeNull();
   });
 });
+
+describe('normalizeQuery new entries with links to items and assets', () => {
+  const ITEM = 'puuid#0b0b0b0b-1111-2222-3333-444444444444';
+  const query = `{ Page { _id sections { __typename ... on Hero { _id title text cta { _id label } } } } }`;
+  const result = () => ({
+    Page: {
+      _id: 'p',
+      sections: [
+        {
+          __typename: 'Hero',
+          _id: 'h1',
+          title: 'A',
+          text: '<p>a</p>',
+          cta: null,
+        },
+      ] as Array<Record<string, unknown>>,
+    },
+  });
+  const add = (fields: Record<string, unknown>) =>
+    normalizeQuery(query, result(), {
+      log: [
+        {
+          type: 'list',
+          itemId: 'p',
+          field: 'sections',
+          entries: [
+            { _id: 'h1' },
+            { _id: 'h2', __typename: 'Hero', typeName: 'Hero', fields },
+          ],
+        },
+      ],
+    }).Page.sections[1];
+
+  it('shows such a link in a new entry as its text, never as its id', () => {
+    const added = add({
+      title: 'B',
+      text: `<p>Read <a href="${ITEM}"><em>more</em></a> or <a href="https://x.dev">X</a></p>`,
+    });
+    expect(added.text).toBe(
+      '<p>Read <em>more</em> or <a href="https://x.dev">X</a></p>',
+    );
+    expect(added.title).toBe('B');
+  });
+
+  it('does the same in a component nested in a new entry', () => {
+    const added = add({
+      title: 'B',
+      text: null,
+      cta: { _id: 'c1', label: `<a href="${ITEM}">Go</a>` },
+    });
+    expect(added.cta).toEqual({ _id: 'c1', label: 'Go' });
+  });
+});

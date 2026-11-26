@@ -364,14 +364,17 @@ function listKeysOf(entry: unknown): string[] {
 }
 
 /**
- * A new Text entry in its siblings' queried shape. Internal links and the
- * edit marker are missing until save.
+ * A new Text entry in its siblings' queried shape. Links to items and assets
+ * show as their text and the edit marker is missing until save.
  */
 function buildText(
   entry: LiveListEntry,
   template: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
-  const body = typeof entry.body === 'string' ? entry.body : '';
+  const body =
+    typeof entry.body === 'string'
+      ? resolveInternalLinks(null, entry.body)
+      : '';
   const full: Record<string, unknown> = {
     __typename: 'Text',
     _id: entry._id,

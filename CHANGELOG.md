@@ -5,6 +5,14 @@ All notable changes to `@preprio/toolkit`. The format follows
 [semantic versioning](https://semver.org/). Releases before 1.0.0 are listed on the
 [GitHub releases page](https://github.com/preprio/prepr-toolkit/releases).
 
+## Unreleased
+
+### Fixed
+
+- Live preview: a component or text block added since the last save shows
+  a link to an item or asset as its text until save, instead of a link to
+  the id (`puuid#…`).
+
 ## 1.0.0-rc.6
 
 ### Fixed
